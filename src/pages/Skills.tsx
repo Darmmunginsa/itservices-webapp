@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil } from 'lucide-react'
+import { Plus, Trash2, Pencil, ExternalLink } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -8,6 +8,12 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Skill } from '../types/asset'
+import { formatDate } from '../utils/dateUtils'
+
+const EMPTY_FORM = {
+  title: '', level: 'Beginner', status: 'Learning',
+  startDate: '', endDate: '', courseLink: '', note: '',
+}
 
 export default function Skills() {
   const { user, addToast } = useAppStore()
@@ -17,7 +23,7 @@ export default function Skills() {
   const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Skill | null>(null)
-  const [form, setForm] = useState({ title: '', level: 'Beginner', status: 'Learning' })
+  const [form, setForm] = useState({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
 
   function load() {
@@ -31,13 +37,21 @@ export default function Skills() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ title: '', level: 'Beginner', status: 'Learning' })
+    setForm({ ...EMPTY_FORM })
     setShowModal(true)
   }
 
   function openEdit(skill: Skill) {
     setEditing(skill)
-    setForm({ title: skill.Title, level: skill.Level, status: skill.Status })
+    setForm({
+      title: skill.Title,
+      level: skill.Level,
+      status: skill.Status,
+      startDate: skill.StartDate ?? '',
+      endDate: skill.EndDate ?? '',
+      courseLink: skill.CourseLink ?? '',
+      note: skill.Note ?? '',
+    })
     setShowModal(true)
   }
 
@@ -45,12 +59,26 @@ export default function Skills() {
     e.preventDefault()
     if (!user) return
     setSaving(true)
+    // Map form keys → SP column names (PascalCase)
+    const payload = {
+      Title: form.title,
+      Level: form.level,
+      Status: form.status,
+      StartDate: form.startDate || undefined,
+      EndDate: form.endDate || undefined,
+      CourseLink: form.courseLink || undefined,
+      Note: form.note || undefined,
+    }
     try {
       if (editing) {
-        await spUpdate('HD_Skills', editing.id, form)
+        await spUpdate('HD_Skills', editing.id, payload)
         addToast('success', 'อัปเดต Skill แล้ว')
       } else {
-        await spCreate('HD_Skills', { ...form, Title: form.title, Learner: user.displayName, LearnerEmail: user.email })
+        await spCreate('HD_Skills', {
+          ...payload,
+          Learner: user.displayName,
+          LearnerEmail: user.email,
+        })
         addToast('success', 'เพิ่ม Skill แล้ว')
       }
       setShowModal(false)
@@ -85,6 +113,7 @@ export default function Skills() {
   }
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
+  const set = (key: keyof typeof EMPTY_FORM, val: string) => setForm(f => ({ ...f, [key]: val }))
 
   return (
     <div>
@@ -116,10 +145,22 @@ export default function Skills() {
                         <button onClick={() => deleteSkill(skill.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={13} /></button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mb-3">
                       <Badge className={levelColors[skill.Level]}>{skill.Level}</Badge>
                       <Badge className={statusColors[skill.Status]}>{skill.Status}</Badge>
                     </div>
+                    {(skill.StartDate || skill.EndDate) && (
+                      <p className="text-xs text-gray-400 mb-1">
+                        {skill.StartDate ? formatDate(skill.StartDate) : '?'} → {skill.EndDate ? formatDate(skill.EndDate) : 'ต่อเนื่อง'}
+                      </p>
+                    )}
+                    {skill.Note && <p className="text-xs text-gray-500 italic mb-2">{skill.Note}</p>}
+                    {skill.CourseLink && (
+                      <a href={skill.CourseLink} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                        <ExternalLink size={10} /> Course Link
+                      </a>
+                    )}
                   </div>
                 ))
           }
@@ -128,16 +169,34 @@ export default function Skills() {
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไข Skill' : 'เพิ่ม Skill'}>
         <form onSubmit={save} className="space-y-4">
-          <div><label className={labelClass}>ชื่อ Skill *</label><input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inputClass} /></div>
-          <div><label className={labelClass}>Level</label>
-            <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value }))} className={inputClass}>
-              {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
-            </select>
+          <div><label className={labelClass}>ชื่อ Skill *</label>
+            <input required value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder="เช่น React, Python, Azure..." />
           </div>
-          <div><label className={labelClass}>สถานะ</label>
-            <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className={inputClass}>
-              {['Learning', 'Completed', 'Planned'].map(s => <option key={s}>{s}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelClass}>Level</label>
+              <select value={form.level} onChange={e => set('level', e.target.value)} className={inputClass}>
+                {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
+              </select>
+            </div>
+            <div><label className={labelClass}>สถานะ</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className={inputClass}>
+                {['Learning', 'Completed', 'Planned'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={labelClass}>วันที่เริ่ม</label>
+              <input type="date" value={form.startDate} onChange={e => set('startDate', e.target.value)} className={inputClass} />
+            </div>
+            <div><label className={labelClass}>วันที่เสร็จ</label>
+              <input type="date" value={form.endDate} onChange={e => set('endDate', e.target.value)} className={inputClass} />
+            </div>
+          </div>
+          <div><label className={labelClass}>Course Link (URL)</label>
+            <input type="url" value={form.courseLink} onChange={e => set('courseLink', e.target.value)} className={inputClass} placeholder="https://..." />
+          </div>
+          <div><label className={labelClass}>หมายเหตุ</label>
+            <textarea value={form.note} onChange={e => set('note', e.target.value)} rows={2} className={inputClass} placeholder="บันทึกเพิ่มเติม..." />
           </div>
           <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
         </form>

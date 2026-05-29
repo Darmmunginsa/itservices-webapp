@@ -8,6 +8,7 @@ export interface Ticket {
   Status: TicketStatus
   Priority: TicketPriority
   Category: string
+  Department?: string
   Description: string
   AssignedToName: string
   AssignedEmail: string
@@ -16,7 +17,10 @@ export interface Ticket {
   IsAcknowledged: boolean
   AcknowledgedBy?: string
   AcknowledgedDate?: string
+  IsEscalated?: boolean
   DueDate?: string
+  ResolvedDate?: string
+  ResolutionNote?: string
   Created: string
   Modified: string
   CreatedByEmail: string
@@ -24,10 +28,9 @@ export interface Ticket {
 
 export interface TicketComment {
   id: number
-  TicketID: string
+  TicketID: number          // Number field in SP — no quotes in filter
   CommentText: string
-  CommentBy: string
-  CommentByEmail: string
+  CommentBy: string         // CommentByEmail does NOT exist in SP schema
   CommentType: 'Internal' | 'External'
   CommentDate: string
 }

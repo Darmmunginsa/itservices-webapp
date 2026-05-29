@@ -111,10 +111,10 @@ export default function Submit() {
           LeaveDate: form.leaveDate,
           LeaveType: form.leaveType,
           RequestedBy: user.displayName,
-          RequestedByEmail: user.email,
+          RequestedEmail: user.email,    // SP column name (not RequestedByEmail)
           ApproverEmail: form.approverEmail,
           Status: 'Pending',
-          ApprovalComment: form.reason,
+          Note: form.reason,             // SP column name (not ApprovalComment)
         })
         addToast('success', 'ส่งคำขอลาแล้ว รอการอนุมัติ')
       }

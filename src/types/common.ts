@@ -41,10 +41,13 @@ export interface LeaveRequest {
   LeaveDate: string
   LeaveType: string
   RequestedBy: string
-  RequestedByEmail: string
+  RequestedEmail: string      // SP column name (was RequestedByEmail — wrong)
   ApproverEmail: string
+  ApproverName?: string
   Status: 'Pending' | 'Approved' | 'Rejected'
-  ApprovalComment?: string
+  Note?: string               // SP column name (was ApprovalComment — wrong)
+  RejectReason?: string
+  ApprovedDate?: string
   Created: string
 }
 
@@ -68,4 +71,12 @@ export interface TrackingItem {
   AssignedTo: string
   Status: string
   IsAcknowledged: boolean
+}
+
+export interface SLAConfig {
+  id: number
+  Title: string
+  Priority: 'Low' | 'Medium' | 'High' | 'Critical'
+  ResponseTimeHours: number
+  ResolutionTimeHours: number
 }

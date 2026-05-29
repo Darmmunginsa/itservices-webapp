@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Eye, EyeOff, Lock, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Plus, Trash2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -9,9 +9,11 @@ import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
-import type { Project, Task, Note, ProjectIncident } from '../types/project'
+import type { Project, Task, Note, ProjectIncident, ProjectLink } from '../types/project'
 import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
+
+const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -20,26 +22,35 @@ export default function ProjectDetail() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [incidents, setIncidents] = useState<ProjectIncident[]>([])
+  const [links, setLinks] = useState<ProjectLink[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links'>('tasks')
   const [showNote, setShowNote] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [showSecure, setShowSecure] = useState(false)
+  // Link form
+  const [showLink, setShowLink] = useState(false)
+  const [linkForm, setLinkForm] = useState({ title: '', url: '', linkType: 'Other', linkNote: '' })
+  const [savingLink, setSavingLink] = useState(false)
 
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
+    const numId = Number(id)
     Promise.all([
-      spGet<Project>('PM_Projects', `Id eq ${id}`),
-      spGet<Task>('PM_Tasks', `ProjectID eq '${id}'`, undefined, 'DueDate asc'),
-      spGet<Note>('PM_Notes', `ProjectID eq '${id}'`, undefined, 'Created desc'),
-      spGet<ProjectIncident>('PM_Incidents', `ProjectID eq '${id}'`),
-    ]).then(([proj, t, n, inc]) => {
+      spGet<Project>('PM_Projects', `Id eq ${numId}`),
+      // ProjectID is a Number field in SP — no quotes in the filter
+      spGet<Task>('PM_Tasks', `ProjectID eq ${numId}`, undefined, 'DueDate asc'),
+      spGet<Note>('PM_Notes', `ProjectID eq ${numId}`, undefined, 'Created desc'),
+      spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`),
+      spGet<ProjectLink>('PM_Links', `ProjectID eq ${numId}`, undefined, 'Title asc'),
+    ]).then(([proj, t, n, inc, lnk]) => {
       setProject(proj[0] ?? null)
       setTasks(t)
       setNotes(n)
       setIncidents(inc)
+      setLinks(lnk)
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
@@ -69,7 +80,13 @@ export default function ProjectDetail() {
     e.preventDefault()
     if (!user || !noteText.trim()) return
     try {
-      await spCreate('PM_Notes', { Title: noteText.slice(0, 50), ProjectID: id, NoteText: noteText, NoteBy: user.displayName })
+      // ProjectID is Number — pass as number
+      await spCreate('PM_Notes', {
+        Title: noteText.slice(0, 100),
+        ProjectID: Number(id),
+        NoteText: noteText,
+        NoteBy: user.displayName,
+      })
       addToast('success', 'บันทึก Note แล้ว')
       setNoteText('')
       setShowNote(false)
@@ -86,10 +103,41 @@ export default function ProjectDetail() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
+  async function addLink(e: React.FormEvent) {
+    e.preventDefault()
+    if (!linkForm.url.trim()) return
+    setSavingLink(true)
+    try {
+      await spCreate('PM_Links', {
+        Title: linkForm.title || linkForm.url.slice(0, 100),
+        ProjectID: Number(id),
+        URL: linkForm.url,
+        LinkType: linkForm.linkType,
+        LinkNote: linkForm.linkNote,
+      })
+      addToast('success', 'เพิ่ม Link แล้ว')
+      setLinkForm({ title: '', url: '', linkType: 'Other', linkNote: '' })
+      setShowLink(false)
+      load()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingLink(false) }
+  }
+
+  async function deleteLink(linkId: number) {
+    if (!window.confirm('ลบ Link นี้?')) return
+    try {
+      await spDelete('PM_Links', linkId)
+      setLinks(prev => prev.filter(l => l.id !== linkId))
+      addToast('success', 'ลบ Link แล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
   const sortedTasks = [...tasks].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
     return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) - (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
   })
+
+  const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
+  const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
   if (loading) return <div className="p-6"><Skeleton className="h-64" /></div>
   if (!project) return <div className="p-6 text-gray-400">ไม่พบโครงการ</div>
@@ -143,11 +191,11 @@ export default function ProjectDetail() {
         </Card>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit">
-          {(['tasks', 'notes', 'incidents'] as const).map(t => (
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
+          {(['tasks', 'notes', 'incidents', 'links'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : `Incidents (${incidents.length})`}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : `Links (${links.length})`}
             </button>
           ))}
         </div>
@@ -159,18 +207,19 @@ export default function ProjectDetail() {
               : sortedTasks.map(task => {
                   const color = getDueDateColor(task.DueDate, task.IsCompleted)
                   return (
-                    <div key={task.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 ${getDueDateRowClass(color)}`}>
-                      <button onClick={() => completeTask(task)} className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${task.IsCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-primary-500'}`}>
+                    <div key={task.id} className={`flex items-start gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 ${getDueDateRowClass(color)}`}>
+                      <button onClick={() => completeTask(task)} className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${task.IsCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-primary-500'}`}>
                         {task.IsCompleted && <CheckCircle2 size={12} className="text-white" />}
                       </button>
-                      <span className="text-sm w-4">{getDueDateEmoji(color)}</span>
+                      <span className="text-sm w-4 mt-0.5">{getDueDateEmoji(color)}</span>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${task.IsCompleted ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>{task.Title}</p>
-                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400">
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 flex-wrap">
                           <span>{task.AssignedTo}</span>
                           {task.DueDate && <span>{formatDate(task.DueDate)}</span>}
                           {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> {task.AcknowledgedBy}</span>}
                         </div>
+                        {task.TaskNote && <p className="text-xs text-gray-500 mt-1 italic">{task.TaskNote}</p>}
                       </div>
                       {!task.IsAcknowledged && task.AssignedEmail === user?.email && (
                         <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
@@ -206,26 +255,91 @@ export default function ProjectDetail() {
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             {incidents.length === 0 ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Incident</p>
               : incidents.map(inc => (
-                  <div key={inc.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                  <div key={inc.id} className="flex items-start gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
                     <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inc.Title}</p>
                       <p className="text-xs text-gray-400 truncate">{inc.Description}</p>
+                      {inc.Resolution && <p className="text-xs text-green-600 mt-0.5">✓ {inc.Resolution}</p>}
                     </div>
-                    <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+                    <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                      <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+                      {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
+                    </div>
                   </div>
                 ))
             }
           </div>
         )}
+
+        {/* Links */}
+        {tab === 'links' && (
+          <div className="space-y-3">
+            <Button size="sm" onClick={() => setShowLink(true)}><Plus size={14} /> เพิ่ม Link</Button>
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+              {links.length === 0 ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Link</p>
+                : links.map(link => (
+                    <div key={link.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <LinkIcon size={15} className="text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <a href={link.URL} target="_blank" rel="noopener noreferrer"
+                          className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1 truncate">
+                          {link.Title || link.URL}
+                          <ExternalLink size={11} className="flex-shrink-0" />
+                        </a>
+                        {link.LinkNote && <p className="text-xs text-gray-400 truncate">{link.LinkNote}</p>}
+                      </div>
+                      {link.LinkType && (
+                        <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 flex-shrink-0">{link.LinkType}</Badge>
+                      )}
+                      {(user?.role === 'Admin' || user?.role === 'Boss') && (
+                        <button onClick={() => deleteLink(link.id)} className="text-red-400 hover:text-red-600 flex-shrink-0"><Trash2 size={13} /></button>
+                      )}
+                    </div>
+                  ))
+              }
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Add Note Modal */}
       <Modal open={showNote} onClose={() => setShowNote(false)} title="เพิ่ม Note">
         <form onSubmit={addNote} className="space-y-3">
           <textarea required value={noteText} onChange={e => setNoteText(e.target.value)} rows={5}
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className={inputClass}
             placeholder="รายละเอียด Note..." />
           <Button type="submit" className="w-full justify-center">บันทึก</Button>
+        </form>
+      </Modal>
+
+      {/* Add Link Modal */}
+      <Modal open={showLink} onClose={() => setShowLink(false)} title="เพิ่ม Link">
+        <form onSubmit={addLink} className="space-y-4">
+          <div>
+            <label className={labelClass}>URL *</label>
+            <input required type="url" value={linkForm.url} onChange={e => setLinkForm(f => ({ ...f, url: e.target.value }))}
+              className={inputClass} placeholder="https://..." />
+          </div>
+          <div>
+            <label className={labelClass}>ชื่อ Link</label>
+            <input value={linkForm.title} onChange={e => setLinkForm(f => ({ ...f, title: e.target.value }))}
+              className={inputClass} placeholder="(ถ้าไม่กรอกจะใช้ URL)" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>ประเภท</label>
+              <select value={linkForm.linkType} onChange={e => setLinkForm(f => ({ ...f, linkType: e.target.value }))} className={inputClass}>
+                {LINK_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>หมายเหตุ</label>
+              <input value={linkForm.linkNote} onChange={e => setLinkForm(f => ({ ...f, linkNote: e.target.value }))}
+                className={inputClass} placeholder="..." />
+            </div>
+          </div>
+          <Button type="submit" disabled={savingLink} className="w-full justify-center">{savingLink ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
         </form>
       </Modal>
     </div>

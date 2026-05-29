@@ -67,7 +67,20 @@ export default function Home() {
   async function approveLeave(id: number, approved: boolean) {
     setApprovingId(id)
     try {
-      await spUpdate('HD_LeaveRequests', id, { Status: approved ? 'Approved' : 'Rejected' })
+      if (approved) {
+        await spUpdate('HD_LeaveRequests', id, {
+          Status: 'Approved',
+          ApproverName: user?.displayName ?? '',
+          ApprovedDate: new Date().toISOString(),
+        })
+      } else {
+        const reason = window.prompt('เหตุผลที่ปฏิเสธ (ไม่บังคับ):') ?? ''
+        await spUpdate('HD_LeaveRequests', id, {
+          Status: 'Rejected',
+          ApproverName: user?.displayName ?? '',
+          RejectReason: reason,
+        })
+      }
       setPendingLeaves(prev => prev.filter(l => l.id !== id))
       setStats(s => ({ ...s, pendingLeave: Math.max(0, s.pendingLeave - 1) }))
       addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')

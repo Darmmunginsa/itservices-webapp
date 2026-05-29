@@ -24,6 +24,7 @@ export default function TicketDetail() {
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
   const [sending, setSending] = useState(false)
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
+  const [resolutionNote, setResolutionNote] = useState('')
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
   const [reassigning, setReassigning] = useState(false)
 
@@ -31,10 +32,14 @@ export default function TicketDetail() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
-      spGet<TicketComment>('HD_TicketComments', `TicketID eq '${id}'`, undefined, 'CommentDate asc'),
+      // TicketID is a Number field — no quotes in the filter
+      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, undefined, 'CommentDate asc'),
     ]).then(([t, c]) => {
       setTicket(t[0] ?? null)
-      if (t[0]) setNewStatus(t[0].Status)
+      if (t[0]) {
+        setNewStatus(t[0].Status)
+        setResolutionNote(t[0].ResolutionNote ?? '')
+      }
       setComments(c)
     }).catch(() => {}).finally(() => setLoading(false))
   }
@@ -50,12 +55,14 @@ export default function TicketDetail() {
     if (!user || !comment.trim()) return
     setSending(true)
     try {
+      // CommentByEmail does NOT exist in HD_TicketComments SP schema — omitted
+      // TicketID is a Number field — pass as number
       await spCreate('HD_TicketComments', {
-        TicketID: id,
+        Title: comment.slice(0, 100),
+        TicketID: Number(id),
         CommentText: comment,
         CommentBy: user.displayName,
-        CommentByEmail: user.email,
-        CommentType: commentType,
+        CommentType: isAgent ? commentType : 'External',
         CommentDate: new Date().toISOString(),
       })
       setComment('')
@@ -66,9 +73,20 @@ export default function TicketDetail() {
 
   async function updateStatus() {
     if (!ticket) return
+    const isClosing = ['Resolved', 'Closed'].includes(newStatus)
     try {
-      await spUpdate('HD_Tickets', ticket.id, { Status: newStatus })
-      setTicket(prev => prev ? { ...prev, Status: newStatus } : prev)
+      await spUpdate('HD_Tickets', ticket.id, {
+        Status: newStatus,
+        ...(isClosing && {
+          ResolvedDate: new Date().toISOString(),
+          ResolutionNote: resolutionNote,
+        }),
+      })
+      setTicket(prev => prev ? {
+        ...prev,
+        Status: newStatus,
+        ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
+      } : prev)
       addToast('success', 'อัปเดตสถานะแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
@@ -102,6 +120,7 @@ export default function TicketDetail() {
   }
 
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const isClosingStatus = ['Resolved', 'Closed'].includes(newStatus)
 
   if (loading) return <div className="p-6"><Skeleton className="h-96" /></div>
   if (!ticket) return <div className="p-6 text-gray-400">ไม่พบ Ticket</div>
@@ -144,9 +163,17 @@ export default function TicketDetail() {
           )}
 
           {ticket.Description && (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-3">
               <p className="text-xs text-gray-400 mb-1">รายละเอียด</p>
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{ticket.Description}</p>
+            </div>
+          )}
+
+          {ticket.ResolutionNote && (
+            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900 rounded-lg p-4">
+              <p className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium">บันทึกการแก้ไข</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{ticket.ResolutionNote}</p>
+              {ticket.ResolvedDate && <p className="text-xs text-gray-400 mt-1">เมื่อ {formatDate(ticket.ResolvedDate)}</p>}
             </div>
           )}
         </Card>
@@ -157,18 +184,36 @@ export default function TicketDetail() {
             <h3 className="text-sm font-semibold mb-3">จัดการ Ticket</h3>
 
             {/* Status + Acknowledge */}
-            <div className="flex flex-wrap gap-2 items-center mb-4">
-              <select value={newStatus} onChange={e => setNewStatus(e.target.value as TicketStatus)}
-                className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                {(['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'] as TicketStatus[]).map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-              <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>อัปเดตสถานะ</Button>
-              {!ticket.IsAcknowledged && (
-                <Button size="sm" variant="outline" onClick={acknowledge}>
-                  <CheckCircle2 size={14} /> รับทราบ
-                </Button>
+            <div className="space-y-3 mb-4">
+              <div className="flex flex-wrap gap-2 items-center">
+                <select value={newStatus} onChange={e => setNewStatus(e.target.value as TicketStatus)}
+                  className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  {(['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'] as TicketStatus[]).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+                <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>อัปเดตสถานะ</Button>
+                {!ticket.IsAcknowledged && (
+                  <Button size="sm" variant="outline" onClick={acknowledge}>
+                    <CheckCircle2 size={14} /> รับทราบ
+                  </Button>
+                )}
+              </div>
+
+              {/* ResolutionNote — required when closing */}
+              {isClosingStatus && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    บันทึกการแก้ไข {newStatus === 'Resolved' || newStatus === 'Closed' ? '(แนะนำให้กรอก)' : ''}
+                  </label>
+                  <textarea
+                    value={resolutionNote}
+                    onChange={e => setResolutionNote(e.target.value)}
+                    rows={3}
+                    placeholder="อธิบายวิธีที่แก้ไขปัญหา..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                  />
+                </div>
               )}
             </div>
 

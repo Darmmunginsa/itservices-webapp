@@ -12,13 +12,15 @@ export interface Project {
   SecureNote?: string
   CreatedByEmail: string
   Description?: string
+  Comment?: string
+  ProjectGroup?: string
   Modified: string
 }
 
 export interface Task {
   id: number
   Title: string
-  ProjectID: string
+  ProjectID: number          // Number field in SP — no quotes in filter
   IsCompleted: boolean
   IsAcknowledged: boolean
   AcknowledgedBy?: string
@@ -26,15 +28,17 @@ export interface Task {
   AssignedTo: string
   AssignedEmail?: string
   DueDate?: string
-  IsFocused: boolean
+  IsFocused?: boolean
   Priority?: number
+  TaskNote?: string
+  ApproverName?: string
   Created: string
 }
 
 export interface Note {
   id: number
   Title: string
-  ProjectID: string
+  ProjectID: number          // Number field in SP — no quotes in filter
   NoteText: string
   NoteBy: string
   Created: string
@@ -43,18 +47,23 @@ export interface Note {
 export interface ProjectIncident {
   id: number
   Title: string
-  ProjectID: string
+  ProjectID: number          // Number field in SP — no quotes in filter
   Severity: IncidentSeverity
   Status: 'Open' | 'In Progress' | 'Resolved'
   Description: string
   AssignedTo: string
+  AssignedEmail?: string
+  IncidentDate?: string
+  ResolvedDate?: string
+  Resolution?: string
   Created: string
 }
 
 export interface ProjectLink {
   id: number
   Title: string
-  ProjectID: string
+  ProjectID: number          // Number field in SP — no quotes in filter
   URL: string
-  Description?: string
+  LinkType?: string          // e.g. 'GitHub', 'Docs', 'Drive', 'Other'
+  LinkNote?: string
 }
