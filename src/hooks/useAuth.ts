@@ -1,6 +1,7 @@
 import { useMsal } from '@azure/msal-react'
 import { useCallback } from 'react'
 import { loginRequest } from '../config/msal'
+import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export function useAuth() {
   const { instance, accounts } = useMsal()
@@ -8,24 +9,38 @@ export function useAuth() {
   const login = useCallback(async () => {
     try {
       await instance.loginPopup(loginRequest)
-    } catch (e) {
-      console.error('Login failed', e)
-      throw e
+    } catch (e: unknown) {
+      // Popup blocked หรือ timeout → fallback ใช้ redirect
+      const msg = (e as Error)?.message ?? ''
+      if (msg.includes('popup_window_error') || msg.includes('empty_window_error') || msg.includes('timed_out')) {
+        await instance.loginRedirect(loginRequest)
+      } else {
+        throw e
+      }
     }
   }, [instance])
 
   const logout = useCallback(async () => {
-    await instance.logoutPopup({ postLogoutRedirectUri: window.location.origin })
+    try {
+      await instance.logoutPopup({ postLogoutRedirectUri: window.location.origin })
+    } catch {
+      await instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin })
+    }
   }, [instance])
 
   const getToken = useCallback(async (): Promise<string> => {
     const account = accounts[0]
     if (!account) throw new Error('Not authenticated')
-    const result = await instance.acquireTokenSilent({
-      ...loginRequest,
-      account,
-    })
-    return result.accessToken
+    try {
+      const result = await instance.acquireTokenSilent({ ...loginRequest, account })
+      return result.accessToken
+    } catch (e) {
+      if (e instanceof InteractionRequiredAuthError) {
+        const result = await instance.acquireTokenPopup({ ...loginRequest, account })
+        return result.accessToken
+      }
+      throw e
+    }
   }, [instance, accounts])
 
   return {

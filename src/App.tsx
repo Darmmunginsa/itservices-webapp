@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { PublicClientApplication } from '@azure/msal-browser'
+import { PublicClientApplication, EventType } from '@azure/msal-browser'
 import { msalConfig } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
@@ -29,6 +29,21 @@ import Contracts from './pages/Contracts'
 import './index.css'
 
 const msalInstance = new PublicClientApplication(msalConfig)
+
+// Handle redirect response (fallback จาก loginRedirect)
+msalInstance.initialize().then(() => {
+  msalInstance.handleRedirectPromise().catch(() => {})
+
+  // Set active account หลัง redirect กลับมา
+  msalInstance.addEventCallback((event) => {
+    if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
+      const payload = event.payload as { account?: unknown }
+      if (payload.account) {
+        msalInstance.setActiveAccount(payload.account as never)
+      }
+    }
+  })
+})
 
 function AppContent() {
   const isAuthenticated = useIsAuthenticated()
