@@ -12,6 +12,7 @@ import type { Project } from '../types/project'
 type SubmitType = 'Ticket' | 'Task' | 'Incident'
 
 const DEPARTMENTS = ['IT', 'HR', 'บัญชี/การเงิน', 'ฝ่ายขาย', 'ฝ่ายการตลาด', 'Operations', 'ผู้บริหาร', 'อื่นๆ']
+const DEFAULT_CATEGORIES = ['IT Hardware', 'IT Software', 'Network', 'Access & Account', 'IT Security', 'Other']
 
 // 07:00–21:00 in 30-min steps
 const HOURS = Array.from({ length: 29 }, (_, i) => {
@@ -398,9 +399,8 @@ export default function Submit() {
                     <label className={lx}>หมวดหมู่</label>
                     <select value={form.category} onChange={e => set('category', e.target.value)} className={cx}>
                       <option value="">-- เลือกหมวดหมู่ --</option>
-                      {categories.length > 0
-                        ? categories.map(c => <option key={c.id} value={c.Title}>{c.Title}</option>)
-                        : <option disabled>กำลังโหลด...</option>}
+                      {(categories.length > 0 ? categories.map(c => c.Title) : DEFAULT_CATEGORIES)
+                        .map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
@@ -553,7 +553,8 @@ export default function Submit() {
                   <label className={lx}>หมวดหมู่</label>
                   <select value={form.category} onChange={e => set('category', e.target.value)} className={cx}>
                     <option value="">-- เลือกหมวดหมู่ (ไม่บังคับ) --</option>
-                    {categories.map(c => <option key={c.id} value={c.Title}>{c.Title}</option>)}
+                    {(categories.length > 0 ? categories.map(c => c.Title) : DEFAULT_CATEGORIES)
+                      .map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
 

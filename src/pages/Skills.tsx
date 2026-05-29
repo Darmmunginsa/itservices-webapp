@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, ExternalLink } from 'lucide-react'
+import { ExternalLink, Paperclip, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonCard } from '../components/common/Skeleton'
+import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Skill } from '../types/asset'
@@ -25,6 +26,7 @@ export default function Skills() {
   const [editing, setEditing] = useState<Skill | null>(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
+  const [attachKey, setAttachKey] = useState<number | null>(null)
 
   function load() {
     if (!user) return
@@ -141,8 +143,14 @@ export default function Skills() {
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1">{skill.Title}</h3>
                       <div className="flex gap-1">
-                        <button onClick={() => openEdit(skill)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><Pencil size={13} /></button>
-                        <button onClick={() => deleteSkill(skill.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={13} /></button>
+                        <button
+                          onClick={() => setAttachKey(prev => prev === skill.id ? null : skill.id)}
+                          title="Certificate / ไฟล์แนบ"
+                          className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === skill.id ? 'text-primary-600' : 'text-gray-400'}`}>
+                          <Paperclip size={13} />
+                        </button>
+                        <button onClick={() => openEdit(skill)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors"><Pencil size={13} /></button>
+                        <button onClick={() => deleteSkill(skill.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors"><Trash2 size={13} /></button>
                       </div>
                     </div>
                     <div className="flex gap-2 mb-3">
@@ -157,9 +165,14 @@ export default function Skills() {
                     {skill.Note && <p className="text-xs text-gray-500 italic mb-2">{skill.Note}</p>}
                     {skill.CourseLink && (
                       <a href={skill.CourseLink} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                        className="text-xs text-primary-600 hover:underline flex items-center gap-1 mb-2">
                         <ExternalLink size={10} /> Course Link
                       </a>
+                    )}
+                    {attachKey === skill.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                        <AttachmentSection listName="HD_Skills" itemId={skill.id} />
+                      </div>
                     )}
                   </div>
                 ))
