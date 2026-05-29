@@ -53,13 +53,14 @@ export async function spGetById<T>(listName: string, id: number): Promise<T> {
 export async function spCreate(listName: string, data: Record<string, unknown>): Promise<{ id: number }> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error(`SharePoint POST failed: ${res.status}`)
-  return res.json()
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) })
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] POST ${listName} → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint POST failed: ${res.status} ${listName}`)
+  }
+  const item = await res.json() as Record<string, unknown>
+  return { ...item, id: (item['ID'] ?? item['Id']) as number } as { id: number }
 }
 
 export async function spUpdate(listName: string, id: number, data: Record<string, unknown>): Promise<void> {
@@ -70,15 +71,19 @@ export async function spUpdate(listName: string, id: number, data: Record<string
     headers: { ...headers, 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' },
     body: JSON.stringify(data),
   })
-  if (!res.ok) throw new Error(`SharePoint PATCH failed: ${res.status}`)
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] PATCH ${listName}(${id}) → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint PATCH failed: ${res.status} ${listName}`)
+  }
 }
 
 export async function spDelete(listName: string, id: number): Promise<void> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${id})`
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: { ...headers, 'IF-MATCH': '*' },
-  })
-  if (!res.ok) throw new Error(`SharePoint DELETE failed: ${res.status}`)
+  const res = await fetch(url, { method: 'DELETE', headers: { ...headers, 'IF-MATCH': '*' } })
+  if (!res.ok) {
+    console.error(`[SP] DELETE ${listName}(${id}) → HTTP ${res.status}`)
+    throw new Error(`SharePoint DELETE failed: ${res.status} ${listName}`)
+  }
 }

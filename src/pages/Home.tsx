@@ -7,11 +7,11 @@ import { Badge } from '../components/common/Badge'
 import { CompanyCalendar } from '../components/calendar/CompanyCalendar'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { SkeletonCard } from '../components/common/Skeleton'
-import { spGet } from '../services/sharepoint'
+import { spGet, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { Project } from '../types/project'
-import type { FocusItem } from '../types/common'
+import type { FocusItem, LeaveRequest } from '../types/common'
 import type { Asset as AssetType } from '../types/asset'
 import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor } from '../utils/colorUtils'
@@ -24,35 +24,62 @@ interface Stats {
 }
 
 export default function Home() {
-  const { user } = useAppStore()
+  const { user, addToast } = useAppStore()
   const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, pendingLeave: 0, acknowledged: 0 })
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [warningAssets, setWarningAssets] = useState<AssetType[]>([])
+  const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [approvingId, setApprovingId] = useState<number | null>(null)
 
   useEffect(() => {
     if (!user) return
-    Promise.all([
+    const isBoss = ['Boss', 'Admin'].includes(user.role)
+
+    const promises: Promise<unknown>[] = [
       spGet<Ticket>('HD_Tickets', "Status ne 'Closed'"),
       spGet<Project>('PM_Projects', "Status eq 'Active'"),
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
       spGet<AssetType>('IT_Assets'),
-    ]).then(([tickets, projects, focus, assets]) => {
+    ]
+    if (isBoss) {
+      promises.push(
+        spGet<LeaveRequest>('HD_LeaveRequests',
+          `ApproverEmail eq '${user.email}' and Status eq 'Pending'`,
+          undefined, 'Created asc')
+      )
+    }
+
+    Promise.all(promises).then(results => {
+      const [tickets, projects, focus, assets, leaves] = results as [Ticket[], Project[], FocusItem[], AssetType[], LeaveRequest[]?]
       setStats({
         openTickets: tickets.length,
         activeProjects: projects.length,
-        pendingLeave: 0,
+        pendingLeave: leaves?.length ?? 0,
         acknowledged: tickets.filter(t => t.IsAcknowledged).length,
       })
       setFocusItems(focus)
       setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate)))
+      if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
+  async function approveLeave(id: number, approved: boolean) {
+    setApprovingId(id)
+    try {
+      await spUpdate('HD_LeaveRequests', id, { Status: approved ? 'Approved' : 'Rejected' })
+      setPendingLeaves(prev => prev.filter(l => l.id !== id))
+      setStats(s => ({ ...s, pendingLeave: Math.max(0, s.pendingLeave - 1) }))
+      addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
+  }
+
   const statCards = [
-    { label: 'Ticket เปิดอยู่', value: stats.openTickets,    icon: TicketIcon,     color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/10' },
-    { label: 'โครงการ Active', value: stats.activeProjects, icon: FolderOpen,     color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/10' },
-    { label: 'รับทราบแล้ว',   value: stats.acknowledged,   icon: CheckCircle,    color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10' },
+    { label: 'Ticket เปิดอยู่', value: stats.openTickets,    icon: TicketIcon,     color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10' },
+    { label: 'โครงการ Active', value: stats.activeProjects, icon: FolderOpen,     color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10' },
+    { label: ['Boss','Admin'].includes(user?.role ?? '') ? 'รอ Approve ลา' : 'รับทราบแล้ว',
+      value: ['Boss','Admin'].includes(user?.role ?? '') ? stats.pendingLeave : stats.acknowledged,
+      icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10' },
     { label: 'Asset หมดประกัน', value: warningAssets.length, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10' },
   ]
 
@@ -89,6 +116,38 @@ export default function Home() {
             ))
           }
         </div>
+
+        {/* Leave Approval — Boss/Admin only */}
+        {pendingLeaves.length > 0 && (
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle size={16} className="text-purple-600" />
+              <h3 className="text-sm font-semibold">คำขอลาที่รออนุมัติ ({pendingLeaves.length})</h3>
+            </div>
+            <div className="space-y-2">
+              {pendingLeaves.map(l => (
+                <div key={l.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.RequestedBy}</p>
+                    <p className="text-xs text-gray-500">{l.LeaveType} · {l.LeaveDate}</p>
+                  </div>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => approveLeave(l.id, true)}
+                      disabled={approvingId === l.id}
+                      className="px-2.5 py-1 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    >อนุมัติ</button>
+                    <button
+                      onClick={() => approveLeave(l.id, false)}
+                      disabled={approvingId === l.id}
+                      className="px-2.5 py-1 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors"
+                    >ปฏิเสธ</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Focus Items */}

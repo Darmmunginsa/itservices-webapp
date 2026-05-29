@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Send } from 'lucide-react'
+import { CheckCircle2, Send, UserCheck } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -9,6 +9,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus } from '../types/ticket'
+import type { AgentProfile } from '../types/common'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 import { formatDateTime, formatDate } from '../utils/dateUtils'
 
@@ -17,11 +18,14 @@ export default function TicketDetail() {
   const { user, addToast } = useAppStore()
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [comments, setComments] = useState<TicketComment[]>([])
+  const [agents, setAgents] = useState<AgentProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
   const [sending, setSending] = useState(false)
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
+  const [newAssignedEmail, setNewAssignedEmail] = useState('')
+  const [reassigning, setReassigning] = useState(false)
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
@@ -35,7 +39,11 @@ export default function TicketDetail() {
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    load()
+    spGet<AgentProfile>('HD_AgentProfiles', 'IsAvailable eq true', undefined, 'Title asc')
+      .then(setAgents).catch(() => {})
+  }, [id])
 
   async function sendComment(e: React.FormEvent) {
     e.preventDefault()
@@ -63,6 +71,21 @@ export default function TicketDetail() {
       setTicket(prev => prev ? { ...prev, Status: newStatus } : prev)
       addToast('success', 'อัปเดตสถานะแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
+  async function reassignAgent() {
+    if (!ticket || !newAssignedEmail) return
+    const agent = agents.find(a => a.EmailText === newAssignedEmail)
+    setReassigning(true)
+    try {
+      await spUpdate('HD_Tickets', ticket.id, {
+        AssignedEmail: newAssignedEmail,
+        AssignedToName: agent?.Title ?? '',
+      })
+      setTicket(prev => prev ? { ...prev, AssignedEmail: newAssignedEmail, AssignedToName: agent?.Title ?? '' } : prev)
+      addToast('success', `Reassign ให้ ${agent?.Title} แล้ว`)
+      setNewAssignedEmail('')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setReassigning(false) }
   }
 
   async function acknowledge() {
@@ -99,8 +122,16 @@ export default function TicketDetail() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
-            <div><p className="text-xs text-gray-400">ผู้แจ้ง</p><p className="font-medium">{ticket.CustomerEmail}</p></div>
-            <div><p className="text-xs text-gray-400">Assigned</p><p className="font-medium">{ticket.AssignedToName || ticket.AssignedEmail || '-'}</p></div>
+            <div>
+              <p className="text-xs text-gray-400">ผู้แจ้ง</p>
+              <p className="font-medium">{ticket.CustomerName || '-'}</p>
+              <p className="text-xs text-gray-400 truncate">{ticket.CustomerEmail}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Assigned</p>
+              <p className="font-medium">{ticket.AssignedToName || '-'}</p>
+              <p className="text-xs text-gray-400 truncate">{ticket.AssignedEmail}</p>
+            </div>
             <div><p className="text-xs text-gray-400">สร้างเมื่อ</p><p>{formatDate(ticket.Created)}</p></div>
             <div><p className="text-xs text-gray-400">Due Date</p><p>{formatDate(ticket.DueDate)}</p></div>
           </div>
@@ -124,7 +155,9 @@ export default function TicketDetail() {
         {isAgent && (
           <Card>
             <h3 className="text-sm font-semibold mb-3">จัดการ Ticket</h3>
-            <div className="flex flex-wrap gap-2 items-center">
+
+            {/* Status + Acknowledge */}
+            <div className="flex flex-wrap gap-2 items-center mb-4">
               <select value={newStatus} onChange={e => setNewStatus(e.target.value as TicketStatus)}
                 className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
                 {(['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'] as TicketStatus[]).map(s => (
@@ -137,6 +170,29 @@ export default function TicketDetail() {
                   <CheckCircle2 size={14} /> รับทราบ
                 </Button>
               )}
+            </div>
+
+            {/* Reassign Agent */}
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
+              <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                <UserCheck size={12} /> Reassign Agent
+              </p>
+              <div className="flex gap-2">
+                <select value={newAssignedEmail} onChange={e => setNewAssignedEmail(e.target.value)}
+                  className="flex-1 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <option value="">-- เลือก Agent --</option>
+                  {agents.map(a => (
+                    <option key={a.id} value={a.EmailText}
+                      disabled={a.EmailText === ticket.AssignedEmail}>
+                      {a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}{a.EmailText === ticket.AssignedEmail ? ' (ปัจจุบัน)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <Button size="sm" variant="outline" onClick={reassignAgent}
+                  disabled={reassigning || !newAssignedEmail || newAssignedEmail === ticket.AssignedEmail}>
+                  {reassigning ? '...' : 'Reassign'}
+                </Button>
+              </div>
             </div>
           </Card>
         )}

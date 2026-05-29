@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, CheckCircle2 } from 'lucide-react'
+import { RefreshCw, CheckCircle2, ExternalLink } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { SkeletonRow } from '../components/common/Skeleton'
-import { spGet } from '../services/sharepoint'
+import { spGet, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { TrackingItem } from '../types/common'
 import { getStatusColor } from '../utils/colorUtils'
@@ -26,11 +26,22 @@ export default function Tracking() {
 
   useEffect(() => { load() }, [user])
 
-  async function syncStatus(_item: TrackingItem) {
+  async function syncStatus(item: TrackingItem) {
     try {
-      addToast('info', 'Sync สถานะแล้ว')
+      let latestStatus = item.Status
+      if (item.TrackingType === 'Ticket') {
+        const rows = await spGet<{ Status: string }>('HD_Tickets', `Id eq ${item.RefID}`, 'Id,Status')
+        if (rows[0]) latestStatus = rows[0].Status
+      } else {
+        const rows = await spGet<{ IsCompleted: boolean }>('PM_Tasks', `Id eq ${item.RefID}`, 'Id,IsCompleted')
+        if (rows[0]) latestStatus = rows[0].IsCompleted ? 'Completed' : 'Active'
+      }
+      if (latestStatus !== item.Status) {
+        await spUpdate('HD_Tracking', item.id, { Status: latestStatus })
+      }
+      addToast('success', `Sync แล้ว: ${latestStatus}`)
       load()
-    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    } catch { addToast('error', 'Sync ไม่สำเร็จ') }
   }
 
   const filtered = items.filter(i =>
