@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, CheckCircle2, ExternalLink } from 'lucide-react'
+import { RefreshCw, CheckCircle2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
