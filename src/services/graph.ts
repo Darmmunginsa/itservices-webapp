@@ -1,0 +1,73 @@
+import { graphConfig } from '../config/msal'
+
+let _getToken: (() => Promise<string>) | null = null
+
+export function setGraphTokenGetter(fn: () => Promise<string>) {
+  _getToken = fn
+}
+
+async function graphHeaders(): Promise<HeadersInit> {
+  if (!_getToken) throw new Error('Token getter not initialized')
+  const token = await _getToken()
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+export interface OutlookEvent {
+  id: string
+  subject: string
+  start: { dateTime: string; timeZone: string }
+  end: { dateTime: string; timeZone: string }
+  location?: { displayName: string }
+  attendees?: Array<{ emailAddress: { address: string; name: string } }>
+  isAllDay: boolean
+  bodyPreview?: string
+}
+
+export async function getWeeklyCalendar(): Promise<OutlookEvent[]> {
+  const headers = await graphHeaders()
+  const now = new Date()
+  const start = new Date(now)
+  start.setDate(now.getDate() - now.getDay() + 1)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  end.setHours(23, 59, 59, 999)
+
+  const url = `${graphConfig.graphCalendarEndpoint}?startDateTime=${start.toISOString()}&endDateTime=${end.toISOString()}&$orderby=start/dateTime&$top=50`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Graph calendar failed: ${res.status}`)
+  const data = await res.json()
+  return data.value as OutlookEvent[]
+}
+
+export async function createCalendarEvent(event: {
+  subject: string
+  start: string
+  end: string
+  location?: string
+  attendees?: string[]
+  body?: string
+}): Promise<OutlookEvent> {
+  const headers = await graphHeaders()
+  const payload = {
+    subject: event.subject,
+    start: { dateTime: event.start, timeZone: 'Asia/Bangkok' },
+    end: { dateTime: event.end, timeZone: 'Asia/Bangkok' },
+    location: event.location ? { displayName: event.location } : undefined,
+    attendees: event.attendees?.map(email => ({
+      emailAddress: { address: email },
+      type: 'required',
+    })),
+    body: event.body ? { contentType: 'text', content: event.body } : undefined,
+  }
+  const res = await fetch(graphConfig.graphEventsEndpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(`Graph create event failed: ${res.status}`)
+  return res.json()
+}
