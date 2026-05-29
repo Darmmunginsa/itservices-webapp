@@ -4,6 +4,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOf
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
 import type { Holiday, LeaveRequest, AgentProfile } from '../../types/common'
+import type { Project } from '../../types/project'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
 import { Modal } from '../common/Modal'
@@ -11,25 +12,28 @@ import { Button } from '../common/Button'
 
 const WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
 
-type ModalMode = 'leave' | 'holiday'
+type ModalMode = 'leave' | 'task' | 'holiday'
 
-const EMPTY_LEAVE = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
-const EMPTY_HOLIDAY = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
+const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
+const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
+const EMPTY_TASK     = { title: '', taskNote: '', taskType: 'personal' as 'personal' | 'project', projectId: '' }
 
 export function CompanyCalendar() {
   const { user, addToast } = useAppStore()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [holidays, setHolidays] = useState<Holiday[]>([])
-  const [leaves, setLeaves] = useState<LeaveRequest[]>([])
-  const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [holidays, setHolidays]   = useState<Holiday[]>([])
+  const [leaves, setLeaves]       = useState<LeaveRequest[]>([])
+  const [agents, setAgents]       = useState<AgentProfile[]>([])
+  const [projects, setProjects]   = useState<Project[]>([])
 
   // Modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
-  const [showModal, setShowModal] = useState(false)
-  const [modalMode, setModalMode] = useState<ModalMode>('leave')
-  const [leaveForm, setLeaveForm] = useState({ ...EMPTY_LEAVE })
+  const [showModal, setShowModal]     = useState(false)
+  const [modalMode, setModalMode]     = useState<ModalMode>('leave')
+  const [leaveForm, setLeaveForm]     = useState({ ...EMPTY_LEAVE })
   const [holidayForm, setHolidayForm] = useState({ ...EMPTY_HOLIDAY })
-  const [saving, setSaving] = useState(false)
+  const [taskForm, setTaskForm]       = useState({ ...EMPTY_TASK })
+  const [saving, setSaving]           = useState(false)
 
   const isAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
 
@@ -42,113 +46,130 @@ export function CompanyCalendar() {
     loadData()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
+    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
+      .then(setProjects).catch(() => {})
   }, [])
 
   const monthStart = startOfMonth(currentDate)
-  const monthEnd = endOfMonth(currentDate)
-  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
-  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
-  const days = eachDayOfInterval({ start: calStart, end: calEnd })
+  const monthEnd   = endOfMonth(currentDate)
+  const calStart   = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const calEnd     = endOfWeek(monthEnd,   { weekStartsOn: 1 })
+  const days       = eachDayOfInterval({ start: calStart, end: calEnd })
 
   function getDayInfo(day: Date) {
-    const holiday = holidays.find(h => isSameDay(new Date(h.HolidayDate), day))
+    const holiday   = holidays.find(h => isSameDay(new Date(h.HolidayDate), day))
     const dayLeaves = leaves.filter(l => isSameDay(new Date(l.LeaveDate), day))
     return { holiday, dayLeaves }
   }
 
-  function prev() {
-    const d = new Date(currentDate)
-    d.setMonth(d.getMonth() - 1)
-    setCurrentDate(d)
-  }
-
-  function next() {
-    const d = new Date(currentDate)
-    d.setMonth(d.getMonth() + 1)
-    setCurrentDate(d)
-  }
+  function prev() { const d = new Date(currentDate); d.setMonth(d.getMonth() - 1); setCurrentDate(d) }
+  function next() { const d = new Date(currentDate); d.setMonth(d.getMonth() + 1); setCurrentDate(d) }
 
   function openModal(day: Date) {
     setSelectedDay(day)
     setModalMode('leave')
     setLeaveForm({ ...EMPTY_LEAVE })
     setHolidayForm({ ...EMPTY_HOLIDAY })
+    setTaskForm({ ...EMPTY_TASK })
     setShowModal(true)
   }
+  function closeModal() { setShowModal(false); setSelectedDay(null) }
 
-  function closeModal() {
-    setShowModal(false)
-    setSelectedDay(null)
-  }
-
+  /* ── Leave request ── */
   async function submitLeave(e: React.FormEvent) {
     e.preventDefault()
     if (!user || !selectedDay) return
     if (!leaveForm.approverEmail) { addToast('error', 'กรุณาเลือกผู้อนุมัติ'); return }
     setSaving(true)
     try {
-      const approver = agents.find(a => a.EmailText === leaveForm.approverEmail)
-      const dateStr = format(selectedDay, 'yyyy-MM-dd')
+      const approver  = agents.find(a => a.EmailText === leaveForm.approverEmail)
+      const dateStr   = format(selectedDay, 'yyyy-MM-dd')
       await spCreate('HD_LeaveRequests', {
-        Title: leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
-        LeaveDate: dateStr,
-        LeaveType: leaveForm.leaveType,
-        RequestedBy: user.displayName,
+        Title:         leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
+        LeaveDate:     dateStr,
+        LeaveType:     leaveForm.leaveType,
+        RequestedBy:   user.displayName,
         RequestedEmail: user.email,
         ApproverEmail: leaveForm.approverEmail,
-        ApproverName: approver?.Title ?? '',
-        Status: 'Pending',
-        Note: leaveForm.reason,
+        ApproverName:  approver?.Title ?? '',
+        Status:        'Pending',
+        Note:          leaveForm.reason,
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
       closeModal()
-    } catch {
-      addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่')
-    } finally {
-      setSaving(false)
-    }
+    } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
+    finally  { setSaving(false) }
   }
 
+  /* ── Holiday ── */
   async function submitHoliday(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedDay || !holidayForm.title.trim()) return
     setSaving(true)
     try {
       await spCreate('HD_Holidays', {
-        Title: holidayForm.title,
+        Title:       holidayForm.title,
         HolidayDate: format(selectedDay, 'yyyy-MM-dd'),
         HolidayType: holidayForm.holidayType,
       })
       addToast('success', `เพิ่มวันหยุด ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว`)
       closeModal()
       loadData()
-    } catch {
-      addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่')
-    } finally {
-      setSaving(false)
-    }
+    } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
+    finally  { setSaving(false) }
   }
 
-  const approvers = agents.filter(a => ['Boss', 'Admin', 'Supervisor'].includes(a.Role))
+  /* ── Task ── */
+  async function submitTask(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user || !selectedDay || !taskForm.title.trim()) return
+    if (taskForm.taskType === 'project' && !taskForm.projectId) {
+      addToast('error', 'กรุณาเลือกโครงการ'); return
+    }
+    setSaving(true)
+    try {
+      await spCreate('PM_Tasks', {
+        Title:        taskForm.title,
+        DueDate:      format(selectedDay, 'yyyy-MM-dd'),
+        ProjectID:    taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
+        AssignedTo:   user.displayName,
+        AssignedEmail: user.email,
+        IsCompleted:  false,
+        IsAcknowledged: false,
+        TaskNote:     taskForm.taskNote || null,
+      })
+      addToast('success', `เพิ่ม Task "${taskForm.title}" วันที่ ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว`)
+      closeModal()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
+    finally  { setSaving(false) }
+  }
+
+  const approvers    = agents.filter(a => ['Boss', 'Admin', 'Supervisor'].includes(a.Role))
   const approverList = approvers.length > 0 ? approvers : agents
 
   const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelCx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
+  const tabCx   = (active: boolean) =>
+    `flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${
+      active ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'
+    }`
+
+  /* modal tabs visible to all users */
+  const modalTabs: { key: ModalMode; label: string }[] = [
+    { key: 'leave', label: '📅 ขอลา' },
+    { key: 'task',  label: '✅ เพิ่ม Task' },
+    ...(isAdmin ? [{ key: 'holiday' as ModalMode, label: '🏖 วันหยุด' }] : []),
+  ]
 
   return (
     <>
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <button onClick={prev} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-sm font-semibold">
-            {format(currentDate, 'MMMM yyyy', { locale: th })}
-          </span>
-          <button onClick={next} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-            <ChevronRight size={16} />
-          </button>
+          <button onClick={prev} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16} /></button>
+          <span className="text-sm font-semibold">{format(currentDate, 'MMMM yyyy', { locale: th })}</span>
+          <button onClick={next} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16} /></button>
         </div>
 
         {/* Legend */}
@@ -157,7 +178,7 @@ export function CompanyCalendar() {
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> วันหยุดบริษัท</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> วันลา (Approved)</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> วันนี้</span>
-          <span className="ml-auto text-gray-400 italic">กดที่วันเพื่อขอลา{isAdmin ? ' / เพิ่มวันหยุด' : ''}</span>
+          <span className="ml-auto text-gray-400 italic">กดที่วันเพื่อจัดการ</span>
         </div>
 
         {/* Grid */}
@@ -174,10 +195,10 @@ export function CompanyCalendar() {
               <tr key={weekIdx}>
                 {days.slice(weekIdx * 7, weekIdx * 7 + 7).map(day => {
                   const { holiday, dayLeaves } = getDayInfo(day)
-                  const inMonth = day.getMonth() === currentDate.getMonth()
-                  const isSun = getDay(day) === 0
-                  const isRajakanHoliday = holiday?.HolidayType === 'ราชการ'
-                  const isCompanyHoliday = holiday?.HolidayType === 'บริษัท'
+                  const inMonth           = day.getMonth() === currentDate.getMonth()
+                  const isSun             = getDay(day) === 0
+                  const isRajakanHoliday  = holiday?.HolidayType === 'ราชการ'
+                  const isCompanyHoliday  = holiday?.HolidayType === 'บริษัท'
                   return (
                     <td
                       key={day.toISOString()}
@@ -192,7 +213,7 @@ export function CompanyCalendar() {
                     >
                       <div className={cn(
                         'w-6 h-6 flex items-center justify-center rounded-full mb-0.5 mx-auto font-bold text-[11px]',
-                        isToday(day) && 'bg-blue-500 text-white ring-2 ring-blue-300 dark:ring-blue-700',
+                        isToday(day)              && 'bg-blue-500 text-white ring-2 ring-blue-300 dark:ring-blue-700',
                         isSun && !isToday(day) && !holiday && 'text-red-500',
                         isRajakanHoliday && !isToday(day) && 'bg-red-500 text-white',
                         isCompanyHoliday && !isToday(day) && 'bg-violet-500 text-white',
@@ -230,23 +251,16 @@ export function CompanyCalendar() {
         title={selectedDay ? format(selectedDay, 'EEEE d MMMM yyyy', { locale: th }) : ''}
         size="sm"
       >
-        {/* Mode tabs (Admin/Boss can switch between leave & holiday) */}
-        {isAdmin && (
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-4">
-            {(['leave', 'holiday'] as ModalMode[]).map(m => (
-              <button key={m} onClick={() => setModalMode(m)}
-                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  modalMode === m
-                    ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100'
-                    : 'text-gray-500'
-                }`}>
-                {m === 'leave' ? '📅 ขอลา' : '🏖 เพิ่มวันหยุด'}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Mode tabs */}
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-4">
+          {modalTabs.map(({ key, label }) => (
+            <button key={key} onClick={() => setModalMode(key)} className={tabCx(modalMode === key)}>
+              {label}
+            </button>
+          ))}
+        </div>
 
-        {/* Leave Request Form */}
+        {/* ── Leave Form ── */}
         {modalMode === 'leave' && (
           <form onSubmit={submitLeave} className="space-y-3">
             <div>
@@ -280,7 +294,70 @@ export function CompanyCalendar() {
           </form>
         )}
 
-        {/* Holiday Form (Admin/Boss only) */}
+        {/* ── Task Form ── */}
+        {modalMode === 'task' && (
+          <form onSubmit={submitTask} className="space-y-3">
+            {/* Task type toggle */}
+            <div>
+              <label className={labelCx}>ประเภท Task</label>
+              <div className="flex gap-2">
+                {([
+                  { v: 'personal', label: '👤 ส่วนตัว' },
+                  { v: 'project',  label: '📁 ใน Project' },
+                ] as const).map(({ v, label }) => (
+                  <button key={v} type="button"
+                    onClick={() => setTaskForm(f => ({ ...f, taskType: v, projectId: '' }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      taskForm.taskType === v
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Project selector (only when 'project' mode) */}
+            {taskForm.taskType === 'project' && (
+              <div>
+                <label className={labelCx}>โครงการ *</label>
+                <select required value={taskForm.projectId}
+                  onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+                  className={inputCx}>
+                  <option value="">-- เลือกโครงการ --</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.Title}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className={labelCx}>ชื่อ Task *</label>
+              <input required value={taskForm.title}
+                onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+                className={inputCx} placeholder="ระบุชื่องาน..." />
+            </div>
+
+            <div>
+              <label className={labelCx}>หมายเหตุ</label>
+              <textarea value={taskForm.taskNote}
+                onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
+                className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)..." />
+            </div>
+
+            <p className="text-xs text-gray-400">
+              📅 กำหนดส่ง: {selectedDay ? format(selectedDay, 'd MMMM yyyy', { locale: th }) : '-'}
+            </p>
+
+            <Button type="submit" disabled={saving} className="w-full justify-center">
+              {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
+            </Button>
+          </form>
+        )}
+
+        {/* ── Holiday Form (Admin/Boss only) ── */}
         {modalMode === 'holiday' && isAdmin && (
           <form onSubmit={submitHoliday} className="space-y-3">
             <div>
