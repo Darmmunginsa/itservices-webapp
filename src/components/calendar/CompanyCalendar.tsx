@@ -210,7 +210,7 @@ export function CompanyCalendar() {
                         </div>
                       )}
                       {dayLeaves.map(l => (
-                        <div key={l.id} className="text-[9px] bg-amber-400 dark:bg-amber-500 text-amber-950 dark:text-amber-100 rounded px-0.5 truncate mt-0.5 font-medium">
+                        <div key={l.id} className="text-[9px] bg-amber-400 dark:bg-amber-400 text-gray-900 dark:text-gray-900 rounded px-0.5 truncate mt-0.5 font-bold">
                           {l.RequestedBy}
                         </div>
                       ))}
