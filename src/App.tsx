@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { PublicClientApplication, EventType } from '@azure/msal-browser'
-import { msalConfig } from './config/msal'
+import { msalConfig, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter } from './services/graph'
@@ -58,16 +58,28 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || !accounts[0]) return
 
-    const getToken = async () => {
+    // Token for SharePoint REST API (ต้องใช้ SharePoint resource scope)
+    const getSpToken = async () => {
       const result = await instance.acquireTokenSilent({
-        scopes: ['User.Read', 'Sites.ReadWrite.All', 'Calendars.ReadWrite'],
+        ...sharepointRequest,
         account: accounts[0],
+        redirectUri: REDIRECT_URI,
       })
       return result.accessToken
     }
 
-    setTokenGetter(getToken)
-    setGraphTokenGetter(getToken)
+    // Token for Microsoft Graph (User.Read, Calendars.ReadWrite)
+    const getGraphToken = async () => {
+      const result = await instance.acquireTokenSilent({
+        scopes: ['User.Read', 'Calendars.ReadWrite'],
+        account: accounts[0],
+        redirectUri: REDIRECT_URI,
+      })
+      return result.accessToken
+    }
+
+    setTokenGetter(getSpToken)
+    setGraphTokenGetter(getGraphToken)
 
     const account = accounts[0]
     const email = account.username
