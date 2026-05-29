@@ -31,7 +31,10 @@ export async function spGet<T>(listName: string, filter?: string, select?: strin
     throw new Error(`SharePoint GET failed: ${res.status} ${listName}`)
   }
   const data = await res.json()
-  return data.value as T[]
+  // SharePoint REST API returns item ID as uppercase "ID".
+  // Normalise to lowercase "id" so all TypeScript interfaces work correctly.
+  const items = data.value as Array<Record<string, unknown>>
+  return items.map(item => ({ ...item, id: (item['ID'] ?? item['Id']) as number })) as T[]
 }
 
 export async function spGetById<T>(listName: string, id: number): Promise<T> {
@@ -43,7 +46,8 @@ export async function spGetById<T>(listName: string, id: number): Promise<T> {
     console.error(`[SP] GET ${listName}(${id}) → HTTP ${res.status}`, body)
     throw new Error(`SharePoint GET failed: ${res.status}`)
   }
-  return res.json() as Promise<T>
+  const item = await res.json() as Record<string, unknown>
+  return { ...item, id: (item['ID'] ?? item['Id']) as number } as T
 }
 
 export async function spCreate(listName: string, data: Record<string, unknown>): Promise<{ id: number }> {

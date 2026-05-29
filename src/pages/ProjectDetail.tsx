@@ -29,7 +29,7 @@ export default function ProjectDetail() {
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
 
   function load() {
-    if (!id) return
+    if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
     Promise.all([
       spGet<Project>('PM_Projects', `Id eq ${id}`),
       spGet<Task>('PM_Tasks', `ProjectID eq '${id}'`, undefined, 'DueDate asc'),

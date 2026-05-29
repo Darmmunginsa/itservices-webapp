@@ -21,8 +21,9 @@ export default function AgentDashboard() {
   const [assignedFilter, setAssignedFilter] = useState('')
 
   useEffect(() => {
-    const isSupervisor = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
-    const filter = isSupervisor ? undefined : `AssignedEmail eq '${user?.email}'`
+    if (!user) return
+    const isSupervisor = ['Supervisor', 'Boss', 'Admin'].includes(user.role)
+    const filter = isSupervisor ? undefined : `AssignedEmail eq '${user.email}'`
     spGet<Ticket>('HD_Tickets', filter, undefined, 'Modified desc', 200)
       .then(setTickets).catch(() => {}).finally(() => setLoading(false))
   }, [user])

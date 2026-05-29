@@ -24,7 +24,7 @@ export default function TicketDetail() {
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
 
   function load() {
-    if (!id) return
+    if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
       spGet<TicketComment>('HD_TicketComments', `TicketID eq '${id}'`, undefined, 'CommentDate asc'),
