@@ -16,7 +16,7 @@ type ModalMode = 'leave' | 'task' | 'holiday'
 
 const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
 const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
-const EMPTY_TASK     = { title: '', taskNote: '', taskType: 'personal' as 'personal' | 'project', projectId: '' }
+const EMPTY_TASK     = { title: '', taskNote: '', taskType: 'personal' as 'personal' | 'project', projectId: '', assignees: [] as string[] }
 
 export function CompanyCalendar() {
   const { user, addToast } = useAppStore()
@@ -64,6 +64,15 @@ export function CompanyCalendar() {
 
   function prev() { const d = new Date(currentDate); d.setMonth(d.getMonth() - 1); setCurrentDate(d) }
   function next() { const d = new Date(currentDate); d.setMonth(d.getMonth() + 1); setCurrentDate(d) }
+
+  function toggleAssignee(email: string) {
+    setTaskForm(f => ({
+      ...f,
+      assignees: f.assignees.includes(email)
+        ? f.assignees.filter(e => e !== email)
+        : [...f.assignees, email],
+    }))
+  }
 
   function openModal(day: Date) {
     setSelectedDay(day)
@@ -128,17 +137,35 @@ export function CompanyCalendar() {
     }
     setSaving(true)
     try {
-      await spCreate('PM_Tasks', {
-        Title:        taskForm.title,
-        DueDate:      format(selectedDay, 'yyyy-MM-dd'),
-        ProjectID:    taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
-        AssignedTo:   user.displayName,
-        AssignedEmail: user.email,
-        IsCompleted:  false,
-        IsAcknowledged: false,
-        TaskNote:     taskForm.taskNote || null,
-      })
-      addToast('success', `เพิ่ม Task "${taskForm.title}" วันที่ ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว`)
+      const dateStr   = format(selectedDay, 'yyyy-MM-dd')
+      const projectID = taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0
+
+      // Build assignee list: if no one selected → assign to self
+      const assigneeList =
+        taskForm.taskType === 'project' && taskForm.assignees.length > 0
+          ? taskForm.assignees.map(email => {
+              const a = agents.find(ag => ag.EmailText === email)
+              return { name: a?.Title ?? email, email }
+            })
+          : [{ name: user.displayName, email: user.email }]
+
+      await Promise.all(
+        assigneeList.map(a =>
+          spCreate('PM_Tasks', {
+            Title:          taskForm.title,
+            DueDate:        dateStr,
+            ProjectID:      projectID,
+            AssignedTo:     a.name,
+            AssignedEmail:  a.email,
+            IsCompleted:    false,
+            IsAcknowledged: false,
+            TaskNote:       taskForm.taskNote || null,
+          })
+        )
+      )
+
+      const n = assigneeList.length
+      addToast('success', `เพิ่ม Task "${taskForm.title}"${n > 1 ? ` ให้ ${n} คน` : ''} สำเร็จ`)
       closeModal()
     } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
     finally  { setSaving(false) }
@@ -318,19 +345,56 @@ export function CompanyCalendar() {
               </div>
             </div>
 
-            {/* Project selector (only when 'project' mode) */}
+            {/* Project selector + invite — only when 'project' mode */}
             {taskForm.taskType === 'project' && (
-              <div>
-                <label className={labelCx}>โครงการ *</label>
-                <select required value={taskForm.projectId}
-                  onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
-                  className={inputCx}>
-                  <option value="">-- เลือกโครงการ --</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={String(p.id)}>{p.Title}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div>
+                  <label className={labelCx}>โครงการ *</label>
+                  <select required value={taskForm.projectId}
+                    onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+                    className={inputCx}>
+                    <option value="">-- เลือกโครงการ --</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={String(p.id)}>{p.Title}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Team invite checklist */}
+                <div>
+                  <label className={labelCx}>
+                    มอบหมายให้ทีม
+                    <span className="text-gray-400 font-normal ml-1">(ไม่เลือก = มอบให้ตัวเอง)</span>
+                  </label>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden divide-y divide-gray-100 dark:divide-gray-700/60 max-h-36 overflow-y-auto">
+                    {agents.map(a => {
+                      const isSelf  = a.EmailText === user?.email
+                      const checked = taskForm.assignees.includes(a.EmailText)
+                      return (
+                        <label key={a.id}
+                          className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 select-none">
+                          <input
+                            type="checkbox"
+                            className="rounded accent-primary-600 flex-shrink-0"
+                            checked={checked}
+                            onChange={() => toggleAssignee(a.EmailText)}
+                          />
+                          <span className="text-sm flex-1 truncate">{a.Title}</span>
+                          {isSelf && (
+                            <span className="text-[10px] bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">คุณ</span>
+                          )}
+                          <span className="text-[10px] text-gray-400 flex-shrink-0">{a.Role}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {taskForm.assignees.length > 0 && (
+                    <p className="text-xs text-primary-600 dark:text-primary-400 mt-1">
+                      จะสร้าง {taskForm.assignees.length} Task สำหรับ {taskForm.assignees.length} คน
+                    </p>
+                  )}
+                </div>
+              </>
             )}
 
             <div>
