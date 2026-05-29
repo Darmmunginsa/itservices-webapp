@@ -138,7 +138,7 @@ function AppContent() {
 export default function App() {
   return (
     <MsalProvider instance={msalInstance}>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL ?? '/'}>
         <AppContent />
       </BrowserRouter>
     </MsalProvider>

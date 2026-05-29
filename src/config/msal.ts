@@ -3,23 +3,18 @@ import type { Configuration, PopupRequest } from '@azure/msal-browser'
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || '0bab07cf-65e6-487c-89af-c917fc1a5a13'
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || 'd569b991-89fc-4a62-9df5-eb361abcef40'
 
-// GitHub Pages needs full path with trailing slash, not just origin
-function getRedirectUri(): string {
-  if (import.meta.env.VITE_REDIRECT_URI) return import.meta.env.VITE_REDIRECT_URI
-  if (window.location.hostname.includes('github.io')) {
-    return 'https://darmmunginsa.github.io/itservices-webapp/'
-  }
-  return `${window.location.origin}/`
-}
+// Hardcode production URI — for SPA, redirectUri is not a secret
+const PROD_URI  = 'https://darmmunginsa.github.io/itservices-webapp/'
+const LOCAL_URI = 'http://localhost:5173'
 
-const REDIRECT = getRedirectUri()
+export const REDIRECT_URI = window.location.hostname === 'localhost' ? LOCAL_URI : PROD_URI
 
 export const msalConfig: Configuration = {
   auth: {
     clientId: CLIENT_ID,
     authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-    redirectUri: REDIRECT,
-    postLogoutRedirectUri: REDIRECT,
+    redirectUri: REDIRECT_URI,
+    postLogoutRedirectUri: REDIRECT_URI,
   },
   cache: {
     cacheLocation: 'localStorage',
@@ -32,7 +27,6 @@ export const loginRequest: PopupRequest = {
     'Sites.ReadWrite.All',
     'Calendars.ReadWrite',
   ],
-  prompt: 'select_account',
 }
 
 export const graphConfig = {

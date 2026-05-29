@@ -1,6 +1,6 @@
 import { useMsal } from '@azure/msal-react'
 import { useCallback } from 'react'
-import { loginRequest } from '../config/msal'
+import { loginRequest, REDIRECT_URI } from '../config/msal'
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export function useAuth() {
@@ -8,12 +8,15 @@ export function useAuth() {
 
   const login = useCallback(async () => {
     try {
-      await instance.loginPopup(loginRequest)
+      await instance.loginPopup({ ...loginRequest, redirectUri: REDIRECT_URI })
     } catch (e: unknown) {
-      // Popup blocked หรือ timeout → fallback ใช้ redirect
       const msg = (e as Error)?.message ?? ''
-      if (msg.includes('popup_window_error') || msg.includes('empty_window_error') || msg.includes('timed_out')) {
-        await instance.loginRedirect(loginRequest)
+      if (
+        msg.includes('popup_window_error') ||
+        msg.includes('empty_window_error') ||
+        msg.includes('timed_out')
+      ) {
+        await instance.loginRedirect({ ...loginRequest, redirectUri: REDIRECT_URI })
       } else {
         throw e
       }
@@ -22,9 +25,9 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      await instance.logoutPopup({ postLogoutRedirectUri: window.location.origin })
+      await instance.logoutPopup({ postLogoutRedirectUri: REDIRECT_URI })
     } catch {
-      await instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin })
+      await instance.logoutRedirect({ postLogoutRedirectUri: REDIRECT_URI })
     }
   }, [instance])
 
@@ -32,11 +35,19 @@ export function useAuth() {
     const account = accounts[0]
     if (!account) throw new Error('Not authenticated')
     try {
-      const result = await instance.acquireTokenSilent({ ...loginRequest, account })
+      const result = await instance.acquireTokenSilent({
+        ...loginRequest,
+        account,
+        redirectUri: REDIRECT_URI,
+      })
       return result.accessToken
     } catch (e) {
       if (e instanceof InteractionRequiredAuthError) {
-        const result = await instance.acquireTokenPopup({ ...loginRequest, account })
+        const result = await instance.acquireTokenPopup({
+          ...loginRequest,
+          account,
+          redirectUri: REDIRECT_URI,
+        })
         return result.accessToken
       }
       throw e
