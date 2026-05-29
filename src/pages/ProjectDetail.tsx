@@ -404,11 +404,12 @@ export default function ProjectDetail() {
   }
 
   async function pinFocusItem(type: 'Task' | 'Incident', item: Task | ProjectIncident) {
-    if (!user) return
+    if (!user || !project) return
     try {
+      // RefID = project.id so Home page link /projects/:id works correctly
       await spCreate('HD_Focus', {
         Title: item.Title,
-        RefID: String(item.id),
+        RefID: String(project.id),
         FocusType: type,
         FocusedBy: user.displayName,
         FocusedEmail: user.email,

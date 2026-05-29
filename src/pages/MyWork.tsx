@@ -52,13 +52,18 @@ export default function MyWork() {
   async function pinFocus(type: 'Ticket' | 'Task' | 'Incident', item: Ticket | Task | ProjectIncident) {
     if (!user) return
     try {
+      // For Task/Incident: RefID must be ProjectID (Home links to /projects/:id)
+      // For Ticket: RefID is the ticket's own id (Home links to /tickets/:id)
+      const refId = type === 'Ticket'
+        ? String(item.id)
+        : String((item as Task | ProjectIncident).ProjectID)
       await spCreate('HD_Focus', {
         Title: item.Title,
-        RefID: String(item.id),
+        RefID: refId,
         FocusType: type,
         FocusedBy: user.displayName,
         FocusedEmail: user.email,
-        DueDate: (item as Ticket).DueDate ?? (item as Task).DueDate,
+        DueDate: (item as Ticket).DueDate ?? (item as Task).DueDate ?? null,
         Status: type === 'Incident'
           ? (item as ProjectIncident).Status
           : (item as Ticket).Status ?? ((item as Task).IsCompleted ? 'Completed' : 'Active'),

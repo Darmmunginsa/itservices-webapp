@@ -154,8 +154,8 @@ export function CompanyCalendar() {
         {/* Legend */}
         <div className="flex flex-wrap gap-3 px-4 py-2 text-xs border-b border-gray-100 dark:border-gray-800">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> วันหยุดราชการ</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /> วันหยุดบริษัท</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400" /> วันลา (Approved)</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> วันหยุดบริษัท</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> วันลา (Approved)</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> วันนี้</span>
           <span className="ml-auto text-gray-400 italic">กดที่วันเพื่อขอลา{isAdmin ? ' / เพิ่มวันหยุด' : ''}</span>
         </div>
@@ -176,32 +176,41 @@ export function CompanyCalendar() {
                   const { holiday, dayLeaves } = getDayInfo(day)
                   const inMonth = day.getMonth() === currentDate.getMonth()
                   const isSun = getDay(day) === 0
+                  const isRajakanHoliday = holiday?.HolidayType === 'ราชการ'
+                  const isCompanyHoliday = holiday?.HolidayType === 'บริษัท'
                   return (
                     <td
                       key={day.toISOString()}
                       onClick={() => inMonth && openModal(day)}
                       className={cn(
-                        'p-1 align-top border border-gray-100 dark:border-gray-800 min-h-[52px]',
+                        'p-1 align-top border border-gray-100 dark:border-gray-800 min-h-[52px] transition-colors',
                         !inMonth && 'opacity-30',
-                        inMonth && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/10 transition-colors',
+                        inMonth && !holiday && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/10',
+                        inMonth && isRajakanHoliday && 'bg-red-50 dark:bg-red-900/20 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30',
+                        inMonth && isCompanyHoliday && 'bg-violet-50 dark:bg-violet-900/20 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/30',
                       )}
                     >
                       <div className={cn(
-                        'w-6 h-6 flex items-center justify-center rounded-full mb-0.5 mx-auto font-medium',
-                        isToday(day) && 'bg-blue-500 text-white',
-                        isSun && !isToday(day) && 'text-red-500',
-                        holiday?.HolidayType === 'ราชการ' && !isToday(day) && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                        holiday?.HolidayType === 'บริษัท' && !isToday(day) && 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                        'w-6 h-6 flex items-center justify-center rounded-full mb-0.5 mx-auto font-bold text-[11px]',
+                        isToday(day) && 'bg-blue-500 text-white ring-2 ring-blue-300 dark:ring-blue-700',
+                        isSun && !isToday(day) && !holiday && 'text-red-500',
+                        isRajakanHoliday && !isToday(day) && 'bg-red-500 text-white',
+                        isCompanyHoliday && !isToday(day) && 'bg-violet-500 text-white',
+                        !holiday && !isToday(day) && !isSun && 'text-gray-700 dark:text-gray-300',
                       )}>
                         {format(day, 'd')}
                       </div>
                       {holiday && (
-                        <div className="text-[9px] text-center text-gray-500 dark:text-gray-400 leading-tight truncate px-0.5">
+                        <div className={cn(
+                          'text-[9px] text-center leading-tight truncate px-0.5 font-medium',
+                          isRajakanHoliday && 'text-red-600 dark:text-red-400',
+                          isCompanyHoliday && 'text-violet-600 dark:text-violet-400',
+                        )}>
                           {holiday.Title}
                         </div>
                       )}
                       {dayLeaves.map(l => (
-                        <div key={l.id} className="text-[9px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded px-0.5 truncate mt-0.5">
+                        <div key={l.id} className="text-[9px] bg-amber-400 dark:bg-amber-500 text-amber-950 dark:text-amber-100 rounded px-0.5 truncate mt-0.5 font-medium">
                           {l.RequestedBy}
                         </div>
                       ))}
