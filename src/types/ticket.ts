@@ -23,7 +23,7 @@ export interface Ticket {
   ResolutionNote?: string
   Created: string
   Modified: string
-  CreatedByEmail: string
+  CreatedByEmail?: string   // not present in SP list schema — read-only, may be absent
 }
 
 export interface TicketComment {

@@ -131,7 +131,6 @@ export default function Submit() {
           CustomerName: form.customerName || user.displayName,
           AssignedEmail: form.assignedEmail || undefined,
           AssignedToName: form.assignedName || undefined,
-          CreatedByEmail: user.email,
           IsAcknowledged: false,
           DueDate: dueDate ?? null,
         })
