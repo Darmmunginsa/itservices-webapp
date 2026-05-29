@@ -4,8 +4,6 @@ import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X } 
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Badge } from '../components/common/Badge'
-import { CompanyCalendar } from '../components/calendar/CompanyCalendar'
-import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
@@ -13,19 +11,19 @@ import type { Ticket } from '../types/ticket'
 import type { Project } from '../types/project'
 import type { FocusItem, LeaveRequest } from '../types/common'
 import type { Asset as AssetType } from '../types/asset'
+import type { ProjectIncident } from '../types/project'
 import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor } from '../utils/colorUtils'
 
 interface Stats {
   openTickets: number
   activeProjects: number
-  pendingLeave: number
-  acknowledged: number
+  openIncidents: number
 }
 
 export default function Home() {
   const { user, addToast } = useAppStore()
-  const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, pendingLeave: 0, acknowledged: 0 })
+  const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, openIncidents: 0 })
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [warningAssets, setWarningAssets] = useState<AssetType[]>([])
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
@@ -34,13 +32,23 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) return
+    const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user.role)
     const isBoss = ['Boss', 'Admin'].includes(user.role)
 
+    // Ticket filter: same as MyWork — only tickets assigned/created by this user
+    const ticketFilter = isAgent
+      ? `AssignedEmail eq '${user.email}' and Status ne 'Closed'`
+      : `CustomerEmail eq '${user.email}' and Status ne 'Closed'`
+
+    // Incident filter: assigned to user and not resolved
+    const incidentFilter = `AssignedEmail eq '${user.email}' and Status ne 'Resolved'`
+
     const promises: Promise<unknown>[] = [
-      spGet<Ticket>('HD_Tickets', "Status ne 'Closed'"),
-      spGet<Project>('PM_Projects', "Status eq 'Active'"),
+      spGet<Ticket>('HD_Tickets', ticketFilter),
+      spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc'),
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
       spGet<AssetType>('IT_Assets'),
+      spGet<ProjectIncident>('PM_Incidents', incidentFilter),
     ]
     if (isBoss) {
       promises.push(
@@ -51,12 +59,13 @@ export default function Home() {
     }
 
     Promise.all(promises).then(results => {
-      const [tickets, projects, focus, assets, leaves] = results as [Ticket[], Project[], FocusItem[], AssetType[], LeaveRequest[]?]
+      const [tickets, projects, focus, assets, incidents, leaves] = results as [
+        Ticket[], Project[], FocusItem[], AssetType[], ProjectIncident[], LeaveRequest[]?
+      ]
       setStats({
         openTickets: tickets.length,
         activeProjects: projects.length,
-        pendingLeave: leaves?.length ?? 0,
-        acknowledged: tickets.filter(t => t.IsAcknowledged).length,
+        openIncidents: incidents.length,
       })
       setFocusItems(focus)
       setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate)))
@@ -90,7 +99,6 @@ export default function Home() {
         })
       }
       setPendingLeaves(prev => prev.filter(l => l.id !== id))
-      setStats(s => ({ ...s, pendingLeave: Math.max(0, s.pendingLeave - 1) }))
       addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
   }
@@ -98,10 +106,8 @@ export default function Home() {
   const statCards = [
     { label: 'Ticket เปิดอยู่',  value: stats.openTickets,    icon: TicketIcon,    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10',   link: '/my-work' },
     { label: 'โครงการ Active',   value: stats.activeProjects, icon: FolderOpen,    color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10',  link: '/projects' },
-    { label: ['Boss','Admin'].includes(user?.role ?? '') ? 'รอ Approve ลา' : 'รับทราบแล้ว',
-      value: ['Boss','Admin'].includes(user?.role ?? '') ? stats.pendingLeave : stats.acknowledged,
-      icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10', link: '/my-work' },
-    { label: 'Asset หมดประกัน', value: warningAssets.length,  icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10', link: '/assets' },
+    { label: 'Incident เปิดอยู่', value: stats.openIncidents,  icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10', link: '/my-work' },
+    { label: 'Asset หมดประกัน',  value: warningAssets.length, icon: CheckCircle,   color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10', link: '/assets' },
   ]
 
   return (
@@ -172,52 +178,42 @@ export default function Home() {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Focus Items */}
-          <div className="xl:col-span-1">
-            <Card>
-              <div className="flex items-center gap-2 mb-4">
-                <Pin size={16} className="text-primary-600" />
-                <h3 className="text-sm font-semibold">Focus Items</h3>
-              </div>
-              {focusItems.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">ไม่มีงาน Pin ไว้</p>
-              ) : (
-                <div className="space-y-2">
-                  {focusItems.map(f => {
-                    const color = getDueDateColor(f.DueDate)
-                    return (
-                      <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
-                        <span className="text-base">{getDueDateEmoji(color) || '📌'}</span>
-                        <Link
-                          to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
-                          className="flex-1 min-w-0"
-                        >
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>
-                          <p className="text-xs text-gray-400">{f.FocusType} • {formatDate(f.DueDate)}</p>
-                        </Link>
-                        <Badge className={getStatusColor(f.Status)}>{f.Status}</Badge>
-                        <button
-                          onClick={() => unpinFocus(f.id)}
-                          title="ลบออกจาก Focus"
-                          className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                        >
-                          <X size={13} />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </Card>
+        {/* Focus Items — full width */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <Pin size={16} className="text-primary-600" />
+            <h3 className="text-sm font-semibold">Focus Items</h3>
           </div>
-
-          {/* Calendars */}
-          <div className="xl:col-span-2 space-y-6">
-            <OutlookCalendar />
-            <CompanyCalendar />
-          </div>
-        </div>
+          {focusItems.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">ไม่มีงาน Pin ไว้</p>
+          ) : (
+            <div className="space-y-2">
+              {focusItems.map(f => {
+                const color = getDueDateColor(f.DueDate)
+                return (
+                  <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
+                    <span className="text-base flex-shrink-0">{getDueDateEmoji(color) || '📌'}</span>
+                    <Link
+                      to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
+                      className="flex-1 min-w-0"
+                    >
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>
+                      <p className="text-xs text-gray-400">{f.FocusType} • {formatDate(f.DueDate)}</p>
+                    </Link>
+                    <Badge className={getStatusColor(f.Status)}>{f.Status}</Badge>
+                    <button
+                      onClick={() => unpinFocus(f.id)}
+                      title="ลบออกจาก Focus"
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   )

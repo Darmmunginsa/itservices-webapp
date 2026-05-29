@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -403,6 +403,24 @@ export default function ProjectDetail() {
     setAttachKey(prev => prev === key ? null : key)
   }
 
+  async function pinFocusItem(type: 'Task' | 'Incident', item: Task | ProjectIncident) {
+    if (!user) return
+    try {
+      await spCreate('HD_Focus', {
+        Title: item.Title,
+        RefID: String(item.id),
+        FocusType: type,
+        FocusedBy: user.displayName,
+        FocusedEmail: user.email,
+        DueDate: type === 'Task' ? (item as Task).DueDate ?? null : null,
+        Status: type === 'Task'
+          ? ((item as Task).IsCompleted ? 'Completed' : 'Active')
+          : (item as ProjectIncident).Status,
+      })
+      addToast('success', 'Pin ไว้ใน Focus Items แล้ว')
+    } catch { addToast('error', 'ไม่สามารถ Pin ได้') }
+  }
+
   const sortedTasks = [...tasks].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
     return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) - (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
@@ -532,6 +550,10 @@ export default function ProjectDetail() {
                             {!task.IsAcknowledged && task.AssignedEmail === user?.email && (
                               <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
                             )}
+                            <button onClick={() => pinFocusItem('Task', task)} title="Pin ไว้ใน Focus"
+                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                              <Pin size={13} />
+                            </button>
                             {isAgent && (
                               <>
                                 <button onClick={() => toggleAttach('task', task.id)} title="ไฟล์แนบ"
@@ -622,6 +644,10 @@ export default function ProjectDetail() {
                             <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
                             {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
                             <div className="flex items-center gap-1 mt-0.5">
+                              <button onClick={() => pinFocusItem('Incident', inc)} title="Pin ไว้ใน Focus"
+                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                                <Pin size={13} />
+                              </button>
                               <button onClick={() => toggleAttach('incident', inc.id)} title="ไฟล์แนบ"
                                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
                                 <Paperclip size={13} />
