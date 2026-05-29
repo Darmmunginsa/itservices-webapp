@@ -247,13 +247,9 @@ export default function MyWork() {
                 ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Task ที่ยังค้างอยู่</p>
                 : filteredTasks.map(task => {
                     const color = getDueDateColor(task.DueDate, task.IsCompleted)
-                    // Use absolute left-bar indicator instead of border-l to avoid flex clipping
-                    const barColor = color === 'red' ? 'bg-red-500' : color === 'orange' ? 'bg-orange-500' : color === 'yellow' ? 'bg-yellow-500' : ''
                     return (
-                      <div key={task.id} className={`relative flex items-center gap-2 pl-4 pr-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${color === 'gray' ? 'opacity-60' : ''}`}>
-                        {/* Left colour bar — absolutely positioned, doesn't affect flex layout */}
-                        {barColor && <span className={`absolute left-0 top-0 bottom-0 w-1 ${barColor} rounded-l`} />}
-                        <span className="text-sm w-4 flex-shrink-0 text-center">{getDueDateEmoji(color)}</span>
+                      <div key={task.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${getDueDateRowClass(color)}`}>
+                        <span className="text-base w-5 text-center flex-shrink-0">{getDueDateEmoji(color)}</span>
                         <div className="flex-1 min-w-0">
                           {task.ProjectID
                             ? (
@@ -269,13 +265,13 @@ export default function MyWork() {
                           </div>
                           {task.TaskNote && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{task.TaskNote}</p>}
                         </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {task.IsCompleted
-                            ? <Badge className="bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 text-[11px]">Done</Badge>
-                            : <Badge className="bg-blue-600 text-white dark:bg-blue-500 dark:text-white text-[11px]">Active</Badge>
+                            ? <Badge className="bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Done</Badge>
+                            : <Badge className="bg-blue-600 text-white dark:bg-blue-500 dark:text-white">Active</Badge>
                           }
-                          <button onClick={() => pinFocus('Task', task)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-primary-600" title="Pin">
-                            <Pin size={14} />
+                          <button onClick={() => pinFocus('Task', task)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                            <Pin size={15} />
                           </button>
                         </div>
                       </div>
