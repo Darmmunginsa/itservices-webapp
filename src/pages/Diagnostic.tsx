@@ -65,7 +65,7 @@ export default function Diagnostic() {
 
   return (
     <div>
-      <Header title="SharePoint Diagnostic" subtitle="ทดสอบการเข้าถึง SharePoint Lists ทั้งหมด" />
+      <Header title="SharePoint Diagnostic — ทดสอบการเข้าถึง Lists" />
       <div className="p-4 md:p-6 space-y-4">
 
         <div className="flex gap-4 text-sm font-medium">
