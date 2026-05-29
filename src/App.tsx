@@ -133,7 +133,7 @@ function AppContent() {
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
       <Sidebar />
-      <div className="flex-1 md:ml-56 flex flex-col min-h-screen">
+      <div className="flex-1 md:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
         <Ticker />
         <main className="flex-1 pb-16 md:pb-0">
           <Routes>
