@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { PublicClientApplication, EventType } from '@azure/msal-browser'
+import { PublicClientApplication, EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
 import { msalConfig, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
@@ -58,14 +58,20 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || !accounts[0]) return
 
-    // Token for SharePoint REST API (ต้องใช้ SharePoint resource scope)
+    // Token for SharePoint REST API — ขอแยกต่างหากจาก Graph
     const getSpToken = async () => {
-      const result = await instance.acquireTokenSilent({
-        ...sharepointRequest,
-        account: accounts[0],
-        redirectUri: REDIRECT_URI,
-      })
-      return result.accessToken
+      const req = { ...sharepointRequest, account: accounts[0], redirectUri: REDIRECT_URI }
+      try {
+        const result = await instance.acquireTokenSilent(req)
+        return result.accessToken
+      } catch (e) {
+        if (e instanceof InteractionRequiredAuthError) {
+          // ครั้งแรกต้อง consent SharePoint — ขึ้น popup
+          const result = await instance.acquireTokenPopup(req)
+          return result.accessToken
+        }
+        throw e
+      }
     }
 
     // Token for Microsoft Graph (User.Read, Calendars.ReadWrite)

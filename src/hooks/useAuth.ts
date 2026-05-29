@@ -1,20 +1,15 @@
 import { useMsal } from '@azure/msal-react'
 import { useCallback } from 'react'
-import { loginRequest, sharepointRequest, REDIRECT_URI } from '../config/msal'
+import { loginRequest, REDIRECT_URI } from '../config/msal'
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export function useAuth() {
   const { instance, accounts } = useMsal()
 
   const login = useCallback(async () => {
-    // ขอ consent ทั้ง Graph + SharePoint ในครั้งเดียว
-    const combinedRequest = {
-      ...loginRequest,
-      extraScopesToConsent: sharepointRequest.scopes,
-      redirectUri: REDIRECT_URI,
-    }
+    const req = { ...loginRequest, redirectUri: REDIRECT_URI }
     try {
-      await instance.loginPopup(combinedRequest)
+      await instance.loginPopup(req)
     } catch (e: unknown) {
       const msg = (e as Error)?.message ?? ''
       if (
@@ -22,7 +17,7 @@ export function useAuth() {
         msg.includes('empty_window_error') ||
         msg.includes('timed_out')
       ) {
-        await instance.loginRedirect(combinedRequest)
+        await instance.loginRedirect(req)
       } else {
         throw e
       }
