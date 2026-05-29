@@ -50,6 +50,7 @@ export async function createCalendarEvent(event: {
   location?: string
   attendees?: string[]
   body?: string
+  isOnlineMeeting?: boolean
 }): Promise<OutlookEvent> {
   const headers = await graphHeaders()
   const payload = {
@@ -57,11 +58,13 @@ export async function createCalendarEvent(event: {
     start: { dateTime: event.start, timeZone: 'Asia/Bangkok' },
     end: { dateTime: event.end, timeZone: 'Asia/Bangkok' },
     location: event.location ? { displayName: event.location } : undefined,
-    attendees: event.attendees?.map(email => ({
+    attendees: event.attendees?.filter(Boolean).map(email => ({
       emailAddress: { address: email },
       type: 'required',
     })),
-    body: event.body ? { contentType: 'text', content: event.body } : undefined,
+    body: event.body ? { contentType: 'HTML', content: event.body.replace(/\n/g, '<br>') } : undefined,
+    isOnlineMeeting: event.isOnlineMeeting ?? false,
+    onlineMeetingProvider: event.isOnlineMeeting ? 'teamsForBusiness' : undefined,
   }
   const res = await fetch(graphConfig.graphEventsEndpoint, {
     method: 'POST',

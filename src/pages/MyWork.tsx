@@ -13,6 +13,8 @@ import { getPriorityColor, getStatusColor, getSeverityColor } from '../utils/col
 
 type TabType = 'tickets' | 'tasks' | 'incidents'
 
+const DONE_TICKET_STATUSES = new Set(['Resolved', 'Closed'])
+
 export default function MyWork() {
   const { user, addToast } = useAppStore()
   const [tab, setTab] = useState<TabType>('tickets')
@@ -22,6 +24,11 @@ export default function MyWork() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+
+  // Show-all toggles (default: hide done items)
+  const [showAllTickets, setShowAllTickets] = useState(false)
+  const [showAllTasks, setShowAllTasks] = useState(false)
+  const [showAllIncidents, setShowAllIncidents] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -75,32 +82,40 @@ export default function MyWork() {
     }
   }
 
-  const filteredTickets = tickets.filter(t =>
-    (!search || t.Title.toLowerCase().includes(search.toLowerCase()) || t.TicketNumber?.includes(search)) &&
-    (!statusFilter || t.Status === statusFilter)
-  )
+  // Filtered & sorted data
+  const filteredTickets = tickets
+    .filter(t =>
+      (showAllTickets || !DONE_TICKET_STATUSES.has(t.Status)) &&
+      (!search || t.Title.toLowerCase().includes(search.toLowerCase()) || t.TicketNumber?.includes(search)) &&
+      (!statusFilter || t.Status === statusFilter)
+    )
+    .sort((a, b) => {
+      const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
+      return (order[getDueDateColor(a.DueDate, a.Status === 'Closed')] ?? 3) -
+             (order[getDueDateColor(b.DueDate, b.Status === 'Closed')] ?? 3)
+    })
+
+  const filteredTasks = tasks
+    .filter(t =>
+      (showAllTasks || !t.IsCompleted) &&
+      (!search || t.Title.toLowerCase().includes(search.toLowerCase()))
+    )
+    .sort((a, b) => {
+      const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
+      return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) -
+             (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
+    })
 
   const filteredIncidents = incidents.filter(inc =>
+    (showAllIncidents || inc.Status !== 'Resolved') &&
     (!search || inc.Title.toLowerCase().includes(search.toLowerCase())) &&
     (!statusFilter || inc.Status === statusFilter)
   )
 
-  const sortedTickets = [...filteredTickets].sort((a, b) => {
-    const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
-    return (order[getDueDateColor(a.DueDate, a.Status === 'Closed')] ?? 3) -
-           (order[getDueDateColor(b.DueDate, b.Status === 'Closed')] ?? 3)
-  })
-
-  const sortedTasks = [...tasks].sort((a, b) => {
-    const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
-    return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) -
-           (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
-  })
-
-  const tabLabel = (t: TabType) => {
-    if (t === 'tickets') return `Tickets (${tickets.length})`
-    if (t === 'tasks') return `Tasks (${tasks.length})`
-    return `Incidents (${incidents.length})`
+  const tabCounts = {
+    tickets: tickets.filter(t => !DONE_TICKET_STATUSES.has(t.Status)).length,
+    tasks: tasks.filter(t => !t.IsCompleted).length,
+    incidents: incidents.filter(inc => inc.Status !== 'Resolved').length,
   }
 
   return (
@@ -118,13 +133,17 @@ export default function MyWork() {
                 tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'
               }`}
             >
-              {tabLabel(t)}
+              {t === 'tickets'
+                ? `Tickets (${tabCounts.tickets})`
+                : t === 'tasks'
+                ? `Tasks (${tabCounts.tasks})`
+                : `Incidents (${tabCounts.incidents})`}
             </button>
           ))}
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4 items-center">
           <div className="relative">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -134,29 +153,40 @@ export default function MyWork() {
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-48"
             />
           </div>
+
           {tab === 'tickets' && (
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
-            >
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
               <option value="">สถานะทั้งหมด</option>
-              {['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              {['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
             </select>
           )}
           {tab === 'incidents' && (
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
-            >
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
               <option value="">สถานะทั้งหมด</option>
-              {['Open', 'In Progress', 'Resolved'].map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
             </select>
+          )}
+
+          {/* Show-all toggle */}
+          {tab === 'tickets' && (
+            <button onClick={() => setShowAllTickets(s => !s)}
+              className="text-xs text-primary-600 underline ml-1">
+              {showAllTickets ? 'ซ่อนที่เสร็จแล้ว' : `ดูทั้งหมด (${tickets.length})`}
+            </button>
+          )}
+          {tab === 'tasks' && (
+            <button onClick={() => setShowAllTasks(s => !s)}
+              className="text-xs text-primary-600 underline ml-1">
+              {showAllTasks ? 'ซ่อนที่เสร็จแล้ว' : `ดูทั้งหมด (${tasks.length})`}
+            </button>
+          )}
+          {tab === 'incidents' && (
+            <button onClick={() => setShowAllIncidents(s => !s)}
+              className="text-xs text-primary-600 underline ml-1">
+              {showAllIncidents ? 'ซ่อนที่เสร็จแล้ว' : `ดูทั้งหมด (${incidents.length})`}
+            </button>
           )}
         </div>
 
@@ -165,9 +195,9 @@ export default function MyWork() {
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             {loading
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
-              : sortedTickets.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Ticket</p>
-                : sortedTickets.map(t => {
+              : filteredTickets.length === 0
+                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Ticket ที่ยังค้างอยู่</p>
+                : filteredTickets.map(t => {
                     const color = getDueDateColor(t.DueDate, t.Status === 'Closed')
                     return (
                       <div key={t.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${getDueDateRowClass(color)}`}>
@@ -185,11 +215,8 @@ export default function MyWork() {
                           <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
                           <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge>
                           {!t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
-                            <button
-                              onClick={() => acknowledgeTicket(t)}
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600"
-                              title="รับทราบ"
-                            >
+                            <button onClick={() => acknowledgeTicket(t)}
+                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600" title="รับทราบ">
                               <CheckCircle2 size={15} />
                             </button>
                           )}
@@ -209,15 +236,22 @@ export default function MyWork() {
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             {loading
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
-              : sortedTasks.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Task</p>
-                : sortedTasks.map(task => {
+              : filteredTasks.length === 0
+                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Task ที่ยังค้างอยู่</p>
+                : filteredTasks.map(task => {
                     const color = getDueDateColor(task.DueDate, task.IsCompleted)
                     return (
                       <div key={task.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${getDueDateRowClass(color)}`}>
                         <span className="text-base w-5 text-center">{getDueDateEmoji(color)}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{task.Title}</p>
+                          {task.ProjectID
+                            ? (
+                              <Link to={`/projects/${task.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
+                                {task.Title}
+                              </Link>
+                            )
+                            : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{task.Title}</p>
+                          }
                           <div className="flex items-center gap-2 mt-0.5">
                             {task.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(task.DueDate)}</span>}
                             {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> รับทราบแล้ว</span>}
@@ -246,12 +280,12 @@ export default function MyWork() {
             {loading
               ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
               : filteredIncidents.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Incident</p>
+                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Incident ที่ยังค้างอยู่</p>
                 : filteredIncidents.map(inc => (
                     <div key={inc.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <AlertTriangle size={15} className="flex-shrink-0 text-orange-500" />
                       <div className="flex-1 min-w-0">
-                        {inc.ProjectID
+                        {inc.ProjectID > 0
                           ? (
                             <Link to={`/projects/${inc.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
                               {inc.Title}

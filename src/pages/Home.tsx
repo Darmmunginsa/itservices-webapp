@@ -88,12 +88,12 @@ export default function Home() {
   }
 
   const statCards = [
-    { label: 'Ticket เปิดอยู่', value: stats.openTickets,    icon: TicketIcon,     color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10' },
-    { label: 'โครงการ Active', value: stats.activeProjects, icon: FolderOpen,     color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10' },
+    { label: 'Ticket เปิดอยู่',  value: stats.openTickets,    icon: TicketIcon,    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10',   link: '/my-work' },
+    { label: 'โครงการ Active',   value: stats.activeProjects, icon: FolderOpen,    color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10',  link: '/projects' },
     { label: ['Boss','Admin'].includes(user?.role ?? '') ? 'รอ Approve ลา' : 'รับทราบแล้ว',
       value: ['Boss','Admin'].includes(user?.role ?? '') ? stats.pendingLeave : stats.acknowledged,
-      icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10' },
-    { label: 'Asset หมดประกัน', value: warningAssets.length, icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10' },
+      icon: CheckCircle, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10', link: '/my-work' },
+    { label: 'Asset หมดประกัน', value: warningAssets.length,  icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10', link: '/assets' },
   ]
 
   return (
@@ -117,15 +117,17 @@ export default function Home() {
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
             : statCards.map(s => (
-              <Card key={s.label} className="flex items-center gap-4">
-                <div className={`p-3 rounded-xl ${s.bg}`}>
-                  <s.icon size={20} className={s.color} />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{s.value}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-                </div>
-              </Card>
+              <Link key={s.label} to={s.link} className="block hover:scale-[1.02] transition-transform">
+                <Card className="flex items-center gap-4 h-full">
+                  <div className={`p-3 rounded-xl ${s.bg}`}>
+                    <s.icon size={20} className={s.color} />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{s.value}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                  </div>
+                </Card>
+              </Link>
             ))
           }
         </div>
