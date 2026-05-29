@@ -137,22 +137,22 @@ export function CompanyCalendar() {
 
   return (
     <>
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-          <button onClick={prev} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <button onClick={prev} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
             <ChevronLeft size={16} />
           </button>
           <span className="text-sm font-semibold">
             {format(currentDate, 'MMMM yyyy', { locale: th })}
           </span>
-          <button onClick={next} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+          <button onClick={next} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
             <ChevronRight size={16} />
           </button>
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap gap-3 px-4 py-2 text-xs border-b border-gray-100 dark:border-gray-800">
+        <div className="flex flex-wrap gap-3 px-4 py-2 text-xs border-b border-gray-100 dark:border-gray-700">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> วันหยุดราชการ</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> วันหยุดบริษัท</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> วันลา (Approved)</span>
@@ -183,11 +183,11 @@ export function CompanyCalendar() {
                       key={day.toISOString()}
                       onClick={() => inMonth && openModal(day)}
                       className={cn(
-                        'p-1 align-top border border-gray-100 dark:border-gray-800 min-h-[52px] transition-colors',
+                        'p-1 align-top border border-gray-100 dark:border-gray-600 min-h-[52px] transition-colors',
                         !inMonth && 'opacity-30',
-                        inMonth && !holiday && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/10',
-                        inMonth && isRajakanHoliday && 'bg-red-50 dark:bg-red-900/20 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30',
-                        inMonth && isCompanyHoliday && 'bg-violet-50 dark:bg-violet-900/20 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/30',
+                        inMonth && !holiday && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20',
+                        inMonth && isRajakanHoliday && 'bg-red-50 dark:bg-red-900/30 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40',
+                        inMonth && isCompanyHoliday && 'bg-violet-50 dark:bg-violet-900/30 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/40',
                       )}
                     >
                       <div className={cn(
