@@ -1,4 +1,6 @@
-import { SHAREPOINT_API } from '../config/msal'
+import { SHAREPOINT_API, SHAREPOINT_URL } from '../config/msal'
+
+const SP_HOST = SHAREPOINT_URL.replace(/\/sites\/.*/, '')
 
 let _getToken: (() => Promise<string>) | null = null
 
@@ -86,4 +88,44 @@ export async function spDelete(listName: string, id: number): Promise<void> {
     console.error(`[SP] DELETE ${listName}(${id}) → HTTP ${res.status}`)
     throw new Error(`SharePoint DELETE failed: ${res.status} ${listName}`)
   }
+}
+
+export async function spGetAttachments(
+  listName: string,
+  itemId: number,
+): Promise<Array<{ FileName: string; ServerRelativeUrl: string }>> {
+  const headers = await getHeaders()
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles`
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] GET attachments ${listName}(${itemId}) → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint GET attachments failed: ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.value ?? []) as Array<{ FileName: string; ServerRelativeUrl: string }>
+}
+
+export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<void> {
+  if (!_getToken) throw new Error('Token getter not initialized')
+  const token = await _getToken()
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${file.name}')`
+  const buffer = await file.arrayBuffer()
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json;odata=nometadata',
+    },
+    body: buffer,
+  })
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] UPLOAD attachment ${listName}(${itemId}) → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint attachment upload failed: ${res.status}`)
+  }
+}
+
+export function spAttachmentUrl(serverRelativeUrl: string): string {
+  return `${SP_HOST}${serverRelativeUrl}`
 }

@@ -44,6 +44,10 @@ export default function ProjectDetail() {
   const [showIncident, setShowIncident] = useState(false)
   const [incidentForm, setIncidentForm] = useState({ ...EMPTY_INCIDENT })
   const [savingIncident, setSavingIncident] = useState(false)
+  // Add Task form
+  const [showAddTask, setShowAddTask] = useState(false)
+  const [taskForm, setTaskForm] = useState({ title: '', assignedEmail: '', dueDate: '', daysCount: '', taskNote: '' })
+  const [savingTask, setSavingTask] = useState(false)
 
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
 
@@ -147,6 +151,37 @@ export default function ProjectDetail() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
+  async function addTask(e: React.FormEvent) {
+    e.preventDefault()
+    if (!taskForm.title.trim()) return
+    setSavingTask(true)
+    const agent = agents.find(a => a.EmailText === taskForm.assignedEmail)
+    let dueDate: string | null = null
+    if (taskForm.daysCount && Number(taskForm.daysCount) > 0) {
+      const d = new Date()
+      d.setDate(d.getDate() + Number(taskForm.daysCount))
+      dueDate = d.toISOString().slice(0, 10)
+    } else if (taskForm.dueDate) {
+      dueDate = taskForm.dueDate
+    }
+    try {
+      await spCreate('PM_Tasks', {
+        Title: taskForm.title,
+        ProjectID: Number(id),
+        IsCompleted: false,
+        IsAcknowledged: false,
+        AssignedTo: agent?.Title ?? '',
+        AssignedEmail: taskForm.assignedEmail || undefined,
+        DueDate: dueDate,
+        TaskNote: taskForm.taskNote || undefined,
+      })
+      addToast('success', 'เพิ่ม Task แล้ว')
+      setTaskForm({ title: '', assignedEmail: '', dueDate: '', daysCount: '', taskNote: '' })
+      setShowAddTask(false)
+      load()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingTask(false) }
+  }
+
   async function addIncident(e: React.FormEvent) {
     e.preventDefault()
     setSavingIncident(true)
@@ -242,6 +277,10 @@ export default function ProjectDetail() {
 
         {/* Tasks */}
         {tab === 'tasks' && (
+          <div className="space-y-3">
+            {['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
+              <Button size="sm" onClick={() => setShowAddTask(true)}><Plus size={14} /> เพิ่ม Task</Button>
+            )}
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             {sortedTasks.length === 0 ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Task</p>
               : sortedTasks.map(task => {
@@ -268,6 +307,7 @@ export default function ProjectDetail() {
                   )
                 })
             }
+          </div>
           </div>
         )}
 
@@ -345,6 +385,57 @@ export default function ProjectDetail() {
           </div>
         )}
       </div>
+
+      {/* Add Task Modal */}
+      <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="เพิ่ม Task" size="md">
+        <form onSubmit={addTask} className="space-y-4">
+          <div>
+            <label className={labelClass}>ชื่อ Task *</label>
+            <input required value={taskForm.title}
+              onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+              className={inputClass} placeholder="ระบุชื่อ Task..." />
+          </div>
+          <div>
+            <label className={labelClass}>Assign ให้</label>
+            <select value={taskForm.assignedEmail}
+              onChange={e => setTaskForm(f => ({ ...f, assignedEmail: e.target.value }))}
+              className={inputClass}>
+              <option value="">-- ยังไม่ Assign --</option>
+              {agents.map(a => <option key={a.id} value={a.EmailText}>{a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Due Date</label>
+              <input type="date" value={taskForm.dueDate}
+                disabled={!!taskForm.daysCount}
+                onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>หรือกำหนดวัน (นับจากวันนี้)</label>
+              <input type="number" min="1" placeholder="เช่น 7 = 1 สัปดาห์"
+                value={taskForm.daysCount}
+                onChange={e => setTaskForm(f => ({ ...f, daysCount: e.target.value }))}
+                className={inputClass} />
+            </div>
+          </div>
+          {taskForm.daysCount && Number(taskForm.daysCount) > 0 && (
+            <p className="text-xs text-primary-600">
+              📅 Due date: {(() => { const d = new Date(); d.setDate(d.getDate() + Number(taskForm.daysCount)); return d.toISOString().slice(0, 10) })()}
+            </p>
+          )}
+          <div>
+            <label className={labelClass}>Task Note</label>
+            <textarea value={taskForm.taskNote}
+              onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
+              rows={3} className={inputClass} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
+          </div>
+          <Button type="submit" disabled={savingTask} className="w-full justify-center">
+            {savingTask ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
+          </Button>
+        </form>
+      </Modal>
 
       {/* Add Note Modal */}
       <Modal open={showNote} onClose={() => setShowNote(false)} title="เพิ่ม Note">

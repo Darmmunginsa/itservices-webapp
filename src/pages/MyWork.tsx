@@ -1,23 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Pin, CheckCircle2 } from 'lucide-react'
+import { Search, Pin, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
-import type { Task } from '../types/project'
+import type { Task, ProjectIncident } from '../types/project'
 import { getDueDateColor, getDueDateRowClass, getDueDateBadgeClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
-import { getPriorityColor, getStatusColor } from '../utils/colorUtils'
+import { getPriorityColor, getStatusColor, getSeverityColor } from '../utils/colorUtils'
 
-type TabType = 'tickets' | 'tasks'
+type TabType = 'tickets' | 'tasks' | 'incidents'
 
 export default function MyWork() {
   const { user, addToast } = useAppStore()
   const [tab, setTab] = useState<TabType>('tickets')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [incidents, setIncidents] = useState<ProjectIncident[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -33,9 +34,11 @@ export default function MyWork() {
     Promise.all([
       spGet<Ticket>('HD_Tickets', ticketFilter, undefined, 'Modified desc'),
       spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
-    ]).then(([t, tk]) => {
+      spGet<ProjectIncident>('PM_Incidents', `AssignedEmail eq '${user.email}'`, undefined, 'Created desc'),
+    ]).then(([t, tk, inc]) => {
       setTickets(t)
       setTasks(tk)
+      setIncidents(inc)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
@@ -49,7 +52,7 @@ export default function MyWork() {
         FocusedBy: user.displayName,
         FocusedEmail: user.email,
         DueDate: (item as Ticket).DueDate ?? (item as Task).DueDate,
-        Status: (item as Ticket).Status ?? (item as Task).IsCompleted ? 'Completed' : 'Active',
+        Status: (item as Ticket).Status ?? ((item as Task).IsCompleted ? 'Completed' : 'Active'),
       })
       addToast('success', 'Pin ไว้ใน Focus Items แล้ว')
     } catch {
@@ -77,6 +80,11 @@ export default function MyWork() {
     (!statusFilter || t.Status === statusFilter)
   )
 
+  const filteredIncidents = incidents.filter(inc =>
+    (!search || inc.Title.toLowerCase().includes(search.toLowerCase())) &&
+    (!statusFilter || inc.Status === statusFilter)
+  )
+
   const sortedTickets = [...filteredTickets].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
     return (order[getDueDateColor(a.DueDate, a.Status === 'Closed')] ?? 3) -
@@ -89,6 +97,12 @@ export default function MyWork() {
            (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
   })
 
+  const tabLabel = (t: TabType) => {
+    if (t === 'tickets') return `Tickets (${tickets.length})`
+    if (t === 'tasks') return `Tasks (${tasks.length})`
+    return `Incidents (${incidents.length})`
+  }
+
   return (
     <div>
       <Header title="งานของฉัน" />
@@ -96,15 +110,15 @@ export default function MyWork() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 mb-4 w-fit">
-          {(['tickets', 'tasks'] as TabType[]).map(t => (
+          {(['tickets', 'tasks', 'incidents'] as TabType[]).map(t => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => { setTab(t); setSearch(''); setStatusFilter('') }}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'
               }`}
             >
-              {t === 'tickets' ? `Tickets (${tickets.length})` : `Tasks (${tasks.length})`}
+              {tabLabel(t)}
             </button>
           ))}
         </div>
@@ -128,6 +142,18 @@ export default function MyWork() {
             >
               <option value="">สถานะทั้งหมด</option>
               {['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
+          {tab === 'incidents' && (
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
+            >
+              <option value="">สถานะทั้งหมด</option>
+              {['Open', 'In Progress', 'Resolved'].map(s => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
@@ -196,6 +222,7 @@ export default function MyWork() {
                             {task.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(task.DueDate)}</span>}
                             {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> รับทราบแล้ว</span>}
                           </div>
+                          {task.TaskNote && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{task.TaskNote}</p>}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {task.IsCompleted
@@ -209,6 +236,40 @@ export default function MyWork() {
                       </div>
                     )
                   })
+            }
+          </div>
+        )}
+
+        {/* Incidents */}
+        {tab === 'incidents' && (
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {loading
+              ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
+              : filteredIncidents.length === 0
+                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Incident</p>
+                : filteredIncidents.map(inc => (
+                    <div key={inc.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <AlertTriangle size={15} className="flex-shrink-0 text-orange-500" />
+                      <div className="flex-1 min-w-0">
+                        {inc.ProjectID
+                          ? (
+                            <Link to={`/projects/${inc.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
+                              {inc.Title}
+                            </Link>
+                          )
+                          : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inc.Title}</p>
+                        }
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
+                          {inc.Description && <span className="text-xs text-gray-400 truncate max-w-[200px]">{inc.Description}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
+                        <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+                      </div>
+                    </div>
+                  ))
             }
           </div>
         )}

@@ -9,7 +9,7 @@ import type { AgentProfile } from '../types/common'
 import type { Contract } from '../types/ticket'
 import type { Project } from '../types/project'
 
-type SubmitType = 'Ticket' | 'Task' | 'Leave'
+type SubmitType = 'Ticket' | 'Task' | 'Incident'
 
 const DEPARTMENTS = ['IT', 'HR', 'บัญชี/การเงิน', 'ฝ่ายขาย', 'ฝ่ายการตลาด', 'Operations', 'ผู้บริหาร', 'อื่นๆ']
 
@@ -19,8 +19,9 @@ const EMPTY_FORM = {
   assignedEmail: '', assignedName: '',
   dueDate: '', daysCount: '',
   projectId: '', taskNote: '',
-  leaveType: 'ลาพักร้อน', leaveDate: '', reason: '',
-  approverEmail: '', approverName: '',
+  incidentSeverity: 'Medium',
+  incidentDate: new Date().toISOString().slice(0, 10),
+  incidentStatus: 'Open',
   attendees: '', location: '',
 }
 
@@ -56,11 +57,6 @@ export default function Submit() {
   const selectAgent = (email: string) => {
     const agent = agents.find(a => a.EmailText === email)
     setForm(f => ({ ...f, assignedEmail: email, assignedName: agent?.Title ?? '' }))
-  }
-
-  const selectApprover = (email: string) => {
-    const agent = agents.find(a => a.EmailText === email)
-    setForm(f => ({ ...f, approverEmail: email, approverName: agent?.Title ?? '' }))
   }
 
   const selectCustomer = (title: string) => {
@@ -140,7 +136,7 @@ export default function Submit() {
         const dueDate = computedDueDate()
         const created = await spCreate('PM_Tasks', {
           Title: form.title,
-          ProjectID: Number(form.projectId),   // Number field — no quotes
+          ProjectID: Number(form.projectId),
           IsCompleted: false,
           IsAcknowledged: false,
           AssignedTo: form.assignedName,
@@ -176,20 +172,19 @@ export default function Submit() {
 
         addToast('success', 'สร้าง Task สำเร็จ')
 
-      } else if (type === 'Leave') {
-        // Title = reason text (as per original formula)
-        await spCreate('HD_LeaveRequests', {
-          Title: form.reason || `ลา ${form.leaveDate} - ${user.displayName}`,
-          LeaveDate: form.leaveDate,
-          LeaveType: form.leaveType,
-          RequestedBy: user.displayName,
-          RequestedEmail: user.email,      // SP column: RequestedEmail
-          ApproverEmail: form.approverEmail,
-          ApproverName: form.approverName,
-          Status: 'Pending',
-          Note: form.reason,               // SP column: Note
+      } else if (type === 'Incident') {
+        const agent = agents.find(a => a.EmailText === form.assignedEmail)
+        await spCreate('PM_Incidents', {
+          Title: form.title,
+          ProjectID: form.projectId ? Number(form.projectId) : 0,
+          Severity: form.incidentSeverity,
+          Status: form.incidentStatus,
+          Description: form.description || undefined,
+          AssignedTo: agent?.Title ?? form.assignedName,
+          AssignedEmail: form.assignedEmail || undefined,
+          IncidentDate: form.incidentDate || undefined,
         })
-        addToast('success', 'ส่งคำขอลาแล้ว รอการอนุมัติ')
+        addToast('success', 'บันทึก Incident สำเร็จ')
       }
 
       setForm({ ...EMPTY_FORM })
@@ -205,7 +200,6 @@ export default function Submit() {
   const cx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const lx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
-  const approvers = agents.filter(a => ['Boss', 'Admin', 'Supervisor'].includes(a.Role))
 
   return (
     <div>
@@ -216,14 +210,14 @@ export default function Submit() {
           <div className="mb-6">
             <label className={lx}>ประเภท</label>
             <div className="flex gap-2">
-              {(['Ticket', 'Task', 'Leave'] as SubmitType[]).map(t => (
+              {(['Ticket', 'Task', 'Incident'] as SubmitType[]).map(t => (
                 <button key={t} type="button" onClick={() => { setType(t); setAddCalendar(false); setTrackItem(false) }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     type === t
                       ? 'bg-primary-600 text-white border-primary-600'
                       : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                   }`}>
-                  {t === 'Ticket' ? '🎫 Ticket' : t === 'Task' ? '📋 Task' : '📅 ขอลา'}
+                  {t === 'Ticket' ? '🎫 Ticket' : t === 'Task' ? '📋 Task' : '🚨 Incident'}
                 </button>
               ))}
             </div>
@@ -231,18 +225,18 @@ export default function Submit() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
-            {/* ── Ticket & Task shared ── */}
-            {(type === 'Ticket' || type === 'Task') && (
+            {/* ── Ticket & Task & Incident shared title/desc ── */}
+            {(type === 'Ticket' || type === 'Task' || type === 'Incident') && (
               <>
                 <div>
                   <label className={lx}>หัวข้อ *</label>
                   <input required value={form.title} onChange={e => set('title', e.target.value)}
-                    className={cx} placeholder="ระบุหัวข้อ..." />
+                    className={cx} placeholder={type === 'Incident' ? 'อธิบายปัญหา / ชื่อ Incident...' : 'ระบุหัวข้อ...'} />
                 </div>
                 <div>
                   <label className={lx}>รายละเอียด</label>
                   <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                    className={cx} rows={4} placeholder="รายละเอียดเพิ่มเติม..." />
+                    className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม..." />
                 </div>
               </>
             )}
@@ -276,8 +270,7 @@ export default function Submit() {
                   </select>
                 </div>
 
-                {/* Customer — from HD_Contracts (agents) or manual input */}
-                {isAgent ? (
+                {isAgent && (
                   <div>
                     <label className={lx}>ลูกค้า / ผู้แจ้ง</label>
                     <select value={form.customerName} onChange={e => selectCustomer(e.target.value)} className={cx}>
@@ -292,7 +285,7 @@ export default function Submit() {
                       <p className="text-xs text-gray-400 mt-1">📧 {form.customerEmail}</p>
                     )}
                   </div>
-                ) : null}
+                )}
 
                 <div>
                   <label className={lx}>Assign ให้ Agent</label>
@@ -306,7 +299,6 @@ export default function Submit() {
                   </select>
                 </div>
 
-                {/* Due Date — specific date OR days count */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lx}>Due Date</label>
@@ -315,17 +307,14 @@ export default function Submit() {
                   </div>
                   <div>
                     <label className={lx}>หรือกำหนดจากวันนี้ (วัน)</label>
-                    <input type="number" min="1" placeholder="เช่น 3 = 3 วันนับจากวันนี้"
+                    <input type="number" min="1" placeholder="เช่น 3 = 3 วัน"
                       value={form.daysCount} onChange={e => set('daysCount', e.target.value)} className={cx} />
                   </div>
                 </div>
                 {form.daysCount && Number(form.daysCount) > 0 && (
-                  <p className="text-xs text-primary-600">
-                    📅 Due date จะถูกตั้งเป็น {computedDueDate()}
-                  </p>
+                  <p className="text-xs text-primary-600">📅 Due date จะถูกตั้งเป็น {computedDueDate()}</p>
                 )}
 
-                {/* Track + Calendar */}
                 <div className="space-y-2 pt-1">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
@@ -402,7 +391,6 @@ export default function Submit() {
                     className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
                 </div>
 
-                {/* Track + Calendar */}
                 <div className="space-y-2 pt-1">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
@@ -432,35 +420,57 @@ export default function Submit() {
               </>
             )}
 
-            {/* ── Leave fields ── */}
-            {type === 'Leave' && (
+            {/* ── Incident fields ── */}
+            {type === 'Incident' && (
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lx}>วันที่ลา *</label>
-                    <input required type="date" value={form.leaveDate}
-                      onChange={e => set('leaveDate', e.target.value)} className={cx} />
+                    <label className={lx}>ความรุนแรง (Severity)</label>
+                    <select value={form.incidentSeverity} onChange={e => set('incidentSeverity', e.target.value)} className={cx}>
+                      {['Low', 'Medium', 'High', 'Critical'].map(s => <option key={s}>{s}</option>)}
+                    </select>
                   </div>
                   <div>
-                    <label className={lx}>ประเภทการลา</label>
-                    <select value={form.leaveType} onChange={e => set('leaveType', e.target.value)} className={cx}>
-                      {['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ'].map(t => <option key={t}>{t}</option>)}
+                    <label className={lx}>สถานะ</label>
+                    <select value={form.incidentStatus} onChange={e => set('incidentStatus', e.target.value)} className={cx}>
+                      {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
+
                 <div>
-                  <label className={lx}>เหตุผล *</label>
-                  <textarea required value={form.reason} onChange={e => set('reason', e.target.value)}
-                    className={cx} rows={3} placeholder="ระบุเหตุผลการลา..." />
+                  <label className={lx}>หมวดหมู่</label>
+                  <select value={form.category} onChange={e => set('category', e.target.value)} className={cx}>
+                    <option value="">-- เลือกหมวดหมู่ (ไม่บังคับ) --</option>
+                    {categories.map(c => <option key={c.id} value={c.Title}>{c.Title}</option>)}
+                  </select>
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={lx}>วันที่เกิด Incident</label>
+                    <input type="date" value={form.incidentDate} onChange={e => set('incidentDate', e.target.value)} className={cx} />
+                  </div>
+                  <div>
+                    <label className={lx}>โครงการที่เกี่ยวข้อง</label>
+                    <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                      <option value="">-- ไม่ระบุ --</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={String(p.id)}>
+                          {p.Title}{p.Company ? ` (${p.Company})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div>
-                  <label className={lx}>ผู้อนุมัติ *</label>
-                  <select required value={form.approverEmail}
-                    onChange={e => selectApprover(e.target.value)} className={cx}>
-                    <option value="">-- เลือกผู้อนุมัติ --</option>
-                    {(approvers.length > 0 ? approvers : agents).map(a => (
+                  <label className={lx}>Assign ให้ Agent</label>
+                  <select value={form.assignedEmail} onChange={e => selectAgent(e.target.value)} className={cx}>
+                    <option value="">-- ยังไม่ Assign --</option>
+                    {agents.map(a => (
                       <option key={a.id} value={a.EmailText}>
-                        {a.Title} ({a.Role})
+                        {a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}
                       </option>
                     ))}
                   </select>
@@ -469,7 +479,7 @@ export default function Submit() {
             )}
 
             <Button type="submit" disabled={loading} className="w-full justify-center mt-2">
-              {loading ? 'กำลังส่ง...' : 'ส่งคำขอ'}
+              {loading ? 'กำลังส่ง...' : type === 'Incident' ? 'บันทึก Incident' : 'ส่งคำขอ'}
             </Button>
           </form>
         </Card>
