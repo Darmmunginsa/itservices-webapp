@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin } from 'lucide-react'
+import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Badge } from '../components/common/Badge'
 import { CompanyCalendar } from '../components/calendar/CompanyCalendar'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { SkeletonCard } from '../components/common/Skeleton'
-import { spGet, spUpdate } from '../services/sharepoint'
+import { spGet, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { Project } from '../types/project'
@@ -63,6 +63,14 @@ export default function Home() {
       if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
+
+  async function unpinFocus(focusId: number) {
+    try {
+      await spDelete('HD_Focus', focusId)
+      setFocusItems(prev => prev.filter(f => f.id !== focusId))
+      addToast('success', 'ลบออกจาก Focus Items แล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
 
   async function approveLeave(id: number, approved: boolean) {
     setApprovingId(id)
@@ -179,18 +187,24 @@ export default function Home() {
                   {focusItems.map(f => {
                     const color = getDueDateColor(f.DueDate)
                     return (
-                      <Link
-                        key={f.id}
-                        to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
-                        className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-100 dark:border-gray-800"
-                      >
+                      <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
                         <span className="text-base">{getDueDateEmoji(color) || '📌'}</span>
-                        <div className="flex-1 min-w-0">
+                        <Link
+                          to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
+                          className="flex-1 min-w-0"
+                        >
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>
                           <p className="text-xs text-gray-400">{f.FocusType} • {formatDate(f.DueDate)}</p>
-                        </div>
+                        </Link>
                         <Badge className={getStatusColor(f.Status)}>{f.Status}</Badge>
-                      </Link>
+                        <button
+                          onClick={() => unpinFocus(f.id)}
+                          title="ลบออกจาก Focus"
+                          className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
                     )
                   })}
                 </div>

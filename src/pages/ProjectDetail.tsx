@@ -8,6 +8,7 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
+import { SearchSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, Task, Note, ProjectIncident, ProjectLink } from '../types/project'
@@ -16,6 +17,8 @@ import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
+const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
+const PROJECT_STATUSES = ['Planning', 'Active', 'On Hold', 'Completed', 'Cancelled']
 
 const EMPTY_TASK = { title: '', assignedEmail: '', dueDate: '', daysCount: '', taskNote: '' }
 const EMPTY_INCIDENT = {
@@ -24,6 +27,11 @@ const EMPTY_INCIDENT = {
   resolvedDate: '', description: '', assignedAgentEmail: '', resolution: '',
 }
 const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
+const EMPTY_PROJECT_FORM = {
+  title: '', company: '', projectGroup: 'Internal', status: 'Planning',
+  startDate: '', endDate: '', daysCount: '', progress: '0',
+  description: '', comment: '',
+}
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -40,6 +48,11 @@ export default function ProjectDetail() {
 
   // Attachment panel toggle key: 'task-42' | 'note-7' | 'incident-3'
   const [attachKey, setAttachKey] = useState<string | null>(null)
+
+  // Project edit modal
+  const [showEditProject, setShowEditProject] = useState(false)
+  const [projectForm, setProjectForm] = useState({ ...EMPTY_PROJECT_FORM })
+  const [savingProject, setSavingProject] = useState(false)
 
   // Task modal (create & edit)
   const [showTaskModal, setShowTaskModal] = useState(false)
@@ -65,12 +78,20 @@ export default function ProjectDetail() {
   const [savingLink, setSavingLink] = useState(false)
 
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
+  const canEditProject = ['Admin', 'Boss', 'Supervisor'].includes(user?.role ?? '') || project?.CreatedByEmail === user?.email
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
+
+  // Agent options for SearchSelect
+  const agentOptions = agents.map(a => ({
+    value: a.EmailText ?? '',
+    label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}`,
+  }))
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return
     const numId = Number(id)
+    setLoading(true)
     Promise.all([
       spGet<Project>('PM_Projects', `Id eq ${numId}`),
       spGet<Task>('PM_Tasks', `ProjectID eq ${numId}`, undefined, 'DueDate asc'),
@@ -92,6 +113,54 @@ export default function ProjectDetail() {
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
   }, [id])
+
+  // ── Project Edit ────────────────────────────────────────────────────────────
+  function openEditProject() {
+    if (!project) return
+    setProjectForm({
+      title: project.Title,
+      company: project.Company ?? '',
+      projectGroup: project.ProjectGroup ?? 'Internal',
+      status: project.Status,
+      startDate: project.StartDate ?? '',
+      endDate: project.EndDate ?? '',
+      daysCount: '',
+      progress: String(project.Progress ?? 0),
+      description: project.Description ?? '',
+      comment: project.Comment ?? '',
+    })
+    setShowEditProject(true)
+  }
+
+  async function saveProject(e: React.FormEvent) {
+    e.preventDefault()
+    if (!project) return
+    setSavingProject(true)
+    let endDate: string | null = null
+    if (projectForm.daysCount && Number(projectForm.daysCount) > 0 && projectForm.startDate) {
+      const d = new Date(projectForm.startDate)
+      d.setDate(d.getDate() + Number(projectForm.daysCount))
+      endDate = d.toISOString().slice(0, 10)
+    } else {
+      endDate = projectForm.endDate || null
+    }
+    try {
+      await spUpdate('PM_Projects', project.id, {
+        Title: projectForm.title,
+        Company: projectForm.company || undefined,
+        ProjectGroup: projectForm.projectGroup || undefined,
+        Status: projectForm.status,
+        Progress: Number(projectForm.progress),
+        StartDate: projectForm.startDate || undefined,
+        EndDate: endDate,
+        Description: projectForm.description || undefined,
+        Comment: projectForm.comment || undefined,
+      })
+      addToast('success', 'อัปเดตโครงการแล้ว')
+      setShowEditProject(false)
+      load()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingProject(false) }
+  }
 
   // ── Acknowledge / Complete ──────────────────────────────────────────────────
   async function acknowledgeTask(task: Task) {
@@ -194,10 +263,7 @@ export default function ProjectDetail() {
     if (!user || !noteText.trim()) return
     try {
       if (editingNote) {
-        await spUpdate('PM_Notes', editingNote.id, {
-          Title: noteText.slice(0, 100),
-          NoteText: noteText,
-        })
+        await spUpdate('PM_Notes', editingNote.id, { Title: noteText.slice(0, 100), NoteText: noteText })
         addToast('success', 'อัปเดต Note แล้ว')
       } else {
         await spCreate('PM_Notes', {
@@ -332,7 +398,6 @@ export default function ProjectDetail() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
   function toggleAttach(type: string, itemId: number) {
     const key = `${type}-${itemId}`
     setAttachKey(prev => prev === key ? null : key)
@@ -345,9 +410,15 @@ export default function ProjectDetail() {
 
   const ic = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const lc = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
+  const pf = (key: keyof typeof EMPTY_PROJECT_FORM, val: string) =>
+    setProjectForm(f => ({ ...f, [key]: val }))
 
   if (loading) return <div className="p-6"><Skeleton className="h-64" /></div>
   if (!project) return <div className="p-6 text-gray-400">ไม่พบโครงการ</div>
+
+  const projectEndDate = projectForm.daysCount && Number(projectForm.daysCount) > 0 && projectForm.startDate
+    ? (() => { const d = new Date(projectForm.startDate); d.setDate(d.getDate() + Number(projectForm.daysCount)); return d.toISOString().slice(0, 10) })()
+    : null
 
   return (
     <div>
@@ -357,25 +428,46 @@ export default function ProjectDetail() {
         {/* Info Card */}
         <Card>
           <div className="flex items-start justify-between mb-4">
-            <div>
+            <div className="flex-1 min-w-0 mr-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{project.Title}</h2>
-              <p className="text-sm text-gray-500 mt-1">{project.Company}</p>
+              {project.Company && <p className="text-sm text-gray-500 mt-1">{project.Company}</p>}
             </div>
-            <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
+              {canEditProject && (
+                <button onClick={openEditProject} title="แก้ไขโครงการ"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                  <Edit2 size={14} />
+                </button>
+              )}
+            </div>
           </div>
           <div className="mb-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
               <span>ความคืบหน้า</span><span className="font-medium">{project.Progress ?? 0}%</span>
             </div>
             <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">
-              <div className="bg-primary-600 h-2 rounded-full" style={{ width: `${project.Progress ?? 0}%` }} />
+              <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${project.Progress ?? 0}%` }} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div><span className="text-gray-400 text-xs">เริ่มต้น</span><p>{formatDate(project.StartDate)}</p></div>
             <div><span className="text-gray-400 text-xs">สิ้นสุด</span><p>{formatDate(project.EndDate)}</p></div>
           </div>
-          {project.Description && <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">{project.Description}</p>}
+          {project.ProjectGroup && (
+            <span className="inline-block mt-3 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-2 py-0.5 rounded">
+              {project.ProjectGroup}
+            </span>
+          )}
+          {project.Description && (
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{project.Description}</p>
+          )}
+          {project.Comment && (
+            <div className="mt-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg px-3 py-2">
+              <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-1">💬 Comment</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{project.Comment}</p>
+            </div>
+          )}
 
           {/* Secure Note */}
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
@@ -490,12 +582,8 @@ export default function ProjectDetail() {
                       </button>
                       {canEdit && (
                         <>
-                          <button onClick={() => openEditNote(note)} className="hover:text-primary-600 transition-colors">
-                            <Edit2 size={13} />
-                          </button>
-                          <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
+                          <button onClick={() => openEditNote(note)} className="hover:text-primary-600 transition-colors"><Edit2 size={13} /></button>
+                          <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={13} /></button>
                         </>
                       )}
                     </div>
@@ -605,6 +693,76 @@ export default function ProjectDetail() {
         )}
       </div>
 
+      {/* ── Edit Project Modal ── */}
+      <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title="แก้ไขโครงการ" size="md">
+        <form onSubmit={saveProject} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <div>
+            <label className={lc}>ชื่อโครงการ *</label>
+            <input required value={projectForm.title} onChange={e => pf('title', e.target.value)}
+              className={ic} placeholder="ระบุชื่อโครงการ..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lc}>บริษัท/ลูกค้า</label>
+              <input value={projectForm.company} onChange={e => pf('company', e.target.value)} className={ic} />
+            </div>
+            <div>
+              <label className={lc}>กลุ่มโครงการ</label>
+              <select value={projectForm.projectGroup} onChange={e => pf('projectGroup', e.target.value)} className={ic}>
+                {PROJECT_GROUPS.map(g => <option key={g}>{g}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lc}>สถานะ</label>
+              <select value={projectForm.status} onChange={e => pf('status', e.target.value)} className={ic}>
+                {PROJECT_STATUSES.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={lc}>ความคืบหน้า (%)</label>
+              <div className="flex items-center gap-2">
+                <input type="range" min="0" max="100" value={projectForm.progress}
+                  onChange={e => pf('progress', e.target.value)}
+                  className="flex-1 accent-primary-600" />
+                <span className="text-sm font-medium w-8 text-right">{projectForm.progress}</span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className={lc}>วันที่เริ่มต้น</label>
+            <input type="date" value={projectForm.startDate} onChange={e => pf('startDate', e.target.value)} className={ic} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={lc}>วันสิ้นสุด</label>
+              <input type="date" value={projectForm.endDate} onChange={e => pf('endDate', e.target.value)}
+                disabled={!!projectForm.daysCount} className={ic} />
+            </div>
+            <div>
+              <label className={lc}>หรือจำนวนวัน (นับจากวันเริ่ม)</label>
+              <input type="number" min="1" placeholder="เช่น 30" value={projectForm.daysCount}
+                onChange={e => pf('daysCount', e.target.value)} className={ic} />
+            </div>
+          </div>
+          {projectEndDate && <p className="text-xs text-primary-600">📅 End date: {projectEndDate}</p>}
+          <div>
+            <label className={lc}>รายละเอียด</label>
+            <textarea value={projectForm.description} onChange={e => pf('description', e.target.value)}
+              className={ic} rows={3} placeholder="รายละเอียดโครงการ..." />
+          </div>
+          <div>
+            <label className={lc}>Comment / หมายเหตุ</label>
+            <textarea value={projectForm.comment} onChange={e => pf('comment', e.target.value)}
+              className={ic} rows={2} placeholder="บันทึกเพิ่มเติม..." />
+          </div>
+          <Button type="submit" disabled={savingProject} className="w-full justify-center">
+            {savingProject ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+          </Button>
+        </form>
+      </Modal>
+
       {/* ── Task Modal (Create / Edit) ── */}
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)}
         title={editingTask ? 'แก้ไข Task' : 'เพิ่ม Task'} size="md">
@@ -617,12 +775,13 @@ export default function ProjectDetail() {
           </div>
           <div>
             <label className={lc}>Assign ให้</label>
-            <select value={taskForm.assignedEmail}
-              onChange={e => setTaskForm(f => ({ ...f, assignedEmail: e.target.value }))}
-              className={ic}>
-              <option value="">-- ยังไม่ Assign --</option>
-              {agents.map(a => <option key={a.id} value={a.EmailText}>{a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}</option>)}
-            </select>
+            <SearchSelect
+              options={agentOptions}
+              value={taskForm.assignedEmail}
+              onChange={v => setTaskForm(f => ({ ...f, assignedEmail: v }))}
+              emptyLabel="-- ยังไม่ Assign --"
+              placeholder="ค้นหาชื่อ Agent..."
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -642,11 +801,7 @@ export default function ProjectDetail() {
           </div>
           {taskForm.daysCount && Number(taskForm.daysCount) > 0 && (
             <p className="text-xs text-primary-600">
-              📅 Due date: {(() => {
-                const d = new Date()
-                d.setDate(d.getDate() + Number(taskForm.daysCount))
-                return d.toISOString().slice(0, 10)
-              })()}
+              📅 Due date: {(() => { const d = new Date(); d.setDate(d.getDate() + Number(taskForm.daysCount)); return d.toISOString().slice(0, 10) })()}
             </p>
           )}
           <div>
@@ -718,12 +873,14 @@ export default function ProjectDetail() {
               rows={3} className={ic} placeholder="อธิบายรายละเอียดของปัญหา..." />
           </div>
           <div>
-            <label className={lc}>Assign ให้</label>
-            <select value={incidentForm.assignedAgentEmail}
-              onChange={e => setIncidentForm(f => ({ ...f, assignedAgentEmail: e.target.value }))} className={ic}>
-              <option value="">-- เลือก Agent --</option>
-              {agents.map(a => <option key={a.id} value={a.EmailText}>{a.Title}</option>)}
-            </select>
+            <label className={lc}>Assign ให้ Agent</label>
+            <SearchSelect
+              options={agentOptions}
+              value={incidentForm.assignedAgentEmail}
+              onChange={v => setIncidentForm(f => ({ ...f, assignedAgentEmail: v }))}
+              emptyLabel="-- ยังไม่ Assign --"
+              placeholder="ค้นหาชื่อ Agent..."
+            />
           </div>
           <div>
             <label className={lc}>วิธีแก้ไข (ถ้ามี)</label>

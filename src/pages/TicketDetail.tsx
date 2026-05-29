@@ -6,6 +6,7 @@ import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Skeleton } from '../components/common/Skeleton'
+import { SearchSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus } from '../types/ticket'
@@ -46,7 +47,8 @@ export default function TicketDetail() {
 
   useEffect(() => {
     load()
-    spGet<AgentProfile>('HD_AgentProfiles', 'IsAvailable eq true', undefined, 'Title asc')
+    // Load ALL agents — no IsAvailable filter to prevent empty dropdown
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
   }, [id])
 
@@ -121,6 +123,11 @@ export default function TicketDetail() {
 
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const isClosingStatus = ['Resolved', 'Closed'].includes(newStatus)
+
+  const agentOptions = agents.map(a => ({
+    value: a.EmailText ?? '',
+    label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}${a.EmailText === ticket?.AssignedEmail ? ' (ปัจจุบัน)' : ''}`,
+  })).filter(o => o.value)
 
   if (loading) return <div className="p-6"><Skeleton className="h-96" /></div>
   if (!ticket) return <div className="p-6 text-gray-400">ไม่พบ Ticket</div>
@@ -223,16 +230,14 @@ export default function TicketDetail() {
                 <UserCheck size={12} /> Reassign Agent
               </p>
               <div className="flex gap-2">
-                <select value={newAssignedEmail} onChange={e => setNewAssignedEmail(e.target.value)}
-                  className="flex-1 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                  <option value="">-- เลือก Agent --</option>
-                  {agents.map(a => (
-                    <option key={a.id} value={a.EmailText}
-                      disabled={a.EmailText === ticket.AssignedEmail}>
-                      {a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}{a.EmailText === ticket.AssignedEmail ? ' (ปัจจุบัน)' : ''}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect
+                  options={agentOptions}
+                  value={newAssignedEmail}
+                  onChange={setNewAssignedEmail}
+                  placeholder="ค้นหาชื่อ Agent..."
+                  emptyLabel="-- เลือก Agent --"
+                  className="flex-1"
+                />
                 <Button size="sm" variant="outline" onClick={reassignAgent}
                   disabled={reassigning || !newAssignedEmail || newAssignedEmail === ticket.AssignedEmail}>
                   {reassigning ? '...' : 'Reassign'}

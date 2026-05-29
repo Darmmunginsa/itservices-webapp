@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
+import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate } from '../services/sharepoint'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
@@ -34,44 +35,6 @@ const EMPTY_FORM = {
   calendarDate: '', startHour: '09:00', endHour: '10:00', externalAttendees: '',
 }
 
-// Reusable multi-checkbox list
-function MultiCheckList({
-  label, items, selected, onToggle,
-}: {
-  label: string
-  items: { value: string; label: string }[]
-  selected: string[]
-  onToggle: (v: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div>
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-left">
-        <span className="text-gray-600 dark:text-gray-400">
-          {selected.length > 0 ? `${label}: ${selected.length} คน` : `เลือก${label}...`}
-        </span>
-        <span className="text-gray-400 text-xs">{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="mt-1 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 max-h-40 overflow-y-auto">
-          {items.length === 0
-            ? <p className="text-xs text-gray-400 p-3">ไม่มีข้อมูล</p>
-            : items.map(item => (
-                <label key={item.value} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
-                  <input type="checkbox" checked={selected.includes(item.value)}
-                    onChange={() => onToggle(item.value)}
-                    className="rounded accent-primary-600" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{item.label}</span>
-                </label>
-              ))
-          }
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function Submit() {
   const { user, addToast } = useAppStore()
   const [type, setType] = useState<SubmitType>('Ticket')
@@ -93,14 +56,15 @@ export default function Submit() {
   const [form, setForm] = useState({ ...EMPTY_FORM })
 
   useEffect(() => {
-    // Load ALL agents (no IsAvailable filter — let user pick from full list)
     spGet<{ id: number; Title: string }>('HD_Categories', undefined, undefined, 'Title asc')
       .then(setCategories).catch(() => {})
+    // Load ALL agents — no IsAvailable filter
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
     spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
       .then(setProjects).catch(() => {})
-    spGet<Contract>('HD_Contracts', "Status eq 'Active'", undefined, 'Title asc')
+    // Include Active + Inactive contracts, exclude only Expired
+    spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc')
       .then(setContracts).catch(() => {})
   }, [])
 
@@ -115,10 +79,6 @@ export default function Submit() {
   const selectCustomer = (title: string) => {
     const contract = contracts.find(c => c.Title === title)
     setForm(f => ({ ...f, customerName: title, customerEmail: contract?.CustomerEmail ?? '' }))
-  }
-
-  const toggleCalEmail = (email: string, arr: string[], setter: (v: string[]) => void) => {
-    setter(arr.includes(email) ? arr.filter(e => e !== email) : [...arr, email])
   }
 
   const computedDueDate = () => {
@@ -266,9 +226,22 @@ export default function Submit() {
   const lx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
 
-  // Data options for calendar multi-select
-  const agentOptions = agents.map(a => ({ value: a.EmailText, label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
-  const customerOptions = contracts.map(c => ({ value: c.CustomerEmail ?? '', label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` })).filter(o => o.value)
+  // Searchable dropdown options — agent: value = EmailText
+  const agentOptions = agents
+    .map(a => ({ value: a.EmailText ?? '', label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
+    .filter(o => o.value)
+
+  // Contract single-select — value = Title (for selectCustomer lookup)
+  const contractOptions = contracts.map(c => ({
+    value: c.Title,
+    label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}`,
+  }))
+
+  // Contract multi-select (calendar attendees) — value = CustomerEmail
+  const contractEmailOptions = contracts
+    .filter(c => c.CustomerEmail)
+    .map(c => ({ value: c.CustomerEmail ?? '', label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
+    .filter(o => o.value)
 
   // Calendar section shared by Ticket and Task
   function CalendarSection() {
@@ -307,11 +280,13 @@ export default function Submit() {
         {/* Internal attendees */}
         <div>
           <label className={lx}>ผู้เข้าร่วม Internal (เลือกได้หลายคน)</label>
-          <MultiCheckList
+          <SearchMultiSelect
             label="Internal"
-            items={agentOptions}
+            options={agentOptions}
             selected={calInternalEmails}
-            onToggle={v => toggleCalEmail(v, calInternalEmails, setCalInternalEmails)}
+            onToggle={v => setCalInternalEmails(prev =>
+              prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]
+            )}
           />
           {calInternalEmails.length > 0 && (
             <p className="text-xs text-gray-400 mt-1 truncate">{calInternalEmails.join(', ')}</p>
@@ -321,11 +296,13 @@ export default function Submit() {
         {/* Customer attendees */}
         <div>
           <label className={lx}>ผู้เข้าร่วม ลูกค้า (เลือกได้หลายคน)</label>
-          <MultiCheckList
+          <SearchMultiSelect
             label="ลูกค้า"
-            items={customerOptions}
+            options={contractEmailOptions}
             selected={calCustomerEmails}
-            onToggle={v => toggleCalEmail(v, calCustomerEmails, setCalCustomerEmails)}
+            onToggle={v => setCalCustomerEmails(prev =>
+              prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]
+            )}
           />
           {calCustomerEmails.length > 0 && (
             <p className="text-xs text-gray-400 mt-1 truncate">{calCustomerEmails.join(', ')}</p>
@@ -416,28 +393,26 @@ export default function Submit() {
                 {isAgent && (
                   <div>
                     <label className={lx}>ลูกค้า / ผู้แจ้ง</label>
-                    <select value={form.customerName} onChange={e => selectCustomer(e.target.value)} className={cx}>
-                      <option value="">-- ตัวเอง ({user?.displayName}) --</option>
-                      {contracts.map(c => (
-                        <option key={c.id} value={c.Title}>
-                          {c.Title}{c.Company ? ` (${c.Company})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect
+                      options={contractOptions}
+                      value={form.customerName}
+                      onChange={selectCustomer}
+                      placeholder={`ตัวเอง (${user?.displayName ?? ''})`}
+                      emptyLabel={`-- ตัวเอง (${user?.displayName ?? ''}) --`}
+                    />
                     {form.customerEmail && <p className="text-xs text-gray-400 mt-1">📧 {form.customerEmail}</p>}
                   </div>
                 )}
 
                 <div>
                   <label className={lx}>Assign ให้ Agent</label>
-                  <select value={form.assignedEmail} onChange={e => selectAgent(e.target.value)} className={cx}>
-                    <option value="">-- ยังไม่ Assign --</option>
-                    {agents.map(a => (
-                      <option key={a.id} value={a.EmailText}>
-                        {a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    options={agentOptions}
+                    value={form.assignedEmail}
+                    onChange={selectAgent}
+                    placeholder="ค้นหาชื่อ Agent..."
+                    emptyLabel="-- ยังไม่ Assign --"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -488,10 +463,13 @@ export default function Submit() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lx}>Assign ให้</label>
-                    <select value={form.assignedEmail} onChange={e => selectAgent(e.target.value)} className={cx}>
-                      <option value="">-- ยังไม่ Assign --</option>
-                      {agents.map(a => <option key={a.id} value={a.EmailText}>{a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}</option>)}
-                    </select>
+                    <SearchSelect
+                      options={agentOptions}
+                      value={form.assignedEmail}
+                      onChange={selectAgent}
+                      placeholder="ค้นหาชื่อ Agent..."
+                      emptyLabel="-- ยังไม่ Assign --"
+                    />
                   </div>
                   <div>
                     <label className={lx}>Due Date</label>
@@ -574,14 +552,13 @@ export default function Submit() {
 
                 <div>
                   <label className={lx}>Assign ให้ Agent</label>
-                  <select value={form.assignedEmail} onChange={e => selectAgent(e.target.value)} className={cx}>
-                    <option value="">-- ยังไม่ Assign --</option>
-                    {agents.map(a => (
-                      <option key={a.id} value={a.EmailText}>
-                        {a.Title}{a.SupportGroup ? ` · ${a.SupportGroup}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    options={agentOptions}
+                    value={form.assignedEmail}
+                    onChange={selectAgent}
+                    placeholder="ค้นหาชื่อ Agent..."
+                    emptyLabel="-- ยังไม่ Assign --"
+                  />
                 </div>
               </>
             )}

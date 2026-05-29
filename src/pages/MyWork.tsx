@@ -49,7 +49,7 @@ export default function MyWork() {
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
-  async function pinFocus(type: 'Ticket' | 'Task', item: Ticket | Task) {
+  async function pinFocus(type: 'Ticket' | 'Task' | 'Incident', item: Ticket | Task | ProjectIncident) {
     if (!user) return
     try {
       await spCreate('HD_Focus', {
@@ -59,7 +59,9 @@ export default function MyWork() {
         FocusedBy: user.displayName,
         FocusedEmail: user.email,
         DueDate: (item as Ticket).DueDate ?? (item as Task).DueDate,
-        Status: (item as Ticket).Status ?? ((item as Task).IsCompleted ? 'Completed' : 'Active'),
+        Status: type === 'Incident'
+          ? (item as ProjectIncident).Status
+          : (item as Ticket).Status ?? ((item as Task).IsCompleted ? 'Completed' : 'Active'),
       })
       addToast('success', 'Pin ไว้ใน Focus Items แล้ว')
     } catch {
@@ -301,6 +303,9 @@ export default function MyWork() {
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
                         <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+                        <button onClick={() => pinFocus('Incident', inc)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                          <Pin size={15} />
+                        </button>
                       </div>
                     </div>
                   ))
