@@ -24,7 +24,12 @@ export async function spGet<T>(listName: string, filter?: string, select?: strin
   if (orderby) url += `&$orderby=${encodeURIComponent(orderby)}`
 
   const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`SharePoint GET failed: ${res.status} ${listName}`)
+  if (!res.ok) {
+    let body = ''
+    try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] GET ${listName} → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint GET failed: ${res.status} ${listName}`)
+  }
   const data = await res.json()
   return data.value as T[]
 }
@@ -33,7 +38,11 @@ export async function spGetById<T>(listName: string, id: number): Promise<T> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${id})`
   const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`SharePoint GET failed: ${res.status}`)
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] GET ${listName}(${id}) → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint GET failed: ${res.status}`)
+  }
   return res.json() as Promise<T>
 }
 

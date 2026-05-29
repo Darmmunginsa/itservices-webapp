@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Moon, Sun, LogOut,
-  ChevronRight
+  ChevronRight, Bug
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../hooks/useAuth'
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/tracking',    icon: Pin,           label: 'My Tracking',      roles: ['Boss','Admin'] },
   { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',            roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/contracts',   icon: FileText,      label: 'ลูกค้า (Contracts)',roles: ['Admin'] },
+  { to: '/debug',       icon: Bug,           label: 'Diagnostic',        roles: ['Boss','Admin'] },
 ]
 
 export function Sidebar() {
