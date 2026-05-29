@@ -11,10 +11,12 @@ export interface UserProfile {
 export interface AgentProfile {
   id: number
   Title: string
-  AgentEmail: string
-  EmailText: string
+  AgentEmail: string        // People Picker field (read-only from SP)
+  EmailText: string         // Plain text email — ใช้ filter ตรงนี้
   Role: Role
-  SupportGroup: string
+  SupportGroup: string      // e.g. 'L1', 'L2'
+  SpecialtyCategory?: string
+  MaxTicketLoad?: number
   IsAvailable: boolean
 }
 

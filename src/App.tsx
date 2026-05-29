@@ -91,7 +91,7 @@ function AppContent() {
     const account = accounts[0]
     const email = account.username
 
-    spGet<AgentProfile>('HD_AgentProfiles', `AgentEmail eq '${email}'`)
+    spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`)
       .then(profiles => {
         const profile = profiles[0]
         const userProfile: UserProfile = {
