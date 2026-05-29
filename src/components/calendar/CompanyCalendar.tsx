@@ -296,7 +296,7 @@ export function CompanyCalendar() {
 
         {/* ── Task Form ── */}
         {modalMode === 'task' && (
-          <form onSubmit={submitTask} className="space-y-3">
+          <form onSubmit={submitTask} className="space-y-2.5">
             {/* Task type toggle */}
             <div>
               <label className={labelCx}>ประเภท Task</label>
@@ -346,10 +346,6 @@ export function CompanyCalendar() {
                 onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
                 className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)..." />
             </div>
-
-            <p className="text-xs text-gray-400">
-              📅 กำหนดส่ง: {selectedDay ? format(selectedDay, 'd MMMM yyyy', { locale: th }) : '-'}
-            </p>
 
             <Button type="submit" disabled={saving} className="w-full justify-center">
               {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
