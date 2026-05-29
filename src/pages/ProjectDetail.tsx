@@ -10,10 +10,17 @@ import { Skeleton } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, Task, Note, ProjectIncident, ProjectLink } from '../types/project'
+import type { AgentProfile } from '../types/common'
 import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
+
+const EMPTY_INCIDENT = {
+  title: '', severity: 'Medium', status: 'Open',
+  incidentDate: new Date().toISOString().slice(0, 10),
+  resolvedDate: '', description: '', assignedAgentEmail: '', resolution: '',
+}
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -23,6 +30,7 @@ export default function ProjectDetail() {
   const [notes, setNotes] = useState<Note[]>([])
   const [incidents, setIncidents] = useState<ProjectIncident[]>([])
   const [links, setLinks] = useState<ProjectLink[]>([])
+  const [agents, setAgents] = useState<AgentProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links'>('tasks')
   const [showNote, setShowNote] = useState(false)
@@ -32,6 +40,10 @@ export default function ProjectDetail() {
   const [showLink, setShowLink] = useState(false)
   const [linkForm, setLinkForm] = useState({ title: '', url: '', linkType: 'Other', linkNote: '' })
   const [savingLink, setSavingLink] = useState(false)
+  // Incident form
+  const [showIncident, setShowIncident] = useState(false)
+  const [incidentForm, setIncidentForm] = useState({ ...EMPTY_INCIDENT })
+  const [savingIncident, setSavingIncident] = useState(false)
 
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
 
@@ -54,7 +66,11 @@ export default function ProjectDetail() {
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    load()
+    spGet<AgentProfile>('HD_AgentProfiles', 'IsAvailable eq true', undefined, 'Title asc')
+      .then(setAgents).catch(() => {})
+  }, [id])
 
   async function acknowledgeTask(task: Task) {
     if (!user) return
@@ -129,6 +145,30 @@ export default function ProjectDetail() {
       setLinks(prev => prev.filter(l => l.id !== linkId))
       addToast('success', 'ลบ Link แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
+  async function addIncident(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingIncident(true)
+    const agent = agents.find(a => a.EmailText === incidentForm.assignedAgentEmail)
+    try {
+      await spCreate('PM_Incidents', {
+        Title: incidentForm.title,
+        ProjectID: Number(id),
+        Severity: incidentForm.severity,
+        Status: incidentForm.status,
+        IncidentDate: incidentForm.incidentDate || undefined,
+        ResolvedDate: incidentForm.resolvedDate || undefined,
+        Description: incidentForm.description,
+        AssignedTo: agent?.Title ?? '',
+        AssignedEmail: incidentForm.assignedAgentEmail || undefined,
+        Resolution: incidentForm.resolution || undefined,
+      })
+      addToast('success', 'บันทึก Incident แล้ว')
+      setIncidentForm({ ...EMPTY_INCIDENT })
+      setShowIncident(false)
+      load()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingIncident(false) }
   }
 
   const sortedTasks = [...tasks].sort((a, b) => {
@@ -252,6 +292,8 @@ export default function ProjectDetail() {
 
         {/* Incidents */}
         {tab === 'incidents' && (
+          <div className="space-y-3">
+            <Button size="sm" variant="outline" onClick={() => setShowIncident(true)}><Plus size={14} /> แจ้ง Incident</Button>
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             {incidents.length === 0 ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Incident</p>
               : incidents.map(inc => (
@@ -269,6 +311,7 @@ export default function ProjectDetail() {
                   </div>
                 ))
             }
+          </div>
           </div>
         )}
 
@@ -310,6 +353,59 @@ export default function ProjectDetail() {
             className={inputClass}
             placeholder="รายละเอียด Note..." />
           <Button type="submit" className="w-full justify-center">บันทึก</Button>
+        </form>
+      </Modal>
+
+      {/* Add Incident Modal */}
+      <Modal open={showIncident} onClose={() => setShowIncident(false)} title="แจ้ง Incident" size="md">
+        <form onSubmit={addIncident} className="space-y-4">
+          <div>
+            <label className={labelClass}>ชื่อ Incident *</label>
+            <input required value={incidentForm.title} onChange={e => setIncidentForm(f => ({ ...f, title: e.target.value }))}
+              className={inputClass} placeholder="อธิบายปัญหาที่เกิดขึ้น..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>ความรุนแรง</label>
+              <select value={incidentForm.severity} onChange={e => setIncidentForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
+                {['Low', 'Medium', 'High', 'Critical'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>สถานะ</label>
+              <select value={incidentForm.status} onChange={e => setIncidentForm(f => ({ ...f, status: e.target.value }))} className={inputClass}>
+                {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>วันที่เกิด Incident</label>
+              <input type="date" value={incidentForm.incidentDate} onChange={e => setIncidentForm(f => ({ ...f, incidentDate: e.target.value }))} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>วันที่แก้ไขได้</label>
+              <input type="date" value={incidentForm.resolvedDate} onChange={e => setIncidentForm(f => ({ ...f, resolvedDate: e.target.value }))} className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>รายละเอียด</label>
+            <textarea value={incidentForm.description} onChange={e => setIncidentForm(f => ({ ...f, description: e.target.value }))}
+              rows={3} className={inputClass} placeholder="อธิบายรายละเอียดของปัญหา..." />
+          </div>
+          <div>
+            <label className={labelClass}>Assign ให้</label>
+            <select value={incidentForm.assignedAgentEmail} onChange={e => setIncidentForm(f => ({ ...f, assignedAgentEmail: e.target.value }))} className={inputClass}>
+              <option value="">-- เลือก Agent --</option>
+              {agents.map(a => <option key={a.id} value={a.EmailText}>{a.Title}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>วิธีแก้ไข (ถ้ามี)</label>
+            <textarea value={incidentForm.resolution} onChange={e => setIncidentForm(f => ({ ...f, resolution: e.target.value }))}
+              rows={2} className={inputClass} placeholder="อธิบายวิธีที่แก้ไขปัญหา..." />
+          </div>
+          <Button type="submit" disabled={savingIncident} className="w-full justify-center">{savingIncident ? 'กำลังบันทึก...' : 'บันทึก Incident'}</Button>
         </form>
       </Modal>
 

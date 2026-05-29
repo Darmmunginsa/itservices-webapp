@@ -66,8 +66,9 @@ export interface TrackingItem {
   id: number
   Title: string
   TrackingType: 'Ticket' | 'Task'
-  RefID: string
-  TrackedBy: string
+  RefID: number           // Numeric SP ID of the referenced ticket/task
+  TrackedBy: string       // Display name of who is tracking
+  TrackedEmail: string    // Email of who is tracking — use this for filter
   AssignedTo: string
   Status: string
   IsAcknowledged: boolean

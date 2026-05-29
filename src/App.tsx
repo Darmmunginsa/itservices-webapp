@@ -27,6 +27,7 @@ import Tracking from './pages/Tracking'
 import Skills from './pages/Skills'
 import Contracts from './pages/Contracts'
 import Diagnostic from './pages/Diagnostic'
+import Admin from './pages/Admin'
 import './index.css'
 
 const msalInstance = new PublicClientApplication(msalConfig)
@@ -141,9 +142,10 @@ function AppContent() {
             <Route path="/tickets/:id" element={<TicketDetail />} />
             <Route path="/dashboard" element={<AgentDashboard />} />
             <Route path="/assets" element={<Assets />} />
-            <Route path="/tracking" element={user.role === 'Boss' || user.role === 'Admin' ? <Tracking /> : <Navigate to="/" />} />
+            <Route path="/tracking" element={<Tracking />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/contracts" element={user.role === 'Admin' ? <Contracts /> : <Navigate to="/" />} />
+            <Route path="/admin" element={['Admin', 'Boss'].includes(user.role) ? <Admin /> : <Navigate to="/" />} />
             <Route path="/debug" element={<Diagnostic />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
