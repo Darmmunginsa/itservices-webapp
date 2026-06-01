@@ -223,7 +223,10 @@ export function OutlookCalendar() {
 
   async function submitTask(e: React.FormEvent) {
     e.preventDefault()
-    if (!user || !taskForm.title.trim()) return
+    if (!user) { addToast('error', 'ไม่พบข้อมูล User กรุณา refresh'); return }
+    if (!taskForm.title.trim()) { addToast('error', 'กรุณาระบุชื่อ Task'); return }
+    if (!taskForm.date) { addToast('error', 'กรุณาเลือกวันที่'); return }
+    if (taskForm.taskType === 'project' && !taskForm.projectId) { addToast('error', 'กรุณาเลือกโครงการ'); return }
     setSaving(true)
     try {
       const dueDateTime = taskForm.time
@@ -242,8 +245,11 @@ export function OutlookCalendar() {
       })
       addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
       setShowTaskModal(false)
-    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
-    finally { setSaving(false) }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      addToast('error', msg)
+      console.error('submitTask error:', err)
+    } finally { setSaving(false) }
   }
 
   const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
