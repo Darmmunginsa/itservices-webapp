@@ -1,6 +1,6 @@
 import { useMsal } from '@azure/msal-react'
 import { useCallback } from 'react'
-import { loginRequest, REDIRECT_URI } from '../config/msal'
+import { loginRequest, sharepointRequest, REDIRECT_URI } from '../config/msal'
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export function useAuth() {
@@ -9,7 +9,23 @@ export function useAuth() {
   const login = useCallback(async () => {
     const req = { ...loginRequest, redirectUri: REDIRECT_URI }
     try {
+      // Step 1: Graph login
       await instance.loginPopup(req)
+
+      // Step 2: SP consent — called within same user-gesture call stack so
+      // the browser does not block the popup. Silent first; popup only if
+      // the user has never consented to SharePoint for this app yet.
+      const spAccount = instance.getAllAccounts()[0]
+      if (spAccount) {
+        const spReq = { ...sharepointRequest, account: spAccount, redirectUri: REDIRECT_URI }
+        try {
+          await instance.acquireTokenSilent(spReq)
+        } catch (e) {
+          if (e instanceof InteractionRequiredAuthError) {
+            await instance.acquireTokenPopup(spReq)
+          }
+        }
+      }
     } catch (e: unknown) {
       const msg = (e as Error)?.message ?? ''
       if (

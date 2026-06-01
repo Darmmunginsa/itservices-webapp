@@ -100,9 +100,8 @@ function AppContent() {
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
 
-    // Acquire SP token eagerly — if consent is needed, popup appears automatically
-    // right after login (before user interacts with anything), eliminating the
-    // "second click" problem. Then load profile once SP token is ready.
+    // SP consent is already handled inside login() — here we only need
+    // acquireTokenSilent (no popup). Load profile immediately after.
     getSpToken()
       .catch(() => null)
       .then(() => spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`).catch(() => [] as AgentProfile[]))
