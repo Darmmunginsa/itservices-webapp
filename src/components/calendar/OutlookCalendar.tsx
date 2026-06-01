@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, Video, MapPin, Plus } from 'lucide-react'
 import { useOutlook } from '../../hooks/useOutlook'
 import { useAppStore } from '../../store/useAppStore'
 import { spCreate } from '../../services/sharepoint'
+import { createCalendarEvent } from '../../services/graph'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
 import type { OutlookEvent } from '../../services/graph'
@@ -223,7 +224,15 @@ export function OutlookCalendar() {
         DueDate:        `${taskForm.date}T${taskForm.endTime}:00`,
         TaskNote:       taskForm.note || undefined,
       })
-      addToast('success', 'สร้าง Task สำเร็จ')
+      await createCalendarEvent({
+        subject:         taskForm.title,
+        start:           `${taskForm.date}T${taskForm.startTime}:00`,
+        end:             `${taskForm.date}T${taskForm.endTime}:00`,
+        body:            taskForm.note,
+        attendees:       [],
+        isOnlineMeeting: false,
+      })
+      addToast('success', 'สร้าง Task และเพิ่มใน Calendar แล้ว')
       setShowTaskModal(false)
     } catch {
       addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่')
