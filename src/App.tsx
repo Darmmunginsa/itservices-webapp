@@ -8,7 +8,7 @@ import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter } from './services/graph'
 import { spGet } from './services/sharepoint'
-import type { AgentProfile, UserProfile } from './types/common'
+import type { AgentProfile } from './types/common'
 
 import { Sidebar } from './components/layout/Sidebar'
 import { BottomNav } from './components/layout/BottomNav'
