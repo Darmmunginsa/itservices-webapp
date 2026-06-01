@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Moon, Sun, LogOut,
-  ChevronRight, Bug, Settings
+  ChevronRight, Bug, Settings, Notebook
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../hooks/useAuth'
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/assets',      icon: Monitor,       label: 'IT Assets',           roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/tracking',    icon: Pin,           label: 'My Tracking',         roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',               roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+  { to: '/tools',       icon: Notebook,      label: 'Tools & Notes',       roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/contracts',   icon: FileText,      label: 'ลูกค้า (Contracts)',  roles: ['Admin'] },
   { to: '/admin',       icon: Settings,      label: 'Admin',               roles: ['Boss','Admin'] },
   { to: '/debug',       icon: Bug,           label: 'Diagnostic',          roles: ['Boss','Admin'] },
