@@ -192,7 +192,7 @@ function MonthView({
   )
 }
 
-const EMPTY_TASK = { title: '', projectId: '', assigneeEmail: '', date: '', time: '09:00', taskNote: '' }
+const EMPTY_TASK = { title: '', taskType: 'personal' as 'personal' | 'project', projectId: '', assigneeEmail: '', date: '', time: '09:00', taskNote: '' }
 
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
@@ -233,7 +233,7 @@ export function OutlookCalendar() {
       await spCreate('PM_Tasks', {
         Title:          taskForm.title,
         DueDate:        dueDateTime,
-        ProjectID:      taskForm.projectId ? Number(taskForm.projectId) : 0,
+        ProjectID:      taskForm.taskType === 'project' && taskForm.projectId ? Number(taskForm.projectId) : 0,
         AssignedTo:     assignedAgent?.Title ?? user.displayName,
         AssignedEmail:  taskForm.assigneeEmail || user.email,
         IsCompleted:    false,
@@ -320,7 +320,7 @@ export function OutlookCalendar() {
       {/* Navigation */}
       <div className="flex items-center justify-between gap-2">
         <button
-          onClick={() => openTaskModal()}
+          onClick={() => openTaskModal(cursor)}
           className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
         >
           <Plus size={12} /> Task
@@ -368,12 +368,32 @@ export function OutlookCalendar() {
       {/* Task Modal */}
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ เพิ่ม Task" size="sm">
         <form onSubmit={submitTask} className="space-y-3">
+
+          {/* Task type toggle */}
+          <div className="flex gap-2">
+            {([
+              { v: 'personal', label: '👤 ส่วนตัว' },
+              { v: 'project',  label: '📁 ใน Project' },
+            ] as const).map(({ v, label }) => (
+              <button key={v} type="button"
+                onClick={() => setTaskForm(f => ({ ...f, taskType: v, projectId: '' }))}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                  taskForm.taskType === v
+                    ? 'bg-primary-600 text-white border-primary-600'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div>
             <label className={labelCx}>ชื่อ Task *</label>
             <input required value={taskForm.title}
               onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
               className={inputCx} placeholder="ระบุชื่องาน..." />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCx}>วันที่ *</label>
@@ -388,15 +408,20 @@ export function OutlookCalendar() {
                 className={inputCx} />
             </div>
           </div>
-          <div>
-            <label className={labelCx}>โครงการ</label>
-            <select value={taskForm.projectId}
-              onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
-              className={inputCx}>
-              <option value="">-- ส่วนตัว (ไม่ระบุโครงการ) --</option>
-              {projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}</option>)}
-            </select>
-          </div>
+
+          {/* Project — only when project mode */}
+          {taskForm.taskType === 'project' && (
+            <div>
+              <label className={labelCx}>โครงการ *</label>
+              <select required value={taskForm.projectId}
+                onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+                className={inputCx}>
+                <option value="">-- เลือกโครงการ --</option>
+                {projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}</option>)}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className={labelCx}>มอบหมายให้</label>
             <select value={taskForm.assigneeEmail}
@@ -408,12 +433,14 @@ export function OutlookCalendar() {
               ))}
             </select>
           </div>
+
           <div>
             <label className={labelCx}>หมายเหตุ</label>
             <textarea value={taskForm.taskNote}
               onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
               className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม..." />
           </div>
+
           <Button type="submit" disabled={saving} className="w-full justify-center">
             {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
           </Button>
