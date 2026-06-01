@@ -233,16 +233,17 @@ export function OutlookCalendar() {
         ? `${taskForm.date}T${taskForm.time}:00`
         : taskForm.date
       const assignedAgent = agents.find(a => a.EmailText === taskForm.assigneeEmail)
-      console.log('creating task with', { dueDateTime, assignedAgent })
+      const isProject = taskForm.taskType === 'project' && !!taskForm.projectId
+      console.log('creating task with', { dueDateTime, assignedAgent, isProject })
       await spCreate('PM_Tasks', {
         Title:          taskForm.title,
         DueDate:        dueDateTime,
-        ProjectID:      taskForm.taskType === 'project' && taskForm.projectId ? Number(taskForm.projectId) : 0,
+        ...(isProject && { ProjectID: Number(taskForm.projectId) }),
         AssignedTo:     assignedAgent?.Title ?? user.displayName,
         AssignedEmail:  taskForm.assigneeEmail || user.email,
         IsCompleted:    false,
         IsAcknowledged: false,
-        TaskNote:       taskForm.taskNote || null,
+        ...(taskForm.taskNote && { TaskNote: taskForm.taskNote }),
       })
       addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
       setShowTaskModal(false)
