@@ -205,7 +205,7 @@ export function CompanyCalendar() {
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> วันหยุดบริษัท</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> วันลา (Approved)</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> วันนี้</span>
-          <span className="ml-auto text-gray-400 italic">กดที่วันเพื่อจัดการ</span>
+          <span className="hidden sm:inline ml-auto text-gray-400 italic">กดที่วันเพื่อจัดการ</span>
         </div>
 
         {/* Grid */}

@@ -131,12 +131,12 @@ export default function MyWork() {
       <div className="p-4 md:p-6">
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 mb-4 w-fit">
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 mb-4 w-full md:w-fit">
           {(['tickets', 'tasks', 'incidents'] as TabType[]).map(t => (
             <button
               key={t}
               onClick={() => { setTab(t); setSearch(''); setStatusFilter('') }}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex-1 md:flex-none px-3 md:px-4 py-1.5 rounded-lg text-sm font-medium transition-colors text-center ${
                 tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'
               }`}
             >
@@ -151,13 +151,13 @@ export default function MyWork() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <div className="relative">
+          <div className="relative w-full sm:w-48">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               placeholder="ค้นหา..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-48"
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full"
             />
           </div>
 
@@ -218,8 +218,8 @@ export default function MyWork() {
                             {t.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(t.DueDate)}</span>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <Badge className={`hidden sm:inline-flex ${getPriorityColor(t.Priority)}`}>{t.Priority}</Badge>
                           <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge>
                           {!t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
                             <button onClick={() => acknowledgeTicket(t)}
@@ -227,7 +227,7 @@ export default function MyWork() {
                               <CheckCircle2 size={15} />
                             </button>
                           )}
-                          <button onClick={() => pinFocus('Ticket', t)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                          <button onClick={() => pinFocus('Ticket', t)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
                             <Pin size={15} />
                           </button>
                         </div>
@@ -265,12 +265,12 @@ export default function MyWork() {
                           </div>
                           {task.TaskNote && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{task.TaskNote}</p>}
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           {task.IsCompleted
                             ? <Badge className="bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Done</Badge>
                             : <Badge className="bg-blue-600 text-white dark:bg-blue-500 dark:text-white">Active</Badge>
                           }
-                          <button onClick={() => pinFocus('Task', task)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                          <button onClick={() => pinFocus('Task', task)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
                             <Pin size={15} />
                           </button>
                         </div>
@@ -302,13 +302,13 @@ export default function MyWork() {
                         }
                         <div className="flex items-center gap-2 mt-0.5">
                           {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
-                          {inc.Description && <span className="text-xs text-gray-400 truncate max-w-[200px]">{inc.Description}</span>}
+                          {inc.Description && <span className="text-xs text-gray-400 truncate">{inc.Description}</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <Badge className={`hidden sm:inline-flex ${getSeverityColor(inc.Severity)}`}>{inc.Severity}</Badge>
                         <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
-                        <button onClick={() => pinFocus('Incident', inc)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                        <button onClick={() => pinFocus('Incident', inc)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
                           <Pin size={15} />
                         </button>
                       </div>
