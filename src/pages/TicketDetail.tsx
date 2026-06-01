@@ -7,6 +7,7 @@ import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Skeleton } from '../components/common/Skeleton'
 import { SearchSelect } from '../components/common/SearchSelect'
+import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus } from '../types/ticket'
@@ -243,6 +244,12 @@ export default function TicketDetail() {
             </div>
           </Card>
         )}
+
+        {/* Attachments */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-3">ไฟล์แนบ</h3>
+          <AttachmentSection listName="HD_Tickets" itemId={ticket.id} />
+        </Card>
 
         {/* Comments */}
         <Card>
