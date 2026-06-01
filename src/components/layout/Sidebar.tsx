@@ -5,6 +5,7 @@ import {
   ChevronRight, Bug, Settings, Notebook
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import type { AccentColor } from '../../store/useAppStore'
 import { useAuth } from '../../hooks/useAuth'
 import { cn } from '../../utils/colorUtils'
 
@@ -23,8 +24,16 @@ const navItems = [
   { to: '/debug',       icon: Bug,           label: 'Diagnostic',          roles: ['Boss','Admin'] },
 ]
 
+const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
+  { value: 'blue',   bg: '#0F4C81', label: 'Blue'   },
+  { value: 'teal',   bg: '#0d9488', label: 'Teal'   },
+  { value: 'violet', bg: '#7c3aed', label: 'Violet' },
+  { value: 'rose',   bg: '#e11d48', label: 'Rose'   },
+  { value: 'amber',  bg: '#d97706', label: 'Amber'  },
+]
+
 export function Sidebar() {
-  const { user, isDarkMode, toggleDarkMode } = useAppStore()
+  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor } = useAppStore()
   const { logout } = useAuth()
   const role = user?.role ?? 'EndUser'
 
@@ -61,10 +70,28 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-800 space-y-1">
+        {/* User info */}
         <div className="px-3 py-2">
           <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{user?.displayName}</p>
           <p className="text-xs text-gray-400 truncate">{user?.role}</p>
         </div>
+
+        {/* Accent color picker */}
+        <div className="px-3 py-2">
+          <p className="text-[10px] text-gray-400 mb-1.5">สีธีม</p>
+          <div className="flex items-center gap-1.5">
+            {ACCENT_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                title={opt.label}
+                onClick={() => setAccentColor(opt.value)}
+                className="w-5 h-5 rounded-full transition-transform hover:scale-110 focus:outline-none"
+                style={{ backgroundColor: opt.bg, boxShadow: accentColor === opt.value ? `0 0 0 2px white, 0 0 0 3px ${opt.bg}` : undefined }}
+              />
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={toggleDarkMode}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
