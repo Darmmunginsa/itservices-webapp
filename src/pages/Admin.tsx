@@ -83,7 +83,7 @@ export default function Admin() {
     if (!catForm.title.trim()) return
     setSavingCat(true)
     try {
-      await spCreate('HD_Categories', { Title: catForm.title, CategoryType: catForm.categoryType })
+      await spCreate('HD_Categories', { Title: catForm.title, SubCategory: catForm.categoryType })
       addToast('success', 'เพิ่มหมวดหมู่สำเร็จ')
       setCatForm({ ...EMPTY_CAT_FORM })
       setShowAddCat(false)

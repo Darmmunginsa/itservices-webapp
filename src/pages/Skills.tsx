@@ -68,7 +68,7 @@ export default function Skills() {
       Status: form.status,
       StartDate: form.startDate || undefined,
       EndDate: form.endDate || undefined,
-      CourseLink: form.courseLink || undefined,
+      CourseLink: form.courseLink ? { Url: form.courseLink, Description: form.courseLink } : undefined,
       Note: form.note || undefined,
     }
     try {

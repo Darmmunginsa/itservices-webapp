@@ -153,8 +153,7 @@ export default function ProjectDetail() {
         Progress: Number(projectForm.progress),
         StartDate: projectForm.startDate || undefined,
         EndDate: endDate,
-        Description: projectForm.description || undefined,
-        Comment: projectForm.comment || undefined,
+        Comment: projectForm.comment || projectForm.description || undefined,
       })
       addToast('success', 'อัปเดตโครงการแล้ว')
       setShowEditProject(false)
@@ -270,7 +269,6 @@ export default function ProjectDetail() {
           Title: noteText.slice(0, 100),
           ProjectID: Number(id),
           NoteText: noteText,
-          NoteBy: user.displayName,
         })
         addToast('success', 'บันทึก Note แล้ว')
       }
@@ -372,7 +370,7 @@ export default function ProjectDetail() {
     setSavingLink(true)
     const payload: Record<string, unknown> = {
       Title: linkForm.title || linkForm.url.slice(0, 100),
-      URL: linkForm.url,
+      URL: { Url: linkForm.url, Description: linkForm.title || linkForm.url },
       LinkType: linkForm.linkType,
       LinkNote: linkForm.linkNote || undefined,
     }
