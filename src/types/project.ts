@@ -63,7 +63,7 @@ export interface ProjectLink {
   id: number
   Title: string
   ProjectID: number          // Number field in SP — no quotes in filter
-  URL: string
+  URL: string | { Url: string; Description?: string }
   LinkType?: string          // e.g. 'GitHub', 'Docs', 'Drive', 'Other'
   LinkNote?: string
 }

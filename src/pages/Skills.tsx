@@ -16,6 +16,12 @@ const EMPTY_FORM = {
   startDate: '', endDate: '', courseLink: '', note: '',
 }
 
+function resolveUrl(raw: unknown): string {
+  if (!raw) return ''
+  if (typeof raw === 'object') return (raw as { Url?: string }).Url ?? ''
+  return raw as string
+}
+
 export default function Skills() {
   const { user, addToast } = useAppStore()
   const [skills, setSkills] = useState<Skill[]>([])
@@ -51,7 +57,7 @@ export default function Skills() {
       status: skill.Status,
       startDate: skill.StartDate ?? '',
       endDate: skill.EndDate ?? '',
-      courseLink: skill.CourseLink ?? '',
+      courseLink: resolveUrl(skill.CourseLink),
       note: skill.Note ?? '',
     })
     setShowModal(true)
@@ -163,8 +169,8 @@ export default function Skills() {
                       </p>
                     )}
                     {skill.Note && <p className="text-xs text-gray-500 italic mb-2">{skill.Note}</p>}
-                    {skill.CourseLink && (
-                      <a href={skill.CourseLink} target="_blank" rel="noopener noreferrer"
+                    {resolveUrl(skill.CourseLink) && (
+                      <a href={resolveUrl(skill.CourseLink)} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-primary-600 hover:underline flex items-center gap-1 mb-2">
                         <ExternalLink size={10} /> Course Link
                       </a>

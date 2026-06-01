@@ -43,7 +43,7 @@ export interface Skill {
   LearnerEmail: string
   StartDate?: string
   EndDate?: string
-  CourseLink?: string
+  CourseLink?: string | { Url: string; Description?: string }
   Note?: string
   Created: string
 }

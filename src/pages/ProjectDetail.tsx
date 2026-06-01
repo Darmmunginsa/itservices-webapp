@@ -30,7 +30,14 @@ const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
 const EMPTY_PROJECT_FORM = {
   title: '', company: '', projectGroup: 'Internal', status: 'Planning',
   startDate: '', endDate: '', daysCount: '', progress: '0',
-  description: '', comment: '',
+  comment: '',
+}
+
+/** Resolve a SharePoint Hyperlink field to a plain URL string */
+function resolveUrl(raw: unknown): string {
+  if (!raw) return ''
+  if (typeof raw === 'object') return (raw as { Url?: string }).Url ?? ''
+  return raw as string
 }
 
 export default function ProjectDetail() {
@@ -126,7 +133,6 @@ export default function ProjectDetail() {
       endDate: project.EndDate ?? '',
       daysCount: '',
       progress: String(project.Progress ?? 0),
-      description: project.Description ?? '',
       comment: project.Comment ?? '',
     })
     setShowEditProject(true)
@@ -153,7 +159,7 @@ export default function ProjectDetail() {
         Progress: Number(projectForm.progress),
         StartDate: projectForm.startDate || undefined,
         EndDate: endDate,
-        Comment: projectForm.comment || projectForm.description || undefined,
+        Comment: projectForm.comment || undefined,
       })
       addToast('success', 'อัปเดตโครงการแล้ว')
       setShowEditProject(false)
@@ -357,7 +363,7 @@ export default function ProjectDetail() {
     setEditingLink(link)
     setLinkForm({
       title: link.Title ?? '',
-      url: link.URL ?? '',
+      url: resolveUrl(link.URL),
       linkType: link.LinkType ?? 'Other',
       linkNote: link.LinkNote ?? '',
     })
@@ -476,14 +482,8 @@ export default function ProjectDetail() {
               {project.ProjectGroup}
             </span>
           )}
-          {project.Description && (
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{project.Description}</p>
-          )}
           {project.Comment && (
-            <div className="mt-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg px-3 py-2">
-              <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-1">💬 Comment</p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{project.Comment}</p>
-            </div>
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{project.Comment}</p>
           )}
 
           {/* Secure Note */}
@@ -688,9 +688,9 @@ export default function ProjectDetail() {
                     <div key={link.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <LinkIcon size={15} className="text-gray-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <a href={link.URL} target="_blank" rel="noopener noreferrer"
+                        <a href={resolveUrl(link.URL)} target="_blank" rel="noopener noreferrer"
                           className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1 truncate">
-                          {link.Title || link.URL}
+                          {link.Title || resolveUrl(link.URL)}
                           <ExternalLink size={11} className="flex-shrink-0" />
                         </a>
                         {link.LinkNote && <p className="text-xs text-gray-400 truncate">{link.LinkNote}</p>}
@@ -773,14 +773,9 @@ export default function ProjectDetail() {
           </div>
           {projectEndDate && <p className="text-xs text-primary-600">📅 End date: {projectEndDate}</p>}
           <div>
-            <label className={lc}>รายละเอียด</label>
-            <textarea value={projectForm.description} onChange={e => pf('description', e.target.value)}
-              className={ic} rows={3} placeholder="รายละเอียดโครงการ..." />
-          </div>
-          <div>
-            <label className={lc}>Comment / หมายเหตุ</label>
+            <label className={lc}>รายละเอียด / หมายเหตุ</label>
             <textarea value={projectForm.comment} onChange={e => pf('comment', e.target.value)}
-              className={ic} rows={2} placeholder="บันทึกเพิ่มเติม..." />
+              className={ic} rows={4} placeholder="รายละเอียดโครงการ, หมายเหตุ..." />
           </div>
           <Button type="submit" disabled={savingProject} className="w-full justify-center">
             {savingProject ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
