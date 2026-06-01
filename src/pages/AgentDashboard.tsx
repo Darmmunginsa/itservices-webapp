@@ -108,24 +108,24 @@ export default function AgentDashboard() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2">
-          <div className="relative">
+          <div className="relative w-full sm:w-48">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input placeholder="ค้นหา Ticket..." value={search} onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-48" />
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">สถานะทั้งหมด</option>
             {['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
           </select>
           <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">Priority ทั้งหมด</option>
             {['Low', 'Medium', 'High', 'Critical'].map(p => <option key={p}>{p}</option>)}
           </select>
           {['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
             <input placeholder="กรอง Agent Email..." value={assignedFilter} onChange={e => setAssignedFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-48" />
+              className="w-full sm:w-48 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
           )}
         </div>
 
@@ -134,7 +134,7 @@ export default function AgentDashboard() {
           <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 text-xs font-medium text-gray-500 flex items-center gap-3">
             <span className="w-5" />
             <span className="flex-1">Ticket</span>
-            <span className="w-20">Priority</span>
+            <span className="hidden sm:block w-20">Priority</span>
             <span className="w-24">Status</span>
             <span className="w-32 hidden md:block">Assigned</span>
             <span className="w-24 hidden md:block">Due Date</span>
@@ -154,7 +154,7 @@ export default function AgentDashboard() {
                         <Link to={`/tickets/${t.id}`} className="font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">{t.Title}</Link>
                         <span className="text-xs text-gray-400">{t.TicketNumber}</span>
                       </div>
-                      <span className="w-20 flex-shrink-0"><Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge></span>
+                      <span className="hidden sm:block w-20 flex-shrink-0"><Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge></span>
                       <span className="w-24 flex-shrink-0"><Badge className={getStatusColor(t.Status)}>{t.Status}</Badge></span>
                       <span className="w-32 hidden md:block text-xs text-gray-500 truncate flex-shrink-0">
                         {t.AssignedToName || t.AssignedEmail || <span className="text-orange-400 italic">ยังไม่ assign</span>}
