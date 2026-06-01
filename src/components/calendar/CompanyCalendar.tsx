@@ -4,7 +4,6 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOf
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
 import type { Holiday, LeaveRequest, AgentProfile } from '../../types/common'
-import type { Project } from '../../types/project'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
 import { Modal } from '../common/Modal'
@@ -12,11 +11,10 @@ import { Button } from '../common/Button'
 
 const WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
 
-type ModalMode = 'leave' | 'task' | 'holiday'
+type ModalMode = 'leave' | 'holiday'
 
 const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
 const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
-const EMPTY_TASK     = { title: '', taskNote: '', taskType: 'personal' as 'personal' | 'project', projectId: '', assignees: [] as string[] }
 
 export function CompanyCalendar() {
   const { user, addToast } = useAppStore()
@@ -24,7 +22,6 @@ export function CompanyCalendar() {
   const [holidays, setHolidays]   = useState<Holiday[]>([])
   const [leaves, setLeaves]       = useState<LeaveRequest[]>([])
   const [agents, setAgents]       = useState<AgentProfile[]>([])
-  const [projects, setProjects]   = useState<Project[]>([])
 
   // Modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
@@ -32,7 +29,6 @@ export function CompanyCalendar() {
   const [modalMode, setModalMode]     = useState<ModalMode>('leave')
   const [leaveForm, setLeaveForm]     = useState({ ...EMPTY_LEAVE })
   const [holidayForm, setHolidayForm] = useState({ ...EMPTY_HOLIDAY })
-  const [taskForm, setTaskForm]       = useState({ ...EMPTY_TASK })
   const [saving, setSaving]           = useState(false)
 
   const isAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
@@ -46,8 +42,6 @@ export function CompanyCalendar() {
     loadData()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
-    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
-      .then(setProjects).catch(() => {})
   }, [])
 
   const monthStart = startOfMonth(currentDate)
@@ -65,21 +59,11 @@ export function CompanyCalendar() {
   function prev() { const d = new Date(currentDate); d.setMonth(d.getMonth() - 1); setCurrentDate(d) }
   function next() { const d = new Date(currentDate); d.setMonth(d.getMonth() + 1); setCurrentDate(d) }
 
-  function toggleAssignee(email: string) {
-    setTaskForm(f => ({
-      ...f,
-      assignees: f.assignees.includes(email)
-        ? f.assignees.filter(e => e !== email)
-        : [...f.assignees, email],
-    }))
-  }
-
   function openModal(day: Date) {
     setSelectedDay(day)
     setModalMode('leave')
     setLeaveForm({ ...EMPTY_LEAVE })
     setHolidayForm({ ...EMPTY_HOLIDAY })
-    setTaskForm({ ...EMPTY_TASK })
     setShowModal(true)
   }
   function closeModal() { setShowModal(false); setSelectedDay(null) }
@@ -128,49 +112,6 @@ export function CompanyCalendar() {
     finally  { setSaving(false) }
   }
 
-  /* ── Task ── */
-  async function submitTask(e: React.FormEvent) {
-    e.preventDefault()
-    if (!user || !selectedDay || !taskForm.title.trim()) return
-    if (taskForm.taskType === 'project' && !taskForm.projectId) {
-      addToast('error', 'กรุณาเลือกโครงการ'); return
-    }
-    setSaving(true)
-    try {
-      const dateStr   = format(selectedDay, 'yyyy-MM-dd')
-      const projectID = taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0
-
-      // Build assignee list: if no one selected → assign to self
-      const assigneeList =
-        taskForm.taskType === 'project' && taskForm.assignees.length > 0
-          ? taskForm.assignees.map(email => {
-              const a = agents.find(ag => ag.EmailText === email)
-              return { name: a?.Title ?? email, email }
-            })
-          : [{ name: user.displayName, email: user.email }]
-
-      await Promise.all(
-        assigneeList.map(a =>
-          spCreate('PM_Tasks', {
-            Title:          taskForm.title,
-            DueDate:        dateStr,
-            ProjectID:      projectID,
-            AssignedTo:     a.name,
-            AssignedEmail:  a.email,
-            IsCompleted:    false,
-            IsAcknowledged: false,
-            TaskNote:       taskForm.taskNote || null,
-          })
-        )
-      )
-
-      const n = assigneeList.length
-      addToast('success', `เพิ่ม Task "${taskForm.title}"${n > 1 ? ` ให้ ${n} คน` : ''} สำเร็จ`)
-      closeModal()
-    } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
-    finally  { setSaving(false) }
-  }
-
   const approvers    = agents.filter(a => ['Boss', 'Admin', 'Supervisor'].includes(a.Role))
   const approverList = approvers.length > 0 ? approvers : agents
 
@@ -184,7 +125,6 @@ export function CompanyCalendar() {
   /* modal tabs visible to all users */
   const modalTabs: { key: ModalMode; label: string }[] = [
     { key: 'leave', label: '📅 ขอลา' },
-    { key: 'task',  label: '✅ เพิ่ม Task' },
     ...(isAdmin ? [{ key: 'holiday' as ModalMode, label: '🏖 วันหยุด' }] : []),
   ]
 
@@ -317,102 +257,6 @@ export function CompanyCalendar() {
             </div>
             <Button type="submit" disabled={saving} className="w-full justify-center">
               {saving ? 'กำลังส่ง...' : 'ส่งคำขอลา'}
-            </Button>
-          </form>
-        )}
-
-        {/* ── Task Form ── */}
-        {modalMode === 'task' && (
-          <form onSubmit={submitTask} className="space-y-2.5">
-            {/* Task type toggle */}
-            <div>
-              <label className={labelCx}>ประเภท Task</label>
-              <div className="flex gap-2">
-                {([
-                  { v: 'personal', label: '👤 ส่วนตัว' },
-                  { v: 'project',  label: '📁 ใน Project' },
-                ] as const).map(({ v, label }) => (
-                  <button key={v} type="button"
-                    onClick={() => setTaskForm(f => ({ ...f, taskType: v, projectId: '' }))}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      taskForm.taskType === v
-                        ? 'bg-primary-600 text-white border-primary-600'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Project selector + invite — only when 'project' mode */}
-            {taskForm.taskType === 'project' && (
-              <>
-                <div>
-                  <label className={labelCx}>โครงการ *</label>
-                  <select required value={taskForm.projectId}
-                    onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
-                    className={inputCx}>
-                    <option value="">-- เลือกโครงการ --</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={String(p.id)}>{p.Title}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Team invite checklist */}
-                <div>
-                  <label className={labelCx}>
-                    มอบหมายให้ทีม
-                    <span className="text-gray-400 font-normal ml-1">(ไม่เลือก = มอบให้ตัวเอง)</span>
-                  </label>
-                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden divide-y divide-gray-100 dark:divide-gray-700/60 max-h-36 overflow-y-auto">
-                    {agents.map(a => {
-                      const isSelf  = a.EmailText === user?.email
-                      const checked = taskForm.assignees.includes(a.EmailText)
-                      return (
-                        <label key={a.id}
-                          className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 select-none">
-                          <input
-                            type="checkbox"
-                            className="rounded accent-primary-600 flex-shrink-0"
-                            checked={checked}
-                            onChange={() => toggleAssignee(a.EmailText)}
-                          />
-                          <span className="text-sm flex-1 truncate">{a.Title}</span>
-                          {isSelf && (
-                            <span className="text-[10px] bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0">คุณ</span>
-                          )}
-                          <span className="text-[10px] text-gray-400 flex-shrink-0">{a.Role}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                  {taskForm.assignees.length > 0 && (
-                    <p className="text-xs text-primary-600 dark:text-primary-400 mt-1">
-                      จะสร้าง {taskForm.assignees.length} Task สำหรับ {taskForm.assignees.length} คน
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-
-            <div>
-              <label className={labelCx}>ชื่อ Task *</label>
-              <input required value={taskForm.title}
-                onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
-                className={inputCx} placeholder="ระบุชื่องาน..." />
-            </div>
-
-            <div>
-              <label className={labelCx}>หมายเหตุ</label>
-              <textarea value={taskForm.taskNote}
-                onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
-                className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)..." />
-            </div>
-
-            <Button type="submit" disabled={saving} className="w-full justify-center">
-              {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
             </Button>
           </form>
         )}

@@ -5,9 +5,15 @@ import {
   isToday, startOfDay, endOfDay,
 } from 'date-fns'
 import { th } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Video, MapPin } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Video, MapPin, Plus } from 'lucide-react'
 import { useOutlook } from '../../hooks/useOutlook'
+import { useAppStore } from '../../store/useAppStore'
+import { spGet, spCreate } from '../../services/sharepoint'
+import { Modal } from '../common/Modal'
+import { Button } from '../common/Button'
 import type { OutlookEvent } from '../../services/graph'
+import type { AgentProfile } from '../../types/common'
+import type { Project } from '../../types/project'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -186,10 +192,62 @@ function MonthView({
   )
 }
 
+const EMPTY_TASK = { title: '', projectId: '', assigneeEmail: '', date: '', time: '09:00', taskNote: '' }
+
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
+  const { user, addToast } = useAppStore()
   const [view, setView] = useState<ViewMode>('week')
   const [cursor, setCursor] = useState(new Date())
+
+  // Task modal
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
+  const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc').then(setAgents).catch(() => {})
+    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc').then(setProjects).catch(() => {})
+  }, [])
+
+  function openTaskModal(date?: Date) {
+    setTaskForm({
+      ...EMPTY_TASK,
+      date: format(date ?? new Date(), 'yyyy-MM-dd'),
+      assigneeEmail: user?.email ?? '',
+    })
+    setShowTaskModal(true)
+  }
+
+  async function submitTask(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user || !taskForm.title.trim()) return
+    setSaving(true)
+    try {
+      const dueDateTime = taskForm.time
+        ? `${taskForm.date}T${taskForm.time}:00`
+        : taskForm.date
+      const assignedAgent = agents.find(a => a.EmailText === taskForm.assigneeEmail)
+      await spCreate('PM_Tasks', {
+        Title:          taskForm.title,
+        DueDate:        dueDateTime,
+        ProjectID:      taskForm.projectId ? Number(taskForm.projectId) : 0,
+        AssignedTo:     assignedAgent?.Title ?? user.displayName,
+        AssignedEmail:  taskForm.assigneeEmail || user.email,
+        IsCompleted:    false,
+        IsAcknowledged: false,
+        TaskNote:       taskForm.taskNote || null,
+      })
+      addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
+      setShowTaskModal(false)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    finally { setSaving(false) }
+  }
+
+  const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
+  const labelCx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
   // Compute date range to fetch based on view
   const { rangeStart, rangeEnd, label } = useMemo(() => {
@@ -262,6 +320,12 @@ export function OutlookCalendar() {
       {/* Navigation */}
       <div className="flex items-center justify-between gap-2">
         <button
+          onClick={() => openTaskModal()}
+          className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+        >
+          <Plus size={12} /> Task
+        </button>
+        <button
           onClick={() => navigate(-1)}
           className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition-colors"
         >
@@ -300,6 +364,61 @@ export function OutlookCalendar() {
           )}
         </>
       )}
+
+      {/* Task Modal */}
+      <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ เพิ่ม Task" size="sm">
+        <form onSubmit={submitTask} className="space-y-3">
+          <div>
+            <label className={labelCx}>ชื่อ Task *</label>
+            <input required value={taskForm.title}
+              onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+              className={inputCx} placeholder="ระบุชื่องาน..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCx}>วันที่ *</label>
+              <input required type="date" value={taskForm.date}
+                onChange={e => setTaskForm(f => ({ ...f, date: e.target.value }))}
+                className={inputCx} />
+            </div>
+            <div>
+              <label className={labelCx}>เวลา</label>
+              <input type="time" value={taskForm.time}
+                onChange={e => setTaskForm(f => ({ ...f, time: e.target.value }))}
+                className={inputCx} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCx}>โครงการ</label>
+            <select value={taskForm.projectId}
+              onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+              className={inputCx}>
+              <option value="">-- ส่วนตัว (ไม่ระบุโครงการ) --</option>
+              {projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCx}>มอบหมายให้</label>
+            <select value={taskForm.assigneeEmail}
+              onChange={e => setTaskForm(f => ({ ...f, assigneeEmail: e.target.value }))}
+              className={inputCx}>
+              <option value={user?.email ?? ''}>{user?.displayName} (ฉัน)</option>
+              {agents.filter(a => a.EmailText !== user?.email).map(a => (
+                <option key={a.id} value={a.EmailText}>{a.Title}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCx}>หมายเหตุ</label>
+            <textarea value={taskForm.taskNote}
+              onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
+              className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม..." />
+          </div>
+          <Button type="submit" disabled={saving} className="w-full justify-center">
+            {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
+          </Button>
+        </form>
+      </Modal>
     </div>
   )
 }
