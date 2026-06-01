@@ -28,11 +28,11 @@ export interface Ticket {
 
 export interface TicketComment {
   id: number
-  TicketID: number          // Number field in SP — no quotes in filter
+  TicketID: number
   CommentText: string
-  CommentBy: string         // CommentByEmail does NOT exist in SP schema
   CommentType: 'Internal' | 'External'
   CommentDate: string
+  Author?: { Title: string }  // SP Created By — expanded via $expand=Author
 }
 
 export interface Contract {

@@ -34,7 +34,7 @@ export default function TicketDetail() {
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
       // TicketID is a Number field — no quotes in the filter
-      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, undefined, 'CommentDate asc'),
+      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,Author/Title', 'CommentDate asc', 500, 'Author'),
     ]).then(([t, c]) => {
       setTicket(t[0] ?? null)
       if (t[0]) {
@@ -57,13 +57,10 @@ export default function TicketDetail() {
     if (!user || !comment.trim()) return
     setSending(true)
     try {
-      // CommentByEmail does NOT exist in HD_TicketComments SP schema — omitted
-      // TicketID is a Number field — pass as number
       await spCreate('HD_TicketComments', {
         Title: comment.slice(0, 100),
         TicketID: Number(id),
         CommentText: comment,
-        CommentBy: user.displayName,
         CommentType: isAgent ? commentType : 'External',
         CommentDate: new Date().toISOString(),
       })
@@ -257,7 +254,7 @@ export default function TicketDetail() {
                 ? 'bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900'
                 : 'bg-gray-50 dark:bg-gray-800'}`}>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{c.CommentBy}</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{c.Author?.Title ?? '—'}</span>
                   <Badge className={c.CommentType === 'Internal' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}>{c.CommentType}</Badge>
                   <span className="ml-auto text-xs text-gray-400">{formatDateTime(c.CommentDate)}</span>
                 </div>

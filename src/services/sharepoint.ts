@@ -18,12 +18,13 @@ async function getHeaders(): Promise<HeadersInit> {
   }
 }
 
-export async function spGet<T>(listName: string, filter?: string, select?: string, orderby?: string, top = 500): Promise<T[]> {
+export async function spGet<T>(listName: string, filter?: string, select?: string, orderby?: string, top = 500, expand?: string): Promise<T[]> {
   const headers = await getHeaders()
   let url = `${SHAREPOINT_API}('${listName}')/items?$top=${top}`
   if (filter) url += `&$filter=${encodeURIComponent(filter)}`
   if (select) url += `&$select=${encodeURIComponent(select)}`
   if (orderby) url += `&$orderby=${encodeURIComponent(orderby)}`
+  if (expand) url += `&$expand=${encodeURIComponent(expand)}`
 
   const res = await fetch(url, { headers })
   if (!res.ok) {
