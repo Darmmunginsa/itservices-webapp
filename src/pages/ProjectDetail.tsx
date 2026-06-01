@@ -30,7 +30,7 @@ const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
 const EMPTY_PROJECT_FORM = {
   title: '', company: '', projectGroup: 'Internal', status: 'Planning',
   startDate: '', endDate: '', daysCount: '', progress: '0',
-  comment: '',
+  comment: '', secureNote: '',
 }
 
 /** Resolve a SharePoint Hyperlink field to a plain URL string */
@@ -134,6 +134,7 @@ export default function ProjectDetail() {
       daysCount: '',
       progress: String(project.Progress ?? 0),
       comment: project.Comment ?? '',
+      secureNote: canSeeSecure ? (project.SecureNote ?? '') : '',
     })
     setShowEditProject(true)
   }
@@ -160,6 +161,7 @@ export default function ProjectDetail() {
         StartDate: projectForm.startDate || undefined,
         EndDate: endDate,
         Comment: projectForm.comment || undefined,
+        ...(canSeeSecure ? { SecureNote: projectForm.secureNote || undefined } : {}),
       })
       addToast('success', 'อัปเดตโครงการแล้ว')
       setShowEditProject(false)
@@ -777,6 +779,15 @@ export default function ProjectDetail() {
             <textarea value={projectForm.comment} onChange={e => pf('comment', e.target.value)}
               className={ic} rows={4} placeholder="รายละเอียดโครงการ, หมายเหตุ..." />
           </div>
+          {canSeeSecure && (
+            <div className="border border-yellow-300 dark:border-yellow-700 rounded-lg p-3 bg-yellow-50 dark:bg-yellow-900/10">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-1.5">
+                <Lock size={12} /> Secure Note <span className="font-normal opacity-70">(เฉพาะผู้สร้าง/Admin)</span>
+              </label>
+              <textarea value={projectForm.secureNote} onChange={e => pf('secureNote', e.target.value)}
+                className={ic} rows={3} placeholder="ข้อมูลที่เป็นความลับ..." />
+            </div>
+          )}
           <Button type="submit" disabled={savingProject} className="w-full justify-center">
             {savingProject ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
           </Button>
