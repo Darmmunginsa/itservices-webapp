@@ -204,7 +204,7 @@ export default function Home() {
                     <button
                       onClick={() => unpinFocus(f.id)}
                       title="ลบออกจาก Focus"
-                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
                     >
                       <X size={13} />
                     </button>
