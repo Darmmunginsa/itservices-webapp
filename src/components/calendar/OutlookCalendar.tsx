@@ -282,8 +282,6 @@ export function OutlookCalendar() {
     .map(a => ({ value: a.EmailText ?? '', label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
     .filter(o => o.value)
 
-  const inputCx = cx
-  const labelCx = lx
 
   // Compute date range to fetch based on view
   const { rangeStart, rangeEnd, label } = useMemo(() => {
