@@ -26,7 +26,7 @@ function timeLabel(ev: OutlookEvent): string {
 function EventCard({ ev }: { ev: OutlookEvent }) {
   const url = joinUrl(ev)
   return (
-    <div className="rounded-lg border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 space-y-1">
+    <div className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 space-y-1 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug flex-1">
           {ev.subject}
@@ -83,7 +83,7 @@ function WeekView({ weekStart, events }: { weekStart: Date; events: OutlookEvent
         )
         return (
           <div key={day.toISOString()}>
-            <div className={`flex items-center gap-2 mb-1.5 pb-1 border-b border-gray-100 dark:border-gray-800 ${
+            <div className={`flex items-center gap-2 mb-1.5 pb-1 border-b border-gray-300 dark:border-gray-600 ${
               isToday(day) ? 'text-primary-600' : 'text-gray-500 dark:text-gray-400'
             }`}>
               <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
@@ -137,7 +137,7 @@ function MonthView({
         ))}
       </div>
       {/* Day cells */}
-      <div className="grid grid-cols-7 gap-px bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-100 dark:border-gray-800">
+      <div className="grid grid-cols-7 gap-px bg-gray-300 dark:bg-gray-600 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
         {days.map(day => {
           const dayEvents = events.filter(ev =>
             isSameDay(parseISO(ev.start.dateTime), day)
