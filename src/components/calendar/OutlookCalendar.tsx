@@ -8,13 +8,10 @@ import { th } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Video, MapPin, Plus } from 'lucide-react'
 import { useOutlook } from '../../hooks/useOutlook'
 import { useAppStore } from '../../store/useAppStore'
-import { spGet, spCreate } from '../../services/sharepoint'
+import { spCreate } from '../../services/sharepoint'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
-import { SearchSelect } from '../common/SearchSelect'
 import type { OutlookEvent } from '../../services/graph'
-import type { AgentProfile } from '../../types/common'
-import type { Project } from '../../types/project'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -193,10 +190,7 @@ function MonthView({
   )
 }
 
-const EMPTY_TASK = {
-  title: '', projectId: '', assignedEmail: '', assignedName: '',
-  dueDate: '', daysCount: '', taskNote: '',
-}
+const EMPTY_TASK = { title: '', date: '', startTime: '09:00', endTime: '10:00', note: '' }
 
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
@@ -207,36 +201,10 @@ export function OutlookCalendar() {
   // Task modal
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
-  const [trackItem, setTrackItem] = useState(false)
-  const [agents, setAgents] = useState<AgentProfile[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc').then(setAgents).catch(() => {})
-    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc').then(setProjects).catch(() => {})
-  }, [])
-
-  const set = (key: keyof typeof EMPTY_TASK, val: string) =>
-    setTaskForm(f => ({ ...f, [key]: val }))
-
-  const selectAgent = (email: string) => {
-    const agent = agents.find(a => a.EmailText === email)
-    setTaskForm(f => ({ ...f, assignedEmail: email, assignedName: agent?.Title ?? '' }))
-  }
-
-  const computedDueDate = () => {
-    if (taskForm.daysCount && Number(taskForm.daysCount) > 0) {
-      const d = new Date()
-      d.setDate(d.getDate() + Number(taskForm.daysCount))
-      return d.toISOString().slice(0, 10)
-    }
-    return taskForm.dueDate || undefined
-  }
-
   function openTaskModal(date?: Date) {
-    setTaskForm({ ...EMPTY_TASK, dueDate: format(date ?? new Date(), 'yyyy-MM-dd') })
-    setTrackItem(false)
+    setTaskForm({ ...EMPTY_TASK, date: format(date ?? new Date(), 'yyyy-MM-dd') })
     setShowTaskModal(true)
   }
 
@@ -245,29 +213,16 @@ export function OutlookCalendar() {
     if (!user) return
     setSaving(true)
     try {
-      const dueDate = computedDueDate()
-      const created = await spCreate('PM_Tasks', {
+      await spCreate('PM_Tasks', {
         Title:          taskForm.title,
-        ProjectID:      Number(taskForm.projectId),
+        ProjectID:      0,
         IsCompleted:    false,
         IsAcknowledged: false,
-        AssignedTo:     taskForm.assignedName || undefined,
-        AssignedEmail:  taskForm.assignedEmail || undefined,
-        DueDate:        dueDate ?? null,
-        TaskNote:       taskForm.taskNote || undefined,
+        AssignedTo:     user.displayName,
+        AssignedEmail:  user.email,
+        DueDate:        `${taskForm.date}T${taskForm.endTime}:00`,
+        TaskNote:       taskForm.note || undefined,
       })
-      if (trackItem && created?.id) {
-        await spCreate('HD_Tracking', {
-          Title:        taskForm.title,
-          TrackingType: 'Task',
-          RefID:        created.id,
-          TrackedBy:    user.displayName,
-          TrackedEmail: user.email,
-          AssignedTo:   taskForm.assignedName,
-          Status:       'Pending',
-          IsAcknowledged: false,
-        })
-      }
       addToast('success', 'สร้าง Task สำเร็จ')
       setShowTaskModal(false)
     } catch {
@@ -277,10 +232,6 @@ export function OutlookCalendar() {
 
   const cx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const lx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
-
-  const agentOptions = agents
-    .map(a => ({ value: a.EmailText ?? '', label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
-    .filter(o => o.value)
 
 
   // Compute date range to fetch based on view
@@ -400,69 +351,71 @@ export function OutlookCalendar() {
       )}
 
       {/* Task Modal */}
-      <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="📋 สร้าง Task" size="sm">
+      <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ Task ใหม่" size="sm">
         <form onSubmit={submitTask} className="space-y-4">
 
-          <div>
-            <label className={lx}>หัวข้อ *</label>
-            <input required value={taskForm.title} onChange={e => set('title', e.target.value)}
-              className={cx} placeholder="ระบุชื่องาน..." />
+          {/* Title */}
+          <input
+            required
+            autoFocus
+            value={taskForm.title}
+            onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+            className="w-full px-0 py-1 text-base font-medium border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 placeholder-gray-300 dark:placeholder-gray-600"
+            placeholder="เพิ่มชื่องาน"
+          />
+
+          {/* Date + Time */}
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+            <span className="text-base">🗓</span>
+            <input
+              required
+              type="date"
+              value={taskForm.date}
+              onChange={e => setTaskForm(f => ({ ...f, date: e.target.value }))}
+              className="border-0 bg-transparent focus:outline-none text-gray-700 dark:text-gray-300 cursor-pointer"
+            />
           </div>
 
-          <div>
-            <label className={lx}>โครงการ *</label>
-            <select required value={taskForm.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
-              <option value="">-- เลือกโครงการ --</option>
-              {projects.length > 0
-                ? projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Company ? ` (${p.Company})` : ''}</option>)
-                : <option disabled>กำลังโหลด...</option>}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={lx}>Assign ให้</label>
-              <SearchSelect
-                options={agentOptions}
-                value={taskForm.assignedEmail}
-                onChange={selectAgent}
-                placeholder="ค้นหาชื่อ Agent..."
-                emptyLabel="-- ยังไม่ Assign --"
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-base">🕐</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="time"
+                value={taskForm.startTime}
+                onChange={e => setTaskForm(f => ({ ...f, startTime: e.target.value }))}
+                className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+              />
+              <span className="text-gray-400">–</span>
+              <input
+                type="time"
+                value={taskForm.endTime}
+                onChange={e => setTaskForm(f => ({ ...f, endTime: e.target.value }))}
+                className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               />
             </div>
-            <div>
-              <label className={lx}>Due Date</label>
-              <input type="date" value={taskForm.dueDate} onChange={e => set('dueDate', e.target.value)}
-                disabled={!!taskForm.daysCount} className={cx} />
-            </div>
           </div>
 
-          <div>
-            <label className={lx}>กำหนดจากวันนี้ (วัน) — แทน Due Date</label>
-            <input type="number" min="1" placeholder="เช่น 7 = 1 สัปดาห์"
-              value={taskForm.daysCount} onChange={e => set('daysCount', e.target.value)} className={cx} />
-          </div>
-          {taskForm.daysCount && Number(taskForm.daysCount) > 0 && (
-            <p className="text-xs text-primary-600">📅 Due date: {computedDueDate()}</p>
-          )}
-
-          <div>
-            <label className={lx}>Task Note</label>
-            <textarea value={taskForm.taskNote} onChange={e => set('taskNote', e.target.value)}
-              className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
+          {/* Note */}
+          <div className="flex items-start gap-2">
+            <span className="text-base mt-1">📝</span>
+            <textarea
+              value={taskForm.note}
+              onChange={e => setTaskForm(f => ({ ...f, note: e.target.value }))}
+              rows={3}
+              placeholder="เพิ่มหมายเหตุ..."
+              className="flex-1 border-0 bg-transparent focus:outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 resize-none"
+            />
           </div>
 
-          <div className="pt-1">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
-                className="rounded accent-primary-600" />
-              <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Task นี้</span>
-            </label>
+          {/* Footer */}
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowTaskModal(false)}>
+              ยกเลิก
+            </Button>
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
           </div>
-
-          <Button type="submit" disabled={saving} className="w-full justify-center">
-            {saving ? 'กำลังส่ง...' : 'ส่งคำขอ'}
-          </Button>
         </form>
       </Modal>
     </div>
