@@ -21,10 +21,17 @@ function joinUrl(ev: OutlookEvent): string | null {
   return ev.onlineMeeting?.joinUrl ?? ev.onlineMeetingUrl ?? null
 }
 
+/** Parse Graph API dateTime string to local Date, accounting for timeZone field */
+function parseGraphDate(dateTime: string, timeZone: string): Date {
+  // If Graph returns UTC, append 'Z' so date-fns converts to local time correctly
+  const isUtc = timeZone === 'UTC' || timeZone === 'utc'
+  return parseISO(isUtc ? dateTime.replace(/Z?$/, 'Z') : dateTime)
+}
+
 function timeLabel(ev: OutlookEvent): string {
   if (ev.isAllDay) return 'ทั้งวัน'
-  const s = format(parseISO(ev.start.dateTime), 'HH:mm')
-  const e = format(parseISO(ev.end.dateTime), 'HH:mm')
+  const s = format(parseGraphDate(ev.start.dateTime, ev.start.timeZone), 'HH:mm')
+  const e = format(parseGraphDate(ev.end.dateTime, ev.end.timeZone), 'HH:mm')
   return `${s} – ${e}`
 }
 
@@ -63,7 +70,7 @@ function EventCard({ ev }: { ev: OutlookEvent }) {
 /** Day view: events for a single date */
 function DayView({ date, events }: { date: Date; events: OutlookEvent[] }) {
   const dayEvents = events.filter(ev =>
-    isSameDay(parseISO(ev.start.dateTime), date)
+    isSameDay(parseGraphDate(ev.start.dateTime, ev.start.timeZone), date)
   )
   return (
     <div className="space-y-2">
@@ -85,7 +92,7 @@ function WeekView({ weekStart, events }: { weekStart: Date; events: OutlookEvent
     <div className="space-y-3">
       {days.map(day => {
         const dayEvents = events.filter(ev =>
-          isSameDay(parseISO(ev.start.dateTime), day)
+          isSameDay(parseGraphDate(ev.start.dateTime, ev.start.timeZone), day)
         )
         return (
           <div key={day.toISOString()}>
@@ -146,7 +153,7 @@ function MonthView({
       <div className="grid grid-cols-7 gap-px bg-gray-300 dark:bg-gray-600 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
         {days.map(day => {
           const dayEvents = events.filter(ev =>
-            isSameDay(parseISO(ev.start.dateTime), day)
+            isSameDay(parseGraphDate(ev.start.dateTime, ev.start.timeZone), day)
           )
           const hasJoin = dayEvents.some(ev => joinUrl(ev))
           const inMonth = isSameMonth(day, monthStart)
