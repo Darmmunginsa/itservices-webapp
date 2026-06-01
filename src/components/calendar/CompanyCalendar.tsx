@@ -209,7 +209,7 @@ export function CompanyCalendar() {
         </div>
 
         {/* Grid */}
-        <table className="w-full text-xs">
+        <table className="w-full text-xs table-fixed">
           <thead>
             <tr>
               {WEEKDAYS.map(w => (
@@ -231,7 +231,7 @@ export function CompanyCalendar() {
                       key={day.toISOString()}
                       onClick={() => inMonth && openModal(day)}
                       className={cn(
-                        'p-1 align-top border border-gray-100 dark:border-gray-600 min-h-[52px] transition-colors',
+                        'p-1 align-top border border-gray-100 dark:border-gray-600 min-h-[52px] overflow-hidden transition-colors',
                         !inMonth && 'opacity-30',
                         inMonth && !holiday && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20',
                         inMonth && isRajakanHoliday && 'bg-red-50 dark:bg-red-900/30 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40',
