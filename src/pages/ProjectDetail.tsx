@@ -12,7 +12,7 @@ import { SearchSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, Task, Note, ProjectIncident, ProjectLink } from '../types/project'
-import type { AgentProfile } from '../types/common'
+import type { AgentProfile, FocusItem } from '../types/common'
 import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
 
@@ -49,6 +49,7 @@ export default function ProjectDetail() {
   const [incidents, setIncidents] = useState<ProjectIncident[]>([])
   const [links, setLinks] = useState<ProjectLink[]>([])
   const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links'>('tasks')
   const [showSecure, setShowSecure] = useState(false)
@@ -116,10 +117,13 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     load()
-    // Load ALL agents — no IsAvailable filter
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
-  }, [id])
+    if (user?.email) {
+      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
+        .then(setFocusItems).catch(() => {})
+    }
+  }, [id, user?.email])
 
   // ── Project Edit ────────────────────────────────────────────────────────────
   function openEditProject() {
@@ -424,9 +428,17 @@ export default function ProjectDetail() {
           ? ((item as Task).IsCompleted ? 'Completed' : 'Active')
           : (item as ProjectIncident).Status,
       })
+      setFocusItems(prev => [...prev, {
+        id: Date.now(), Title: item.Title, RefID: String(project.id),
+        FocusType: type as FocusItem['FocusType'],
+        FocusedBy: user.displayName, FocusedEmail: user.email,
+        Status: '', DueDate: undefined,
+      }])
       addToast('success', 'Pin ไว้ใน Focus Items แล้ว')
     } catch { addToast('error', 'ไม่สามารถ Pin ได้') }
   }
+
+  const pinnedSet = new Set(focusItems.map(f => `${f.FocusType}|${f.Title}`))
 
   const sortedTasks = [...tasks].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
@@ -552,7 +564,7 @@ export default function ProjectDetail() {
                               <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
                             )}
                             <button onClick={() => pinFocusItem('Task', task)} title="Pin ไว้ใน Focus"
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                              className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                               <Pin size={13} />
                             </button>
                             {isAgent && (
@@ -646,7 +658,7 @@ export default function ProjectDetail() {
                             {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
                             <div className="flex items-center gap-1 mt-0.5">
                               <button onClick={() => pinFocusItem('Incident', inc)} title="Pin ไว้ใน Focus"
-                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                                 <Pin size={13} />
                               </button>
                               <button onClick={() => toggleAttach('incident', inc.id)} title="ไฟล์แนบ"

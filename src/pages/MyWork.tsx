@@ -8,6 +8,7 @@ import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { Task, ProjectIncident } from '../types/project'
+import type { FocusItem } from '../types/common'
 import { getDueDateColor, getDueDateRowClass, getDueDateBadgeClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
 import { getPriorityColor, getStatusColor, getSeverityColor } from '../utils/colorUtils'
 
@@ -29,6 +30,7 @@ export default function MyWork() {
   const [showAllTickets, setShowAllTickets] = useState(false)
   const [showAllTasks, setShowAllTasks] = useState(false)
   const [showAllIncidents, setShowAllIncidents] = useState(false)
+  const [focusItems, setFocusItems] = useState<FocusItem[]>([])
 
   useEffect(() => {
     if (!user) return
@@ -42,10 +44,12 @@ export default function MyWork() {
       spGet<Ticket>('HD_Tickets', ticketFilter, undefined, 'Modified desc'),
       spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
       spGet<ProjectIncident>('PM_Incidents', `AssignedEmail eq '${user.email}'`, undefined, 'Created desc'),
-    ]).then(([t, tk, inc]) => {
+      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`),
+    ]).then(([t, tk, inc, focus]) => {
       setTickets(t)
       setTasks(tk)
       setIncidents(inc)
+      setFocusItems(focus)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
@@ -68,11 +72,19 @@ export default function MyWork() {
           ? (item as ProjectIncident).Status
           : (item as Ticket).Status ?? ((item as Task).IsCompleted ? 'Completed' : 'Active'),
       })
+      setFocusItems(prev => [...prev, {
+        id: Date.now(), Title: item.Title, RefID: refId,
+        FocusType: type as FocusItem['FocusType'],
+        FocusedBy: user.displayName, FocusedEmail: user.email,
+        Status: '', DueDate: undefined,
+      }])
       addToast('success', 'Pin ไว้ใน Focus Items แล้ว')
     } catch {
       addToast('error', 'ไม่สามารถ Pin ได้')
     }
   }
+
+  const pinnedSet = new Set(focusItems.map(f => `${f.FocusType}|${f.Title}`))
 
   async function acknowledgeTicket(ticket: Ticket) {
     if (!user) return
@@ -227,7 +239,7 @@ export default function MyWork() {
                               <CheckCircle2 size={15} />
                             </button>
                           )}
-                          <button onClick={() => pinFocus('Ticket', t)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                          <button onClick={() => pinFocus('Ticket', t)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Ticket|${t.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
                             <Pin size={15} />
                           </button>
                         </div>
@@ -270,7 +282,7 @@ export default function MyWork() {
                             ? <Badge className="bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Done</Badge>
                             : <Badge className="bg-blue-600 text-white dark:bg-blue-500 dark:text-white">Active</Badge>
                           }
-                          <button onClick={() => pinFocus('Task', task)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                          <button onClick={() => pinFocus('Task', task)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
                             <Pin size={15} />
                           </button>
                         </div>
@@ -308,7 +320,7 @@ export default function MyWork() {
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         <Badge className={`hidden sm:inline-flex ${getSeverityColor(inc.Severity)}`}>{inc.Severity}</Badge>
                         <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
-                        <button onClick={() => pinFocus('Incident', inc)} className="hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600" title="Pin">
+                        <button onClick={() => pinFocus('Incident', inc)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
                           <Pin size={15} />
                         </button>
                       </div>
