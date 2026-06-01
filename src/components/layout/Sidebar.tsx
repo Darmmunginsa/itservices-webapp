@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Moon, Sun, LogOut,
-  ChevronRight, Bug, Settings, Notebook
+  ChevronRight, Bug, Settings, Notebook, X
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import type { AccentColor } from '../../store/useAppStore'
@@ -32,15 +32,14 @@ const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
   { value: 'amber',  bg: '#d97706', label: 'Amber'  },
 ]
 
-export function Sidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor } = useAppStore()
   const { logout } = useAuth()
   const role = user?.role ?? 'EndUser'
-
   const visible = navItems.filter(n => n.roles.includes(role))
 
   return (
-    <aside className="fixed left-0 top-0 h-full w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-40 hidden md:flex">
+    <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
         <span className="text-primary-600 font-bold text-lg leading-tight">iT Services</span>
@@ -54,6 +53,7 @@ export function Sidebar() {
             key={item.to}
             to={item.to}
             end={item.to === '/'}
+            onClick={onNavigate}
             className={({ isActive }) => cn(
               'flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors group',
               isActive
@@ -70,7 +70,6 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-800 space-y-1">
-        {/* User info */}
         <div className="px-3 py-2">
           <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{user?.displayName}</p>
           <p className="text-xs text-gray-400 truncate">{user?.role}</p>
@@ -107,6 +106,40 @@ export function Sidebar() {
           ออกจากระบบ
         </button>
       </div>
-    </aside>
+    </div>
+  )
+}
+
+export function Sidebar() {
+  const { mobileNavOpen, setMobileNavOpen } = useAppStore()
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside className="fixed left-0 top-0 h-full w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-40 hidden md:flex flex-col">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile overlay */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="relative w-64 bg-white dark:bg-gray-900 h-full flex flex-col shadow-xl">
+            <button
+              onClick={() => setMobileNavOpen(false)}
+              className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+            >
+              <X size={18} />
+            </button>
+            <SidebarContent onNavigate={() => setMobileNavOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
   )
 }

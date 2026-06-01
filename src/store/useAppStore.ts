@@ -13,10 +13,12 @@ interface AppState {
   user: UserProfile | null
   isDarkMode: boolean
   accentColor: AccentColor
+  mobileNavOpen: boolean
   toasts: Toast[]
   setUser: (user: UserProfile | null) => void
   toggleDarkMode: () => void
   setAccentColor: (color: AccentColor) => void
+  setMobileNavOpen: (open: boolean) => void
   addToast: (type: Toast['type'], message: string) => void
   removeToast: (id: string) => void
 }
@@ -37,6 +39,7 @@ function loadAccent(email?: string): AccentColor {
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isDarkMode: localStorage.getItem('darkMode') === 'true',
+  mobileNavOpen: false,
   accentColor: (() => {
     const saved = (localStorage.getItem('accent') as AccentColor) ?? 'blue'
     applyAccent(saved)
@@ -61,6 +64,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     else document.documentElement.classList.remove('dark')
     return { isDarkMode: next }
   }),
+
+  setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
 
   setAccentColor: (color) => {
     const email = get().user?.email

@@ -3,16 +3,15 @@ import { useAppStore } from '../../store/useAppStore'
 
 interface HeaderProps {
   title: string
-  onMenuClick?: () => void
 }
 
-export function Header({ title, onMenuClick }: HeaderProps) {
-  const { user } = useAppStore()
+export function Header({ title }: HeaderProps) {
+  const { user, setMobileNavOpen } = useAppStore()
 
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-4 md:px-6 py-3 flex items-center gap-3">
       <button
-        onClick={onMenuClick}
+        onClick={() => setMobileNavOpen(true)}
         className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
       >
         <Menu size={20} />
