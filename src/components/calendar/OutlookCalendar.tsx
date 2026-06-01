@@ -11,6 +11,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { spGet, spCreate } from '../../services/sharepoint'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
+import { SearchSelect } from '../common/SearchSelect'
 import type { OutlookEvent } from '../../services/graph'
 import type { AgentProfile } from '../../types/common'
 import type { Project } from '../../types/project'
@@ -192,7 +193,7 @@ function MonthView({
   )
 }
 
-const EMPTY_TASK = { title: '', taskType: 'personal' as 'personal' | 'project', projectId: '', assigneeEmail: '', date: '', time: '09:00', taskNote: '' }
+const EMPTY_TASK = { title: '', projectId: '', assigneeEmail: '', assigneeName: '', date: '', time: '09:00', taskNote: '' }
 
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
@@ -216,7 +217,6 @@ export function OutlookCalendar() {
     setTaskForm({
       ...EMPTY_TASK,
       date: format(date ?? new Date(), 'yyyy-MM-dd'),
-      assigneeEmail: user?.email ?? '',
     })
     setShowTaskModal(true)
   }
@@ -224,24 +224,21 @@ export function OutlookCalendar() {
   async function submitTask(e: React.FormEvent) {
     e.preventDefault()
     if (!user) { addToast('error', 'ไม่พบข้อมูล User กรุณา refresh'); return }
-    if (taskForm.taskType === 'project' && !taskForm.projectId) { addToast('error', 'กรุณาเลือกโครงการ'); return }
     setSaving(true)
     try {
-      const assignedAgent = agents.find(a => a.EmailText === taskForm.assigneeEmail)
       const dueDate = taskForm.date
         ? `${taskForm.date}T${taskForm.time || '09:00'}:00`
         : null
-      const payload: Record<string, unknown> = {
+      await spCreate('PM_Tasks', {
         Title:          taskForm.title,
         DueDate:        dueDate,
-        ProjectID:      taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
-        AssignedTo:     assignedAgent?.Title ?? user.displayName,
+        ProjectID:      Number(taskForm.projectId),
+        AssignedTo:     taskForm.assigneeName || user.displayName,
         AssignedEmail:  taskForm.assigneeEmail || user.email,
         IsCompleted:    false,
         IsAcknowledged: false,
         TaskNote:       taskForm.taskNote || undefined,
-      }
-      await spCreate('PM_Tasks', payload)
+      })
       addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
       setShowTaskModal(false)
     } catch (err) {
@@ -372,24 +369,6 @@ export function OutlookCalendar() {
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ เพิ่ม Task" size="sm">
         <form onSubmit={submitTask} className="space-y-3">
 
-          {/* Task type toggle */}
-          <div className="flex gap-2">
-            {([
-              { v: 'personal', label: '👤 ส่วนตัว' },
-              { v: 'project',  label: '📁 ใน Project' },
-            ] as const).map(({ v, label }) => (
-              <button key={v} type="button"
-                onClick={() => setTaskForm(f => ({ ...f, taskType: v, projectId: '' }))}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                  taskForm.taskType === v
-                    ? 'bg-primary-600 text-white border-primary-600'
-                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                }`}>
-                {label}
-              </button>
-            ))}
-          </div>
-
           <div>
             <label className={labelCx}>ชื่อ Task *</label>
             <input required value={taskForm.title}
@@ -397,51 +376,52 @@ export function OutlookCalendar() {
               className={inputCx} placeholder="ระบุชื่องาน..." />
           </div>
 
+          <div>
+            <label className={labelCx}>โครงการ *</label>
+            <select required value={taskForm.projectId}
+              onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+              className={inputCx}>
+              <option value="">-- เลือกโครงการ --</option>
+              {projects.length > 0
+                ? projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Company ? ` (${p.Company})` : ''}</option>)
+                : <option disabled>กำลังโหลด...</option>}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCx}>วันที่ *</label>
+              <label className={labelCx}>Assign ให้</label>
+              <SearchSelect
+                options={agents.map(a => ({ value: a.EmailText ?? '', label: a.Title }))}
+                value={taskForm.assigneeEmail}
+                onChange={v => {
+                  const a = agents.find(ag => ag.EmailText === v)
+                  setTaskForm(f => ({ ...f, assigneeEmail: v, assigneeName: a?.Title ?? '' }))
+                }}
+                placeholder="ค้นหาชื่อ Agent..."
+                emptyLabel="-- ยังไม่ Assign --"
+              />
+            </div>
+            <div>
+              <label className={labelCx}>Due Date *</label>
               <input required type="date" value={taskForm.date}
                 onChange={e => setTaskForm(f => ({ ...f, date: e.target.value }))}
                 className={inputCx} />
             </div>
-            <div>
-              <label className={labelCx}>เวลา</label>
-              <input type="time" value={taskForm.time}
-                onChange={e => setTaskForm(f => ({ ...f, time: e.target.value }))}
-                className={inputCx} />
-            </div>
-          </div>
-
-          {/* Project — only when project mode */}
-          {taskForm.taskType === 'project' && (
-            <div>
-              <label className={labelCx}>โครงการ *</label>
-              <select required value={taskForm.projectId}
-                onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
-                className={inputCx}>
-                <option value="">-- เลือกโครงการ --</option>
-                {projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}</option>)}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className={labelCx}>มอบหมายให้</label>
-            <select value={taskForm.assigneeEmail}
-              onChange={e => setTaskForm(f => ({ ...f, assigneeEmail: e.target.value }))}
-              className={inputCx}>
-              <option value={user?.email ?? ''}>{user?.displayName} (ฉัน)</option>
-              {agents.filter(a => a.EmailText !== user?.email).map(a => (
-                <option key={a.id} value={a.EmailText}>{a.Title}</option>
-              ))}
-            </select>
           </div>
 
           <div>
-            <label className={labelCx}>หมายเหตุ</label>
+            <label className={labelCx}>เวลา</label>
+            <input type="time" value={taskForm.time}
+              onChange={e => setTaskForm(f => ({ ...f, time: e.target.value }))}
+              className={inputCx} />
+          </div>
+
+          <div>
+            <label className={labelCx}>Task Note</label>
             <textarea value={taskForm.taskNote}
               onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
-              className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม..." />
+              className={inputCx} rows={3} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
           </div>
 
           <Button type="submit" disabled={saving} className="w-full justify-center">
