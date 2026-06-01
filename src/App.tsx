@@ -100,28 +100,30 @@ function AppContent() {
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
 
-    // Warm up SP token and load user profile in parallel
-    Promise.all([
-      getSpToken().catch(() => null),
-      spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`).catch(() => [] as AgentProfile[]),
-    ]).then(([, profiles]) => {
-      const profileList = profiles as AgentProfile[]
-      const profile = profileList[0]
-      setUser({
-        id: account.localAccountId,
-        displayName: account.name ?? email,
-        email,
-        role: profile?.Role ?? 'EndUser',
-        agentProfile: profile,
+    // Acquire SP token eagerly — if consent is needed, popup appears automatically
+    // right after login (before user interacts with anything), eliminating the
+    // "second click" problem. Then load profile once SP token is ready.
+    getSpToken()
+      .catch(() => null)
+      .then(() => spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`).catch(() => [] as AgentProfile[]))
+      .then(profiles => {
+        const profile = (profiles as AgentProfile[])[0]
+        setUser({
+          id: account.localAccountId,
+          displayName: account.name ?? email,
+          email,
+          role: profile?.Role ?? 'EndUser',
+          agentProfile: profile,
+        })
       })
-    }).catch(() => {
-      setUser({
-        id: account.localAccountId,
-        displayName: account.name ?? email,
-        email,
-        role: 'EndUser',
+      .catch(() => {
+        setUser({
+          id: account.localAccountId,
+          displayName: account.name ?? email,
+          email,
+          role: 'EndUser',
+        })
       })
-    })
   }, [isAuthenticated, accounts, instance, setUser])
 
   if (!isAuthenticated) return <Login />
