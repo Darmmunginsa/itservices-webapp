@@ -24,10 +24,30 @@ export interface OutlookEvent {
   attendees?: Array<{ emailAddress: { address: string; name: string } }>
   isAllDay: boolean
   bodyPreview?: string
+  onlineMeeting?: { joinUrl: string }
+  onlineMeetingUrl?: string
+}
+
+const CALENDAR_SELECT = [
+  'id', 'subject', 'start', 'end', 'location', 'isAllDay',
+  'bodyPreview', 'onlineMeeting', 'onlineMeetingUrl',
+].join(',')
+
+export async function getCalendarRange(startDate: Date, endDate: Date): Promise<OutlookEvent[]> {
+  const headers = await graphHeaders()
+  const url = `${graphConfig.graphCalendarEndpoint}` +
+    `?startDateTime=${startDate.toISOString()}` +
+    `&endDateTime=${endDate.toISOString()}` +
+    `&$orderby=start/dateTime` +
+    `&$top=100` +
+    `&$select=${CALENDAR_SELECT}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`Graph calendar failed: ${res.status}`)
+  const data = await res.json()
+  return data.value as OutlookEvent[]
 }
 
 export async function getWeeklyCalendar(): Promise<OutlookEvent[]> {
-  const headers = await graphHeaders()
   const now = new Date()
   const start = new Date(now)
   start.setDate(now.getDate() - now.getDay() + 1)
@@ -35,12 +55,7 @@ export async function getWeeklyCalendar(): Promise<OutlookEvent[]> {
   const end = new Date(start)
   end.setDate(start.getDate() + 6)
   end.setHours(23, 59, 59, 999)
-
-  const url = `${graphConfig.graphCalendarEndpoint}?startDateTime=${start.toISOString()}&endDateTime=${end.toISOString()}&$orderby=start/dateTime&$top=50`
-  const res = await fetch(url, { headers })
-  if (!res.ok) throw new Error(`Graph calendar failed: ${res.status}`)
-  const data = await res.json()
-  return data.value as OutlookEvent[]
+  return getCalendarRange(start, end)
 }
 
 export async function createCalendarEvent(event: {
