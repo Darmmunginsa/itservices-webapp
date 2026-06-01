@@ -145,7 +145,7 @@ export default function Skills() {
             : filtered.length === 0
               ? <div className="col-span-3 text-center py-12 text-gray-400 text-sm">ไม่มี Skill</div>
               : filtered.map(skill => (
-                  <div key={skill.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-primary-300 dark:hover:border-primary-700 transition-all">
+                  <div key={skill.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-primary-300 dark:hover:border-primary-700 transition-all overflow-hidden">
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex-1">{skill.Title}</h3>
                       <div className="flex gap-1">
@@ -168,7 +168,7 @@ export default function Skills() {
                         {skill.StartDate ? formatDate(skill.StartDate) : '?'} → {skill.EndDate ? formatDate(skill.EndDate) : 'ต่อเนื่อง'}
                       </p>
                     )}
-                    {skill.Note && <p className="text-xs text-gray-500 italic mb-2">{skill.Note}</p>}
+                    {skill.Note && <p className="text-xs text-gray-500 italic mb-2 break-words line-clamp-3">{skill.Note}</p>}
                     {resolveUrl(skill.CourseLink) && (
                       <a href={resolveUrl(skill.CourseLink)} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-primary-600 hover:underline flex items-center gap-1 mb-2">

@@ -242,18 +242,18 @@ export default function Assets() {
         )}
 
         <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative">
+          <div className="relative w-full sm:w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input placeholder="ค้นหา Asset, IP, ผู้ใช้..." value={search} onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-56" />
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">หมวดหมู่ทั้งหมด</option>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">สถานะทั้งหมด</option>
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
@@ -261,13 +261,13 @@ export default function Assets() {
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 grid grid-cols-12 text-xs font-medium text-gray-500 gap-2">
-            <span className="col-span-3">ชื่อ / รหัส</span>
-            <span className="col-span-2">หมวดหมู่</span>
-            <span className="col-span-2">สถานะ</span>
-            <span className="col-span-2 hidden md:block">ผู้ใช้งาน</span>
-            <span className="col-span-2 hidden md:block">ประกัน / หมดอายุ</span>
-            <span className="col-span-1" />
+          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center text-xs font-medium text-gray-500 gap-2">
+            <span className="flex-1">ชื่อ / รหัส</span>
+            <span className="hidden sm:block w-24">หมวดหมู่</span>
+            <span className="w-20">สถานะ</span>
+            <span className="hidden md:block w-28">ผู้ใช้งาน</span>
+            <span className="hidden md:block w-28">ประกัน / หมดอายุ</span>
+            <span className="w-4" />
           </div>
           {loading
             ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
@@ -281,17 +281,17 @@ export default function Assets() {
                   return (
                     <div key={a.id} className={`border-b border-gray-100 dark:border-gray-800 last:border-0 ${expiring ? 'bg-orange-50/50 dark:bg-orange-900/5' : ''}`}>
                       <div
-                        className="grid grid-cols-12 gap-2 items-center p-3 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                        className="flex items-center gap-2 p-3 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                         onClick={() => setExpandedId(isExpanded ? null : a.id)}
                       >
-                        <div className="col-span-3">
+                        <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
                           {a.AssetCode && <p className="text-xs text-gray-400 font-mono">{a.AssetCode}</p>}
                         </div>
-                        <div className="col-span-2"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{a.Category}</Badge></div>
-                        <div className="col-span-2"><Badge className={getStatusColor(a.Status)}>{a.Status}</Badge></div>
-                        <div className="col-span-2 hidden md:block text-xs text-gray-500 truncate">{a.AssignedTo || '-'}</div>
-                        <div className="col-span-2 hidden md:block">
+                        <div className="hidden sm:block w-24 flex-shrink-0"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 truncate max-w-full">{a.Category}</Badge></div>
+                        <div className="w-20 flex-shrink-0"><Badge className={getStatusColor(a.Status)}>{a.Status}</Badge></div>
+                        <div className="hidden md:block w-28 flex-shrink-0 text-xs text-gray-500 truncate">{a.AssignedTo || '-'}</div>
+                        <div className="hidden md:block w-28 flex-shrink-0">
                           {warrantyDate ? (
                             <div className={`flex items-center gap-1 text-xs ${expiring ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
                               {expiring && <AlertTriangle size={11} />}
@@ -301,7 +301,7 @@ export default function Assets() {
                             </div>
                           ) : <span className="text-xs text-gray-400">-</span>}
                         </div>
-                        <div className="col-span-1 flex justify-end">
+                        <div className="w-4 flex-shrink-0 flex justify-end">
                           {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
                         </div>
                       </div>
