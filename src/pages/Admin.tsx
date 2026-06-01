@@ -1,23 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, CalendarDays, Tag } from 'lucide-react'
+import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
-import { spGet, spCreate, spDelete } from '../services/sharepoint'
+import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
-import type { Holiday } from '../types/common'
+import type { Holiday, Announcement } from '../types/common'
 import { formatDate } from '../utils/dateUtils'
 
 const HOLIDAY_TYPES: Holiday['HolidayType'][] = ['ราชการ', 'บริษัท']
-
 const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
 
-interface Category { id: number; Title: string; CategoryType?: string }
-const CATEGORY_TYPES = ['IT Hardware', 'IT Software', 'Network', 'Access & Account', 'Project', 'Skill', 'Other']
-const EMPTY_CAT_FORM = { title: '', categoryType: 'IT Hardware' }
+const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
 
 export default function Admin() {
   const { addToast } = useAppStore()
@@ -30,13 +27,13 @@ export default function Admin() {
   const [saving, setSaving] = useState(false)
   const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()))
 
-  // Categories state
-  const [categories, setCategories] = useState<Category[]>([])
-  const [catLoading, setCatLoading] = useState(true)
-  const [showAddCat, setShowAddCat] = useState(false)
-  const [catForm, setCatForm] = useState({ ...EMPTY_CAT_FORM })
-  const [savingCat, setSavingCat] = useState(false)
-  const [catTypeFilter, setCatTypeFilter] = useState('')
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [annLoading, setAnnLoading] = useState(true)
+  const [showAnnModal, setShowAnnModal] = useState(false)
+  const [editingAnn, setEditingAnn] = useState<Announcement | null>(null)
+  const [annForm, setAnnForm] = useState({ ...EMPTY_ANN })
+  const [savingAnn, setSavingAnn] = useState(false)
 
   function load() {
     setLoading(true)
@@ -44,13 +41,13 @@ export default function Admin() {
       .then(setHolidays).catch(() => {}).finally(() => setLoading(false))
   }
 
-  function loadCats() {
-    setCatLoading(true)
-    spGet<Category>('HD_Categories', undefined, undefined, 'Title asc', 200)
-      .then(setCategories).catch(() => {}).finally(() => setCatLoading(false))
+  function loadAnn() {
+    setAnnLoading(true)
+    spGet<Announcement>('HD_Announcements', undefined, undefined, 'SortOrder asc', 200)
+      .then(setAnnouncements).catch(() => {}).finally(() => setAnnLoading(false))
   }
 
-  useEffect(() => { load(); loadCats() }, [])
+  useEffect(() => { load(); loadAnn() }, [])
 
   async function addHoliday(e: React.FormEvent) {
     e.preventDefault()
@@ -78,25 +75,54 @@ export default function Admin() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
-  async function addCategory(e: React.FormEvent) {
-    e.preventDefault()
-    if (!catForm.title.trim()) return
-    setSavingCat(true)
-    try {
-      await spCreate('HD_Categories', { Title: catForm.title, SubCategory: catForm.categoryType })
-      addToast('success', 'เพิ่มหมวดหมู่สำเร็จ')
-      setCatForm({ ...EMPTY_CAT_FORM })
-      setShowAddCat(false)
-      loadCats()
-    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingCat(false) }
+  function openNewAnn() {
+    setEditingAnn(null)
+    setAnnForm({ ...EMPTY_ANN })
+    setShowAnnModal(true)
   }
 
-  async function deleteCategory(id: number, title: string) {
+  function openEditAnn(ann: Announcement) {
+    setEditingAnn(ann)
+    setAnnForm({ title: ann.Title, message: ann.Message, isActive: ann.IsActive, sortOrder: ann.SortOrder })
+    setShowAnnModal(true)
+  }
+
+  async function saveAnn(e: React.FormEvent) {
+    e.preventDefault()
+    if (!annForm.title.trim() || !annForm.message.trim()) return
+    setSavingAnn(true)
+    const payload = {
+      Title: annForm.title,
+      Message: annForm.message,
+      IsActive: annForm.isActive,
+      SortOrder: Number(annForm.sortOrder),
+    }
+    try {
+      if (editingAnn) {
+        await spUpdate('HD_Announcements', editingAnn.id, payload)
+        addToast('success', 'บันทึกสำเร็จ')
+      } else {
+        await spCreate('HD_Announcements', payload)
+        addToast('success', 'เพิ่มประกาศสำเร็จ')
+      }
+      setShowAnnModal(false)
+      loadAnn()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingAnn(false) }
+  }
+
+  async function toggleAnn(ann: Announcement) {
+    try {
+      await spUpdate('HD_Announcements', ann.id, { IsActive: !ann.IsActive })
+      setAnnouncements(prev => prev.map(a => a.id === ann.id ? { ...a, IsActive: !a.IsActive } : a))
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
+  async function deleteAnn(id: number, title: string) {
     if (!window.confirm(`ลบ "${title}"?`)) return
     try {
-      await spDelete('HD_Categories', id)
-      setCategories(prev => prev.filter(c => c.id !== id))
-      addToast('success', 'ลบหมวดหมู่แล้ว')
+      await spDelete('HD_Announcements', id)
+      setAnnouncements(prev => prev.filter(a => a.id !== id))
+      addToast('success', 'ลบประกาศแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
@@ -104,9 +130,6 @@ export default function Admin() {
   const filtered = yearFilter
     ? holidays.filter(h => h.HolidayDate?.startsWith(yearFilter))
     : holidays
-  const filteredCats = catTypeFilter
-    ? categories.filter(c => c.CategoryType === catTypeFilter)
-    : categories
 
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
@@ -115,6 +138,54 @@ export default function Admin() {
     <div>
       <Header title="Admin — จัดการข้อมูล" />
       <div className="p-4 md:p-6 space-y-6 max-w-3xl">
+
+        {/* Announcements Management */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Megaphone size={18} className="text-primary-600" />
+            <h2 className="text-sm font-semibold">ข้อความวิ่ง (HD_Announcements)</h2>
+            <div className="ml-auto">
+              <Button size="sm" onClick={openNewAnn}><Plus size={14} /> เพิ่มประกาศ</Button>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {annLoading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
+              : announcements.length === 0
+                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มีประกาศ</p>
+                : announcements.map(ann => (
+                    <div key={ann.id} className="flex items-start gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{ann.Title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{ann.Message}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-xs text-gray-400 mr-1">#{ann.SortOrder}</span>
+                        <Badge className={ann.IsActive
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'}>
+                          {ann.IsActive ? 'แสดง' : 'ซ่อน'}
+                        </Badge>
+                        <button onClick={() => toggleAnn(ann)}
+                          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
+                          {ann.IsActive ? <ToggleRight size={16} className="text-primary-600" /> : <ToggleLeft size={16} />}
+                        </button>
+                        <button onClick={() => openEditAnn(ann)}
+                          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => deleteAnn(ann.id, ann.Title)}
+                          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+            }
+          </div>
+          <p className="text-xs text-gray-400 mt-2">{announcements.length} ประกาศ</p>
+        </Card>
 
         {/* Holiday Management */}
         <Card>
@@ -159,47 +230,6 @@ export default function Admin() {
           </div>
           <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
         </Card>
-
-        {/* Categories Management */}
-        <Card>
-          <div className="flex items-center gap-3 mb-4">
-            <Tag size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">หมวดหมู่ (HD_Categories)</h2>
-            <div className="ml-auto flex items-center gap-2">
-              <select value={catTypeFilter} onChange={e => setCatTypeFilter(e.target.value)}
-                className="px-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                <option value="">ทุกประเภท</option>
-                {CATEGORY_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
-              <Button size="sm" onClick={() => setShowAddCat(true)}><Plus size={14} /> เพิ่มหมวดหมู่</Button>
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            {catLoading
-              ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-              : filteredCats.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มีหมวดหมู่</p>
-                : filteredCats.map(c => (
-                    <div key={c.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.Title}</p>
-                      </div>
-                      {c.CategoryType && (
-                        <Badge className="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
-                          {c.CategoryType}
-                        </Badge>
-                      )}
-                      <button onClick={() => deleteCategory(c.id, c.Title)}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))
-            }
-          </div>
-          <p className="text-xs text-gray-400 mt-2">{filteredCats.length} หมวดหมู่</p>
-        </Card>
       </div>
 
       {/* Add Holiday Modal */}
@@ -236,24 +266,48 @@ export default function Admin() {
         </form>
       </Modal>
 
-      {/* Add Category Modal */}
-      <Modal open={showAddCat} onClose={() => setShowAddCat(false)} title="เพิ่มหมวดหมู่" size="sm">
-        <form onSubmit={addCategory} className="space-y-4">
+      {/* Add/Edit Announcement Modal */}
+      <Modal open={showAnnModal} onClose={() => setShowAnnModal(false)}
+        title={editingAnn ? 'แก้ไขประกาศ' : 'เพิ่มประกาศ'} size="sm">
+        <form onSubmit={saveAnn} className="space-y-4">
           <div>
-            <label className={labelClass}>ชื่อหมวดหมู่ *</label>
-            <input required value={catForm.title} onChange={e => setCatForm(f => ({ ...f, title: e.target.value }))}
-              className={inputClass} placeholder="เช่น IT Hardware, Network..." />
+            <label className={labelClass}>ชื่อประกาศ *</label>
+            <input required value={annForm.title}
+              onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
+              className={inputClass} placeholder="เช่น ประกาศปิดระบบ..." />
           </div>
           <div>
-            <label className={labelClass}>ประเภท</label>
-            <select value={catForm.categoryType}
-              onChange={e => setCatForm(f => ({ ...f, categoryType: e.target.value }))}
-              className={inputClass}>
-              {CATEGORY_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
+            <label className={labelClass}>ข้อความวิ่ง *</label>
+            <textarea required rows={3} value={annForm.message}
+              onChange={e => setAnnForm(f => ({ ...f, message: e.target.value }))}
+              className={inputClass} placeholder="ข้อความที่จะแสดงบนแถบวิ่ง..." />
           </div>
-          <Button type="submit" disabled={savingCat} className="w-full justify-center">
-            {savingCat ? 'กำลังบันทึก...' : 'เพิ่มหมวดหมู่'}
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className={labelClass}>ลำดับ (SortOrder)</label>
+              <input type="number" min={0} value={annForm.sortOrder}
+                onChange={e => setAnnForm(f => ({ ...f, sortOrder: Number(e.target.value) }))}
+                className={inputClass} />
+            </div>
+            <div className="flex-1">
+              <label className={labelClass}>สถานะ</label>
+              <div className="flex gap-2 mt-1">
+                {[true, false].map(v => (
+                  <button key={String(v)} type="button"
+                    onClick={() => setAnnForm(f => ({ ...f, isActive: v }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      annForm.isActive === v
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                    }`}>
+                    {v ? 'แสดง' : 'ซ่อน'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Button type="submit" disabled={savingAnn} className="w-full justify-center">
+            {savingAnn ? 'กำลังบันทึก...' : editingAnn ? 'บันทึก' : 'เพิ่มประกาศ'}
           </Button>
         </form>
       </Modal>
