@@ -61,21 +61,20 @@ function AppContent() {
     const email = account.username
     const spReq = { ...sharepointRequest, account, redirectUri: REDIRECT_URI }
 
-    // SP token getter — tries silent first, then popup if interaction required
+    // SP token getter — silent only; redirect fallback triggers page navigation
     const getSpToken = async (): Promise<string> => {
       try {
         const result = await instance.acquireTokenSilent(spReq)
         return result.accessToken
       } catch (e) {
         if (e instanceof InteractionRequiredAuthError) {
-          const result = await instance.acquireTokenPopup(spReq)
-          return result.accessToken
+          await instance.acquireTokenRedirect(spReq)
         }
         throw e
       }
     }
 
-    // Graph token getter
+    // Graph token getter — silent only
     const getGraphToken = async (): Promise<string> => {
       try {
         const result = await instance.acquireTokenSilent({
@@ -86,12 +85,11 @@ function AppContent() {
         return result.accessToken
       } catch (e) {
         if (e instanceof InteractionRequiredAuthError) {
-          const result = await instance.acquireTokenPopup({
+          await instance.acquireTokenRedirect({
             scopes: ['User.Read', 'Calendars.ReadWrite'],
             account,
             redirectUri: REDIRECT_URI,
           })
-          return result.accessToken
         }
         throw e
       }
