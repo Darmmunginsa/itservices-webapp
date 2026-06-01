@@ -231,7 +231,7 @@ export function OutlookCalendar() {
       const dueDate = taskForm.date
         ? `${taskForm.date}T${taskForm.time || '09:00'}:00`
         : null
-      const payload = {
+      const payload: Record<string, unknown> = {
         Title:          taskForm.title,
         DueDate:        dueDate,
         ProjectID:      taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
@@ -241,16 +241,10 @@ export function OutlookCalendar() {
         IsAcknowledged: false,
         TaskNote:       taskForm.taskNote || undefined,
       }
-      console.log('[Task] calling spCreate with', payload)
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('spCreate timeout after 15s')), 15000)
-      )
-      await Promise.race([spCreate('PM_Tasks', payload), timeout])
-      console.log('[Task] spCreate succeeded')
+      await spCreate('PM_Tasks', payload)
       addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
       setShowTaskModal(false)
     } catch (err) {
-      console.error('[Task] error:', err)
       addToast('error', err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
     } finally { setSaving(false) }
   }
