@@ -8,11 +8,12 @@ import { th } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Video, MapPin, Plus } from 'lucide-react'
 import { useOutlook } from '../../hooks/useOutlook'
 import { useAppStore } from '../../store/useAppStore'
-import { spCreate } from '../../services/sharepoint'
+import { spGet, spCreate } from '../../services/sharepoint'
 import { createCalendarEvent } from '../../services/graph'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
 import type { OutlookEvent } from '../../services/graph'
+import type { Project } from '../../types/project'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -191,7 +192,11 @@ function MonthView({
   )
 }
 
-const EMPTY_TASK = { title: '', date: '', startTime: '09:00', endTime: '10:00', note: '' }
+const EMPTY_TASK = {
+  title: '', date: '', startTime: '09:00', endTime: '10:00', note: '',
+  taskType: 'personal' as 'personal' | 'project',
+  projectId: '',
+}
 
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
@@ -202,7 +207,13 @@ export function OutlookCalendar() {
   // Task modal
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
+  const [projects, setProjects] = useState<Project[]>([])
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
+      .then(setProjects).catch(() => {})
+  }, [])
 
   function openTaskModal(date?: Date) {
     setTaskForm({ ...EMPTY_TASK, date: format(date ?? new Date(), 'yyyy-MM-dd') })
@@ -212,11 +223,15 @@ export function OutlookCalendar() {
   async function submitTask(e: React.FormEvent) {
     e.preventDefault()
     if (!user) return
+    if (taskForm.taskType === 'project' && !taskForm.projectId) {
+      addToast('error', 'กรุณาเลือกโครงการ')
+      return
+    }
     setSaving(true)
     try {
       await spCreate('PM_Tasks', {
         Title:          taskForm.title,
-        ProjectID:      0,
+        ProjectID:      taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
         IsCompleted:    false,
         IsAcknowledged: false,
         AssignedTo:     user.displayName,
@@ -360,6 +375,41 @@ export function OutlookCalendar() {
       {/* Task Modal */}
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ Task ใหม่" size="sm">
         <form onSubmit={submitTask} className="space-y-4">
+
+          {/* Personal / Project toggle */}
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            {(['personal', 'project'] as const).map(t => (
+              <button key={t} type="button"
+                onClick={() => setTaskForm(f => ({ ...f, taskType: t, projectId: '' }))}
+                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  taskForm.taskType === t
+                    ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500'
+                }`}>
+                {t === 'personal' ? '👤 ส่วนตัว' : '📁 ใน Project'}
+              </button>
+            ))}
+          </div>
+
+          {/* Project dropdown */}
+          {taskForm.taskType === 'project' && (
+            <div className="flex items-center gap-2">
+              <span className="text-base">📁</span>
+              <select
+                required
+                value={taskForm.projectId}
+                onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+                className="flex-1 border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 text-sm text-gray-700 dark:text-gray-300 py-1"
+              >
+                <option value="">-- เลือกโครงการ --</option>
+                {projects.map(p => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.Title}{p.Company ? ` (${p.Company})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Title */}
           <input
