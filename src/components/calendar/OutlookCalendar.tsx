@@ -229,9 +229,6 @@ export function OutlookCalendar() {
     if (taskForm.taskType === 'project' && !taskForm.projectId) { addToast('error', 'กรุณาเลือกโครงการ'); return }
     setSaving(true)
     try {
-      const dueDateTime = taskForm.time
-        ? `${taskForm.date}T${taskForm.time}:00`
-        : taskForm.date
       const assignedAgent = agents.find(a => a.EmailText === taskForm.assigneeEmail)
       const projectID = taskForm.taskType === 'project' && taskForm.projectId
         ? Number(taskForm.projectId) : 0
