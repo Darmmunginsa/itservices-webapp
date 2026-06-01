@@ -1,13 +1,19 @@
 import { useMsal } from '@azure/msal-react'
 import { useCallback } from 'react'
-import { loginRequest, REDIRECT_URI } from '../config/msal'
+import { loginRequest, sharepointRequest, REDIRECT_URI } from '../config/msal'
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 
 export function useAuth() {
   const { instance, accounts } = useMsal()
 
   const login = useCallback(async () => {
-    const req = { ...loginRequest, redirectUri: REDIRECT_URI }
+    // extraScopesToConsent pre-grants SharePoint access during the initial login
+    // so acquireTokenSilent for SP succeeds immediately after — no second popup needed
+    const req = {
+      ...loginRequest,
+      redirectUri: REDIRECT_URI,
+      extraScopesToConsent: sharepointRequest.scopes,
+    }
     try {
       await instance.loginPopup(req)
     } catch (e: unknown) {

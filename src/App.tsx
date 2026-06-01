@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Calendar } from 'lucide-react'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { PublicClientApplication, EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
-import { msalConfig, sharepointRequest, REDIRECT_URI } from './config/msal'
+import { EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
+import { msalInstance, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter } from './services/graph'
@@ -33,21 +33,14 @@ import Admin from './pages/Admin'
 import Tools from './pages/Tools'
 import './index.css'
 
-const msalInstance = new PublicClientApplication(msalConfig)
-
-// Handle redirect response (fallback จาก loginRedirect)
-msalInstance.initialize().then(() => {
-  msalInstance.handleRedirectPromise().catch(() => {})
-
-  // Set active account หลัง redirect กลับมา
-  msalInstance.addEventCallback((event) => {
-    if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
-      const payload = event.payload as { account?: unknown }
-      if (payload.account) {
-        msalInstance.setActiveAccount(payload.account as never)
-      }
+// Set active account after redirect — runs once at startup
+msalInstance.addEventCallback((event) => {
+  if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
+    const payload = event.payload as { account?: unknown }
+    if (payload.account) {
+      msalInstance.setActiveAccount(payload.account as never)
     }
-  })
+  }
 })
 
 function AppContent() {
@@ -64,58 +57,71 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || !accounts[0]) return
 
-    // Token for SharePoint REST API — ขอแยกต่างหากจาก Graph
-    const getSpToken = async () => {
-      const req = { ...sharepointRequest, account: accounts[0], redirectUri: REDIRECT_URI }
+    const account = accounts[0]
+    const email = account.username
+    const spReq = { ...sharepointRequest, account, redirectUri: REDIRECT_URI }
+
+    // SP token getter — tries silent first, then popup if interaction required
+    const getSpToken = async (): Promise<string> => {
       try {
-        const result = await instance.acquireTokenSilent(req)
+        const result = await instance.acquireTokenSilent(spReq)
         return result.accessToken
       } catch (e) {
         if (e instanceof InteractionRequiredAuthError) {
-          // ครั้งแรกต้อง consent SharePoint — ขึ้น popup
-          const result = await instance.acquireTokenPopup(req)
+          const result = await instance.acquireTokenPopup(spReq)
           return result.accessToken
         }
         throw e
       }
     }
 
-    // Token for Microsoft Graph (User.Read, Calendars.ReadWrite)
-    const getGraphToken = async () => {
-      const result = await instance.acquireTokenSilent({
-        scopes: ['User.Read', 'Calendars.ReadWrite'],
-        account: accounts[0],
-        redirectUri: REDIRECT_URI,
-      })
-      return result.accessToken
+    // Graph token getter
+    const getGraphToken = async (): Promise<string> => {
+      try {
+        const result = await instance.acquireTokenSilent({
+          scopes: ['User.Read', 'Calendars.ReadWrite'],
+          account,
+          redirectUri: REDIRECT_URI,
+        })
+        return result.accessToken
+      } catch (e) {
+        if (e instanceof InteractionRequiredAuthError) {
+          const result = await instance.acquireTokenPopup({
+            scopes: ['User.Read', 'Calendars.ReadWrite'],
+            account,
+            redirectUri: REDIRECT_URI,
+          })
+          return result.accessToken
+        }
+        throw e
+      }
     }
 
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
 
-    const account = accounts[0]
-    const email = account.username
-
-    spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`)
-      .then(profiles => {
-        const profile = profiles[0]
-        const userProfile: UserProfile = {
-          id: account.localAccountId,
-          displayName: account.name ?? email,
-          email,
-          role: profile?.Role ?? 'EndUser',
-          agentProfile: profile,
-        }
-        setUser(userProfile)
+    // Warm up SP token and load user profile in parallel
+    Promise.all([
+      getSpToken().catch(() => null),
+      spGet<AgentProfile>('HD_AgentProfiles', `EmailText eq '${email}'`).catch(() => [] as AgentProfile[]),
+    ]).then(([, profiles]) => {
+      const profileList = profiles as AgentProfile[]
+      const profile = profileList[0]
+      setUser({
+        id: account.localAccountId,
+        displayName: account.name ?? email,
+        email,
+        role: profile?.Role ?? 'EndUser',
+        agentProfile: profile,
       })
-      .catch(() => {
-        setUser({
-          id: account.localAccountId,
-          displayName: account.name ?? email,
-          email,
-          role: 'EndUser',
-        })
+    }).catch(() => {
+      setUser({
+        id: account.localAccountId,
+        displayName: account.name ?? email,
+        email,
+        role: 'EndUser',
       })
+    })
   }, [isAuthenticated, accounts, instance, setUser])
 
   if (!isAuthenticated) return <Login />

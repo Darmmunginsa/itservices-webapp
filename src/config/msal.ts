@@ -1,3 +1,4 @@
+import { PublicClientApplication } from '@azure/msal-browser'
 import type { Configuration, PopupRequest } from '@azure/msal-browser'
 
 const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || '0bab07cf-65e6-487c-89af-c917fc1a5a13'
@@ -39,6 +40,9 @@ export const loginRequest: PopupRequest = {
 export const sharepointRequest = {
   scopes: [`${SP_HOST}/.default`],
 }
+
+// Singleton MSAL instance — exported so main.tsx can await initialize() before mounting
+export const msalInstance = new PublicClientApplication(msalConfig)
 
 export const graphConfig = {
   graphMeEndpoint: 'https://graph.microsoft.com/v1.0/me',
