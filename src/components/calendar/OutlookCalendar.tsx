@@ -236,16 +236,20 @@ export function OutlookCalendar() {
     }
     setSaving(true)
     try {
-      await spCreate('PM_Tasks', {
-        Title:          taskForm.title,
-        ProjectID:      taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
-        IsCompleted:    false,
-        IsAcknowledged: false,
-        AssignedTo:     user.displayName,
-        AssignedEmail:  user.email,
-        DueDate:        `${taskForm.date}T${taskForm.endTime}:00`,
-        TaskNote:       taskForm.note || undefined,
-      })
+      if (taskForm.taskType === 'project') {
+        // Project task → save to SharePoint PM_Tasks
+        await spCreate('PM_Tasks', {
+          Title:          taskForm.title,
+          ProjectID:      Number(taskForm.projectId),
+          IsCompleted:    false,
+          IsAcknowledged: false,
+          AssignedTo:     user.displayName,
+          AssignedEmail:  user.email,
+          DueDate:        `${taskForm.date}T${taskForm.endTime}:00`,
+          TaskNote:       taskForm.note || undefined,
+        })
+      }
+      // Always create Outlook Calendar event
       await createCalendarEvent({
         subject:         taskForm.title,
         start:           `${taskForm.date}T${taskForm.startTime}:00`,
@@ -254,7 +258,7 @@ export function OutlookCalendar() {
         attendees:       [],
         isOnlineMeeting: false,
       })
-      addToast('success', 'สร้าง Task และเพิ่มใน Calendar แล้ว')
+      addToast('success', taskForm.taskType === 'project' ? 'สร้าง Task และเพิ่มใน Calendar แล้ว' : 'เพิ่มนัดหมายใน Calendar แล้ว')
       setShowTaskModal(false)
     } catch {
       addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่')
