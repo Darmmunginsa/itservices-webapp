@@ -130,7 +130,7 @@ export default function Tools() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <Header />
+      <Header title="Tools & Notes" />
       <div className="md:ml-56 p-4 md:p-6">
 
         {/* Title */}
