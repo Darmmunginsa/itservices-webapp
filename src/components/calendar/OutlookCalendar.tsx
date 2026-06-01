@@ -221,35 +221,30 @@ export function OutlookCalendar() {
     setShowTaskModal(true)
   }
 
-  async function submitTask() {
-    console.log('submitTask called', { user, taskForm })
+  async function submitTask(e: React.FormEvent) {
+    e.preventDefault()
     if (!user) { addToast('error', 'ไม่พบข้อมูล User กรุณา refresh'); return }
-    if (!taskForm.title.trim()) { addToast('error', 'กรุณาระบุชื่อ Task'); return }
-    if (!taskForm.date) { addToast('error', 'กรุณาเลือกวันที่'); return }
     if (taskForm.taskType === 'project' && !taskForm.projectId) { addToast('error', 'กรุณาเลือกโครงการ'); return }
     setSaving(true)
     try {
       const assignedAgent = agents.find(a => a.EmailText === taskForm.assigneeEmail)
-      const projectID = taskForm.taskType === 'project' && taskForm.projectId
-        ? Number(taskForm.projectId) : 0
-      const payload = {
+      const dueDate = taskForm.date
+        ? `${taskForm.date}T${taskForm.time || '09:00'}:00`
+        : null
+      await spCreate('PM_Tasks', {
         Title:          taskForm.title,
-        DueDate:        taskForm.date,   // date only — no time, same as CompanyCalendar
-        ProjectID:      projectID,
+        DueDate:        dueDate,
+        ProjectID:      taskForm.taskType === 'project' ? Number(taskForm.projectId) : 0,
         AssignedTo:     assignedAgent?.Title ?? user.displayName,
         AssignedEmail:  taskForm.assigneeEmail || user.email,
         IsCompleted:    false,
         IsAcknowledged: false,
-        TaskNote:       taskForm.taskNote || null,
-      }
-      console.log('payload →', payload)
-      await spCreate('PM_Tasks', payload)
+        TaskNote:       taskForm.taskNote || undefined,
+      })
       addToast('success', `เพิ่ม Task "${taskForm.title}" สำเร็จ`)
       setShowTaskModal(false)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      addToast('error', msg)
-      console.error('submitTask error:', err)
+      addToast('error', err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
     } finally { setSaving(false) }
   }
 
@@ -374,7 +369,7 @@ export function OutlookCalendar() {
 
       {/* Task Modal */}
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ เพิ่ม Task" size="sm">
-        <div className="space-y-3">
+        <form onSubmit={submitTask} className="space-y-3">
 
           {/* Task type toggle */}
           <div className="flex gap-2">
@@ -448,10 +443,10 @@ export function OutlookCalendar() {
               className={inputCx} rows={2} placeholder="รายละเอียดเพิ่มเติม..." />
           </div>
 
-          <Button onClick={submitTask} disabled={saving} className="w-full justify-center">
+          <Button type="submit" disabled={saving} className="w-full justify-center">
             {saving ? 'กำลังบันทึก...' : 'เพิ่ม Task'}
           </Button>
-        </div>
+        </form>
       </Modal>
     </div>
   )
