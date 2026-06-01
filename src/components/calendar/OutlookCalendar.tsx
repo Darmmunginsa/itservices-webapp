@@ -210,11 +210,10 @@ export function OutlookCalendar() {
 
   async function submitTask(e: React.FormEvent) {
     e.preventDefault()
-    console.log('[Task] submit fired, user=', user?.displayName, 'form=', taskForm)
-    if (!user) { console.warn('[Task] no user'); return }
+    if (!user) return
     setSaving(true)
     try {
-      const payload = {
+      await spCreate('PM_Tasks', {
         Title:          taskForm.title,
         ProjectID:      0,
         IsCompleted:    false,
@@ -223,14 +222,10 @@ export function OutlookCalendar() {
         AssignedEmail:  user.email,
         DueDate:        `${taskForm.date}T${taskForm.endTime}:00`,
         TaskNote:       taskForm.note || undefined,
-      }
-      console.log('[Task] calling spCreate', payload)
-      await spCreate('PM_Tasks', payload)
-      console.log('[Task] spCreate OK')
+      })
       addToast('success', 'สร้าง Task สำเร็จ')
       setShowTaskModal(false)
-    } catch (err) {
-      console.error('[Task] error', err)
+    } catch {
       addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่')
     } finally { setSaving(false) }
   }
