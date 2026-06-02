@@ -12,9 +12,13 @@ export const SHAREPOINT_API = `${SHAREPOINT_URL}/_api/web/lists/getbytitle`
 const SP_HOST = SHAREPOINT_URL.replace(/\/sites\/.*/, '')
 
 // Hardcode redirect URIs — client_id & redirectUri are visible in SPA anyway
-const PROD_URI  = 'https://darmmunginsa.github.io/itservices-webapp/'
-const LOCAL_URI = 'http://localhost:5173'
-export const REDIRECT_URI = window.location.hostname === 'localhost' ? LOCAL_URI : PROD_URI
+const PROD_URI   = 'https://itservices.co.th/helpdesk/'
+const GITHUB_URI = 'https://darmmunginsa.github.io/itservices-webapp/'
+const LOCAL_URI  = 'http://localhost:5173'
+export const REDIRECT_URI =
+  window.location.hostname === 'localhost' ? LOCAL_URI :
+  window.location.hostname === 'darmmunginsa.github.io' ? GITHUB_URI :
+  PROD_URI
 
 export const msalConfig: Configuration = {
   auth: {
