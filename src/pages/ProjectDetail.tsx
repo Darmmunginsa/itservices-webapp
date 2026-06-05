@@ -537,7 +537,7 @@ export default function ProjectDetail() {
   function renderIncidentCard(inc: ProjectIncident) {
     const ak = `incident-${inc.id}`
     const isOpen = expandedKey === ak
-    const isResolved = inc.Status === 'Resolved' || inc.Status === 'Closed'
+    const isResolved = inc.Status === 'Resolved'
     return (
       <div key={inc.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${isResolved ? 'opacity-60' : ''}`}>
         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
