@@ -537,11 +537,12 @@ export default function ProjectDetail() {
   function renderIncidentCard(inc: ProjectIncident) {
     const ak = `incident-${inc.id}`
     const isOpen = expandedKey === ak
+    const isResolved = inc.Status === 'Resolved' || inc.Status === 'Closed'
     return (
-      <div key={inc.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+      <div key={inc.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${isResolved ? 'opacity-60' : ''}`}>
         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug">{inc.Title}</p>
+            <p className={`text-sm font-medium leading-snug ${isResolved ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>{inc.Title}</p>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
               {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
