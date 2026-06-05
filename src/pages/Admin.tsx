@@ -378,14 +378,28 @@ export default function Admin() {
           {quotaEmail && (
             <>
               {/* Add row */}
-              <form onSubmit={addQuota} className="flex gap-2 mb-3">
-                <select value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))} className={`flex-1 ${inputClass}`}>
-                  <option value="">-- ประเภท --</option>
-                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <input type="number" min={0} value={qForm.days} onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
-                  placeholder="วัน/ปี" className={`w-24 ${inputClass}`} />
-                <Button type="submit" size="sm" disabled={savingQuota}><Plus size={14} /> เพิ่ม</Button>
+              <form onSubmit={addQuota} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-3 space-y-2 border border-gray-200 dark:border-gray-700">
+                <p className="text-xs font-medium text-gray-500 mb-1">เพิ่มโควต้าประเภทใหม่</p>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className={labelClass}>ประเภทการลา</label>
+                    <select value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))} className={inputClass}>
+                      <option value="">-- เลือกประเภท --</option>
+                      {LEAVE_TYPES.filter(t => !quotas.some(q => q.Title === t)).map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-28">
+                    <label className={labelClass}>วันที่ใช้ได้/ปี</label>
+                    <input type="number" min={0} value={qForm.days}
+                      onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
+                      placeholder="0" className={inputClass} />
+                  </div>
+                </div>
+                <Button type="submit" size="sm" disabled={savingQuota} className="w-full justify-center">
+                  <Plus size={14} /> เพิ่มโควต้า
+                </Button>
               </form>
 
               <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
