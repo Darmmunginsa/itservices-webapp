@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -9,7 +9,7 @@ import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
-import type { Holiday, Announcement, AgentProfile } from '../types/common'
+import type { Holiday, Announcement, AgentProfile, LeaveQuota } from '../types/common'
 import { formatDate } from '../utils/dateUtils'
 
 const HOLIDAY_TYPES: Holiday['HolidayType'][] = ['ราชการ', 'บริษัท']
@@ -48,6 +48,46 @@ export default function Admin() {
       .then(setAnnouncements).catch(() => {}).finally(() => setAnnLoading(false))
   }
 
+  // Leave quota state
+  const [quotas, setQuotas] = useState<LeaveQuota[]>([])
+  const [quotaLoading, setQuotaLoading] = useState(true)
+  const [qForm, setQForm] = useState({ title: '', days: '' })
+  const [savingQuota, setSavingQuota] = useState(false)
+
+  function loadQuotas() {
+    setQuotaLoading(true)
+    spGet<LeaveQuota>('HD_LeaveQuota', undefined, 'Id,Title,Days', 'Title asc', 100)
+      .then(setQuotas).catch(() => {}).finally(() => setQuotaLoading(false))
+  }
+
+  async function addQuota(e: React.FormEvent) {
+    e.preventDefault()
+    if (!qForm.title.trim() || qForm.days === '') return
+    setSavingQuota(true)
+    try {
+      await spCreate('HD_LeaveQuota', { Title: qForm.title.trim(), Days: Number(qForm.days) })
+      setQForm({ title: '', days: '' })
+      addToast('success', 'เพิ่มโควต้าวันลาแล้ว')
+      loadQuotas()
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingQuota(false) }
+  }
+
+  async function updateQuotaDays(q: LeaveQuota, days: number) {
+    if (days === q.Days) return
+    setQuotas(prev => prev.map(x => x.id === q.id ? { ...x, Days: days } : x))
+    try { await spUpdate('HD_LeaveQuota', q.id, { Days: days }) }
+    catch { addToast('error', 'บันทึกไม่สำเร็จ'); loadQuotas() }
+  }
+
+  async function deleteQuota(id: number, title: string) {
+    if (!window.confirm(`ลบโควต้า "${title}"?`)) return
+    try {
+      await spDelete('HD_LeaveQuota', id)
+      setQuotas(prev => prev.filter(q => q.id !== id))
+      addToast('success', 'ลบแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
   // Home video (HD_Options Category=HomeVideo, single row)
   const [videoUrl, setVideoUrl] = useState('')
   const [videoRowId, setVideoRowId] = useState<number | null>(null)
@@ -71,7 +111,7 @@ export default function Admin() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingVideo(false) }
   }
 
-  useEffect(() => { load(); loadAnn(); loadVideo() }, [])
+  useEffect(() => { load(); loadAnn(); loadVideo(); loadQuotas() }, [])
 
   async function addHoliday(e: React.FormEvent) {
     e.preventDefault()
@@ -287,6 +327,46 @@ export default function Admin() {
             }
           </div>
           <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
+        </Card>
+
+        {/* Leave Quota Management */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Plane size={18} className="text-primary-600" />
+            <h2 className="text-sm font-semibold">โควต้าวันลา (HD_LeaveQuota)</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">กำหนดจำนวนวันลาที่พนักงานใช้ได้ต่อปีในแต่ละประเภท — ชื่อประเภทต้องตรงกับ "ประเภทการลา" ในฟอร์มขอลา</p>
+
+          {/* Add row */}
+          <form onSubmit={addQuota} className="flex gap-2 mb-3">
+            <input value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="ประเภท เช่น ลาพักร้อน" className={`flex-1 ${inputClass}`} />
+            <input type="number" min={0} value={qForm.days} onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
+              placeholder="วัน/ปี" className={`w-24 ${inputClass}`} />
+            <Button type="submit" size="sm" disabled={savingQuota}><Plus size={14} /> เพิ่ม</Button>
+          </form>
+
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {quotaLoading
+              ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
+              : quotas.length === 0
+                ? <p className="text-center text-sm text-gray-400 py-10">ยังไม่ได้กำหนดโควต้า</p>
+                : quotas.map(q => (
+                    <div key={q.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <span className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">{q.Title}</span>
+                      <input type="number" min={0} defaultValue={q.Days}
+                        onBlur={e => updateQuotaDays(q, Number(e.target.value))}
+                        className="w-20 px-2 py-1 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                      <span className="text-xs text-gray-400 w-10">วัน/ปี</span>
+                      <button onClick={() => deleteQuota(q.id, q.Title)}
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))
+            }
+          </div>
+          <p className="text-xs text-gray-400 mt-2">แก้จำนวนวันแล้วคลิกออกจากช่องเพื่อบันทึกอัตโนมัติ</p>
         </Card>
 
         {/* Home Video */}

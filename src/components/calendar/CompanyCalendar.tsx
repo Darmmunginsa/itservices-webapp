@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameDay, isToday, getDay } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
-import type { Holiday, LeaveRequest, AgentProfile } from '../../types/common'
+import type { Holiday, LeaveRequest, AgentProfile, LeaveQuota } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
 import { Modal } from '../common/Modal'
@@ -23,6 +23,9 @@ export function CompanyCalendar() {
   const [holidays, setHolidays]   = useState<Holiday[]>([])
   const [leaves, setLeaves]       = useState<LeaveRequest[]>([])
   const [agents, setAgents]       = useState<AgentProfile[]>([])
+  const [quotas, setQuotas]       = useState<LeaveQuota[]>([])
+  const [myLeaves, setMyLeaves]   = useState<LeaveRequest[]>([])
+  const [showBalance, setShowBalance] = useState(false)
 
   // Modal state
   const [selectedDay, setSelectedDay] = useState<Date | null>(null)
@@ -43,7 +46,26 @@ export function CompanyCalendar() {
     loadData()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
+    spGet<LeaveQuota>('HD_LeaveQuota', undefined, 'Id,Title,Days', 'Title asc', 100)
+      .then(setQuotas).catch(() => {})
   }, [])
+
+  // โหลดคำขอลาของตัวเอง (ทุกสถานะ) เพื่อคำนวณวันคงเหลือ
+  useEffect(() => {
+    if (!user?.email) return
+    spGet<LeaveRequest>('HD_LeaveRequests', `RequestedEmail eq '${user.email}'`,
+      'Id,LeaveType,LeaveDate,Status', undefined, 500)
+      .then(setMyLeaves).catch(() => {})
+  }, [user?.email])
+
+  // คำนวณวันลาคงเหลือปีปัจจุบัน แยกตามประเภท
+  const curYear = String(currentDate.getFullYear())
+  const balance = quotas.map(q => {
+    const rows = myLeaves.filter(l => l.LeaveType === q.Title && (l.LeaveDate ?? '').startsWith(curYear))
+    const used = rows.filter(l => l.Status === 'Approved').length
+    const pending = rows.filter(l => l.Status === 'Pending').length
+    return { type: q.Title, quota: q.Days, used, pending, remaining: q.Days - used - pending }
+  })
 
   const monthStart = startOfMonth(currentDate)
   const monthEnd   = endOfMonth(currentDate)
@@ -74,6 +96,8 @@ export function CompanyCalendar() {
     e.preventDefault()
     if (!user || !selectedDay) return
     if (!leaveForm.approverEmail) { addToast('error', 'กรุณาเลือกผู้อนุมัติ'); return }
+    const b = balance.find(x => x.type === leaveForm.leaveType)
+    if (b && b.remaining <= 0 && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วันแล้ว\nต้องการส่งคำขอต่อหรือไม่?`)) return
     setSaving(true)
     try {
       const approver  = agents.find(a => a.EmailText === leaveForm.approverEmail)
@@ -90,6 +114,8 @@ export function CompanyCalendar() {
         Note:           leaveForm.reason,
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
+      // refresh balance
+      if (user.email) spGet<LeaveRequest>('HD_LeaveRequests', `RequestedEmail eq '${user.email}'`, 'Id,LeaveType,LeaveDate,Status', undefined, 500).then(setMyLeaves).catch(() => {})
       closeModal()
     } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
     finally  { setSaving(false) }
@@ -234,7 +260,53 @@ export function CompanyCalendar() {
             <div>
               <label className={labelCx}>ประเภทการลา</label>
               <OptionSelect category="LeaveType" defaults={['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']} value={leaveForm.leaveType} onChange={v => setLeaveForm(f => ({ ...f, leaveType: v }))} className={inputCx} />
+              {(() => {
+                const b = balance.find(x => x.type === leaveForm.leaveType)
+                if (!b) return null
+                const color = b.remaining <= 0 ? 'text-red-600' : b.remaining <= 2 ? 'text-amber-600' : 'text-green-600'
+                return (
+                  <p className={`text-xs mt-1 font-medium ${color}`}>
+                    คงเหลือปี {curYear}: {b.remaining}/{b.quota} วัน
+                    {b.pending > 0 && <span className="text-gray-400 font-normal"> (รออนุมัติ {b.pending})</span>}
+                  </p>
+                )
+              })()}
             </div>
+
+            {/* Balance checker */}
+            {balance.length > 0 && (
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <button type="button" onClick={() => setShowBalance(s => !s)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <span>📊 ตรวจสอบวันลาคงเหลือ (ปี {curYear})</span>
+                  <span className="text-gray-400">{showBalance ? '▲' : '▼'}</span>
+                </button>
+                {showBalance && (
+                  <table className="w-full text-xs border-t border-gray-100 dark:border-gray-700">
+                    <thead>
+                      <tr className="text-gray-400 bg-gray-50 dark:bg-gray-800/50">
+                        <th className="text-left font-medium px-3 py-1.5">ประเภท</th>
+                        <th className="font-medium px-1 py-1.5">โควต้า</th>
+                        <th className="font-medium px-1 py-1.5">ใช้ไป</th>
+                        <th className="font-medium px-1 py-1.5">รอ</th>
+                        <th className="font-medium px-3 py-1.5">คงเหลือ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {balance.map(b => (
+                        <tr key={b.type} className="border-t border-gray-100 dark:border-gray-800">
+                          <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{b.type}</td>
+                          <td className="text-center py-1.5">{b.quota}</td>
+                          <td className="text-center py-1.5 text-gray-500">{b.used}</td>
+                          <td className="text-center py-1.5 text-amber-600">{b.pending || '-'}</td>
+                          <td className={`text-center px-3 py-1.5 font-semibold ${b.remaining <= 0 ? 'text-red-600' : 'text-green-600'}`}>{b.remaining}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
             <div>
               <label className={labelCx}>เหตุผล</label>
               <textarea value={leaveForm.reason}

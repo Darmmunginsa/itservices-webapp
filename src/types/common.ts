@@ -52,6 +52,12 @@ export interface LeaveRequest {
   Created: string
 }
 
+export interface LeaveQuota {
+  id: number
+  Title: string   // ชื่อประเภทการลา (ตรงกับ LeaveType) เช่น "ลาพักร้อน"
+  Days: number    // จำนวนวันที่ใช้ได้ต่อปี
+}
+
 export interface FocusItem {
   id: number
   Title: string
