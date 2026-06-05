@@ -1,85 +1,90 @@
 /**
- * Cloudflare Worker — SSL Certificate Checker Proxy (crt.sh based)
+ * Cloudflare Worker — SSL Certificate Checker Proxy
+ *
+ * แหล่งข้อมูล (Certificate Transparency logs):
+ *   1. Cert Spotter (SSLMate)  — เสถียร เป็นหลัก
+ *   2. crt.sh                  — fallback (flaky) retry 2 ครั้ง
  *
  * Deploy:
- *   1. https://dash.cloudflare.com → Workers & Pages → เปิด worker เดิม (crimson-sun-b5b8)
- *      หรือ Create Worker ใหม่
- *   2. วาง code นี้ทั้งหมด → Save & Deploy
- *   3. Worker URL ต้องตรงกับ VITE_SSL_WORKER_URL ใน .env
+ *   Cloudflare Dashboard → Workers & Pages → crimson-sun-b5b8 → Edit code
+ *   → วางทั้งไฟล์ → Save and Deploy
  *
- * Response shape (ตรงกับ frontend):
- *   { host, issuer, validTo, validFrom, daysRemaining, valid, source }
- *   หรือ { error } ถ้าหาไม่ได้
+ * Response (ตรงกับ frontend):
+ *   { host, issuer, validFrom, validTo, daysRemaining, valid, source }
+ *   หรือ { error }
  *
  * Usage: GET https://your-worker.workers.dev?domain=itservices.co.th
  */
 
 export default {
   async fetch(request) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: cors() })
-    }
+    if (request.method === 'OPTIONS') return new Response(null, { headers: cors() })
 
     const { searchParams } = new URL(request.url)
     let domain = searchParams.get('domain') ?? ''
     try { domain = new URL(domain.includes('://') ? domain : `https://${domain}`).hostname } catch { /**/ }
     if (!domain) return json({ error: 'domain is required' }, 400)
 
+    // 1) Cert Spotter (เสถียร)
     try {
-      // crt.sh flaky มาก — retry สูงสุด 3 ครั้ง (exclude=expired ทำให้ 502 จึงกรองเอง)
-      const url = `https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`
-      let list = null, lastErr = ''
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const res = await fetch(url, {
-            headers: { 'User-Agent': 'itservices-ssl-checker/2.0', 'Accept': 'application/json' },
-            cf: { cacheTtl: 300, cacheEverything: true },
-          })
-          if (!res.ok) { lastErr = `crt.sh ตอบกลับ ${res.status}`; continue }
-          const text = await res.text()
-          if (text.trimStart().startsWith('<')) { lastErr = 'crt.sh ส่ง HTML (ชั่วคราว)'; continue }
-          const parsed = JSON.parse(text)
-          if (Array.isArray(parsed)) { list = parsed; break }
-          lastErr = 'crt.sh คืนข้อมูลไม่ถูกต้อง'
-        } catch (e) { lastErr = String(e) }
+      const r = await fetch(
+        `https://api.certspotter.com/v1/issuances?domain=${encodeURIComponent(domain)}&include_subdomains=false&expand=issuer`,
+        { headers: { 'User-Agent': 'itservices-ssl-checker/3.0' }, cf: { cacheTtl: 300, cacheEverything: true } },
+      )
+      if (r.ok) {
+        const arr = await r.json()
+        if (Array.isArray(arr) && arr.length > 0) {
+          const best = arr.reduce((a, b) => (toDate(b.not_after) > toDate(a.not_after) ? b : a))
+          return result(domain, best.issuer?.name ?? best.issuer?.friendly_name ?? '-', best.not_before, best.not_after, 'certspotter')
+        }
+        // arr ว่าง = ไม่มีใน CT log → ลอง crt.sh ต่อ
       }
-      if (!list) return json({ error: `${lastErr} — crt.sh ไม่ตอบสนอง ลองกดตรวจใหม่อีกครั้ง` }, 502)
-      if (list.length === 0) {
-        return json({ error: `ไม่พบ Certificate ของ ${domain} ใน CT log (อาจอยู่หลัง WAF/ภายในองค์กร — กรุณากรอกวันหมดอายุเอง)` }, 404)
-      }
+    } catch { /* ลอง fallback */ }
 
-      const dl = domain.toLowerCase()
-      // match: ชื่อโดเมนตรง หรือ wildcard ครอบ
-      const matches = list.filter(e => {
-        const names = String(e.name_value ?? '').toLowerCase().split(/\s+/)
-        return names.some(n => n === dl || (n.startsWith('*.') && dl.endsWith(n.slice(1))))
-      })
-      const pool = matches.length ? matches : list
-
-      // เลือกใบที่หมดอายุช้าสุด = ใบล่าสุดที่ยัง valid
-      const best = pool.reduce((a, b) => (toDate(b.not_after) > toDate(a.not_after) ? b : a))
-
-      const validTo = isoZ(best.not_after)
-      const validFrom = isoZ(best.not_before)
-      const daysRemaining = Math.floor((toDate(best.not_after) - Date.now()) / 86400000)
-
-      return json({
-        host: domain,
-        issuer: best.issuer_name ?? '-',
-        validFrom,
-        validTo,
-        daysRemaining,
-        valid: daysRemaining >= 0,
-        source: 'crt.sh',
-      })
-    } catch (e) {
-      return json({ error: String(e) }, 500)
+    // 2) crt.sh (fallback, flaky → retry)
+    const url = `https://crt.sh/?q=${encodeURIComponent(domain)}&output=json`
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'itservices-ssl-checker/3.0', 'Accept': 'application/json' },
+          cf: { cacheTtl: 300, cacheEverything: true },
+        })
+        if (!res.ok) continue
+        const text = await res.text()
+        if (text.trimStart().startsWith('<')) continue
+        const list = JSON.parse(text)
+        if (Array.isArray(list) && list.length > 0) {
+          const dl = domain.toLowerCase()
+          const matches = list.filter(e => String(e.name_value ?? '').toLowerCase().split(/\s+/)
+            .some(n => n === dl || (n.startsWith('*.') && dl.endsWith(n.slice(1)))))
+          const pool = matches.length ? matches : list
+          const best = pool.reduce((a, b) => (toDate(b.not_after) > toDate(a.not_after) ? b : a))
+          return result(domain, best.issuer_name ?? '-', best.not_before, best.not_after, 'crt.sh')
+        }
+      } catch { /* retry */ }
     }
+
+    return json({
+      error: `ไม่พบ Certificate ของ ${domain} ใน CT log — อาจอยู่หลัง WAF/ภายในองค์กร หรือ CT service ขัดข้องชั่วคราว กรุณากรอกวันหมดอายุเอง`,
+    }, 404)
   },
 }
 
-function toDate(s) { return new Date(`${s}Z`).getTime() }
-function isoZ(s) { return s ? new Date(`${s}Z`).toISOString() : null }
+function result(host, issuer, notBefore, notAfter, source) {
+  const daysRemaining = Math.floor((toDate(notAfter) - Date.now()) / 86400000)
+  return json({
+    host,
+    issuer,
+    validFrom: isoZ(notBefore),
+    validTo: isoZ(notAfter),
+    daysRemaining,
+    valid: daysRemaining >= 0,
+    source,
+  })
+}
+
+function toDate(s) { return new Date(/[zZ]$/.test(s) ? s : `${s}Z`).getTime() }
+function isoZ(s) { return s ? new Date(/[zZ]$/.test(s) ? s : `${s}Z`).toISOString() : null }
 
 function cors() {
   return {
@@ -89,8 +94,5 @@ function cors() {
   }
 }
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...cors() },
-  })
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...cors() } })
 }
