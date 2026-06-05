@@ -19,6 +19,27 @@ export function formatDateTime(dateStr: string | undefined): string {
   }
 }
 
+// YouTube-style relative time: "เมื่อสักครู่", "5 นาทีที่แล้ว", "2 ชั่วโมงที่แล้ว", "3 วันที่แล้ว"
+export function timeAgo(dateStr: string | undefined): string {
+  if (!dateStr) return ''
+  try {
+    const d = parseISO(dateStr).getTime()
+    const sec = Math.floor((Date.now() - d) / 1000)
+    if (sec < 60) return 'เมื่อสักครู่'
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min} นาทีที่แล้ว`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr} ชั่วโมงที่แล้ว`
+    const day = Math.floor(hr / 24)
+    if (day < 30) return `${day} วันที่แล้ว`
+    const mo = Math.floor(day / 30)
+    if (mo < 12) return `${mo} เดือนที่แล้ว`
+    return `${Math.floor(mo / 12)} ปีที่แล้ว`
+  } catch {
+    return ''
+  }
+}
+
 export type DueDateColor = 'red' | 'orange' | 'yellow' | 'gray' | 'normal'
 
 export function getDueDateColor(dueDate: string | undefined, isCompleted = false): DueDateColor {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
+import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate } from '../services/sharepoint'
 import { createCalendarEvent } from '../services/graph'
@@ -367,9 +368,7 @@ export default function Submit() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lx}>Priority</label>
-                    <select value={form.priority} onChange={e => set('priority', e.target.value)} className={cx}>
-                      {['Low', 'Medium', 'High', 'Critical'].map(p => <option key={p}>{p}</option>)}
-                    </select>
+                    <OptionSelect category="TicketPriority" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.priority} onChange={v => set('priority', v)} className={cx} />
                   </div>
                   <div>
                     <label className={lx}>หมวดหมู่</label>
@@ -383,10 +382,7 @@ export default function Submit() {
 
                 <div>
                   <label className={lx}>แผนก (Department)</label>
-                  <select value={form.department} onChange={e => set('department', e.target.value)} className={cx}>
-                    <option value="">-- เลือกแผนก --</option>
-                    {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
-                  </select>
+                  <OptionSelect category="Department" defaults={[...DEPARTMENTS]} value={form.department} onChange={v => set('department', v)} className={cx} />
                 </div>
 
                 {isAgent && (
@@ -514,15 +510,11 @@ export default function Submit() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lx}>ความรุนแรง (Severity)</label>
-                    <select value={form.incidentSeverity} onChange={e => set('incidentSeverity', e.target.value)} className={cx}>
-                      {['Low', 'Medium', 'High', 'Critical'].map(s => <option key={s}>{s}</option>)}
-                    </select>
+                    <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.incidentSeverity} onChange={v => set('incidentSeverity', v)} className={cx} />
                   </div>
                   <div>
                     <label className={lx}>สถานะ</label>
-                    <select value={form.incidentStatus} onChange={e => set('incidentStatus', e.target.value)} className={cx}>
-                      {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
-                    </select>
+                    <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={form.incidentStatus} onChange={v => set('incidentStatus', v)} className={cx} />
                   </div>
                 </div>
 

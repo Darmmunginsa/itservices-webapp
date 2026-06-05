@@ -67,3 +67,13 @@ export interface ProjectLink {
   LinkType?: string          // e.g. 'GitHub', 'Docs', 'Drive', 'Other'
   LinkNote?: string
 }
+
+// Many-to-many link between Projects and IT_Assets
+export interface ProjectAsset {
+  id: number
+  Title: string
+  ProjectID: number
+  AssetID: number
+  AssetTitle?: string
+  AssetCode?: string
+}

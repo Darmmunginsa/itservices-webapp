@@ -55,8 +55,8 @@ export default function Skills() {
       title: skill.Title,
       level: skill.Level,
       status: skill.Status,
-      startDate: skill.StartDate ?? '',
-      endDate: skill.EndDate ?? '',
+      startDate: skill.StartDate ? skill.StartDate.slice(0, 10) : '',
+      endDate: skill.EndDate ? skill.EndDate.slice(0, 10) : '',
       courseLink: resolveUrl(skill.CourseLink),
       note: skill.Note ?? '',
     })

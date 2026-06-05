@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Send, UserCheck } from 'lucide-react'
+import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -8,12 +8,22 @@ import { Card } from '../components/common/Card'
 import { Skeleton } from '../components/common/Skeleton'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
-import { spGet, spCreate, spUpdate } from '../services/sharepoint'
+import { SmartText } from '../components/common/SmartText'
+import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { sendMail } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
-import type { Ticket, TicketComment, TicketStatus } from '../types/ticket'
+import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
-import { formatDateTime, formatDate } from '../utils/dateUtils'
+import { formatDate, timeAgo } from '../utils/dateUtils'
+
+// Deterministic avatar color from name (YouTube-style colored circles)
+const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
+function avatarColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
 
 export default function TicketDetail() {
   const { id } = useParams()
@@ -29,6 +39,12 @@ export default function TicketDetail() {
   const [resolutionNote, setResolutionNote] = useState('')
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
   const [reassigning, setReassigning] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(true)
+  const [likes, setLikes] = useState<Record<number, 1 | -1 | 0>>({})
+  const [manageOpen, setManageOpen] = useState(false)
+  const [members, setMembers] = useState<TicketMember[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
@@ -46,12 +62,61 @@ export default function TicketDetail() {
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
+  function loadMembers() {
+    if (!id) return
+    spGet<TicketMember>('HD_TicketMembers', `TicketID eq ${id}`)
+      .then(setMembers).catch(() => {})
+  }
+
   useEffect(() => {
     load()
-    // Load ALL agents — no IsAvailable filter to prevent empty dropdown
+    loadMembers()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
   }, [id])
+
+  async function inviteMember() {
+    if (!ticket || !inviteEmail || !user) return
+    const agent = agents.find(a => a.EmailText === inviteEmail)
+    if (!agent) return
+    // Prevent duplicates
+    if (members.some(m => m.AgentEmail === inviteEmail)) {
+      addToast('info', 'สมาชิกนี้อยู่ในทีมแล้ว'); return
+    }
+    setInviting(true)
+    try {
+      await spCreate('HD_TicketMembers', {
+        Title: agent.Title,
+        TicketID: ticket.id,
+        TicketTitle: ticket.Title,
+        TicketNumber: ticket.TicketNumber ?? '',
+        AgentEmail: inviteEmail,
+        AddedBy: user.displayName,
+      })
+      // Send email notification
+      try {
+        await sendMail(
+          inviteEmail,
+          `[iT Services] คุณถูก Invite เข้า Ticket: ${ticket.TicketNumber}`,
+          `<p>สวัสดีคุณ <strong>${agent.Title}</strong>,</p>
+           <p><strong>${user.displayName}</strong> ได้เชิญคุณเข้าร่วม Ticket:</p>
+           <p><strong>${ticket.TicketNumber} — ${ticket.Title}</strong></p>
+           <p>คุณสามารถดูรายละเอียดได้ที่ระบบ iT Services Helpdesk</p>`
+        )
+      } catch { /* email fail is non-critical */ }
+      setInviteEmail('')
+      loadMembers()
+      addToast('success', `เพิ่ม ${agent.Title} เข้าทีมแล้ว`)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setInviting(false) }
+  }
+
+  async function removeMember(member: TicketMember) {
+    try {
+      await spDelete('HD_TicketMembers', member.id)
+      setMembers(prev => prev.filter(m => m.id !== member.id))
+      addToast('success', `ลบ ${member.Title} ออกจากทีมแล้ว`)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
 
   async function sendComment(e: React.FormEvent) {
     e.preventDefault()
@@ -132,8 +197,8 @@ export default function TicketDetail() {
 
   return (
     <div>
-      <Header title={ticket.TicketNumber ?? 'Ticket'} />
-      <div className="p-4 md:p-6 space-y-5 max-w-4xl">
+      <Header title={ticket.TicketNumber ?? 'Ticket'} backTo="/my-work" backLabel="งานของฉัน" />
+      <div className="p-4 md:p-6 max-w-4xl space-y-5">
 
         {/* Main Info */}
         <Card>
@@ -170,7 +235,7 @@ export default function TicketDetail() {
           {ticket.Description && (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-3">
               <p className="text-xs text-gray-400 mb-1">รายละเอียด</p>
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{ticket.Description}</p>
+              <SmartText text={ticket.Description} className="text-sm text-gray-700 dark:text-gray-300" />
             </div>
           )}
 
@@ -183,10 +248,117 @@ export default function TicketDetail() {
           )}
         </Card>
 
+        {/* Comments */}
+        <Card>
+          <button onClick={() => setCommentsOpen(o => !o)} className="w-full flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Comments ({comments.length})</h3>
+            <ChevronDown size={16} className={`text-gray-400 transition-transform ${commentsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {commentsOpen && (
+            <div className="space-y-5 mb-6">
+              {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Comment</p>}
+              {comments.map(c => {
+                const author = c.Author?.Title ?? '—'
+                const handle = '@' + author.replace(/\s+/g, '')
+                const vote = likes[c.id] ?? 0
+                return (
+                  <div key={c.id} className="flex gap-3">
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                      style={{ backgroundColor: avatarColor(author) }} title={author}>
+                      {author.charAt(0).toUpperCase()}
+                    </div>
+                    {/* Body */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
+                        <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
+                        {c.CommentType === 'Internal' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">ภายใน</span>
+                        )}
+                      </div>
+                      <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+                      {/* Action row */}
+                      <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
+                        <button type="button" onClick={() => setLikes(p => ({ ...p, [c.id]: vote === 1 ? 0 : 1 }))}
+                          className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors ${vote === 1 ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                          <ThumbsUp size={14} fill={vote === 1 ? 'currentColor' : 'none'} />
+                          {vote === 1 && <span>1</span>}
+                        </button>
+                        <button type="button" onClick={() => setLikes(p => ({ ...p, [c.id]: vote === -1 ? 0 : -1 }))}
+                          className={`p-1 rounded-full transition-colors ${vote === -1 ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                          <ThumbsDown size={14} fill={vote === -1 ? 'currentColor' : 'none'} />
+                        </button>
+                        <button type="button"
+                          onClick={() => { setComment(`${handle} `); document.getElementById('comment-box')?.focus() }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                          <MessageSquare size={13} /> ตอบกลับ
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <form onSubmit={sendComment} className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+              style={{ backgroundColor: avatarColor(user?.displayName ?? 'U') }} title={user?.displayName}>
+              {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              {isAgent && (
+                <div className="flex gap-2">
+                  {(['Internal', 'External'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setCommentType(t)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
+                      {t === 'Internal' ? 'ภายใน' : 'ถึงลูกค้า'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <textarea id="comment-box" required value={comment} onChange={e => setComment(e.target.value)} rows={1}
+                placeholder="เพิ่ม Comment..."
+                onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
+              <div className="flex justify-end gap-2">
+                {comment && (
+                  <button type="button" onClick={() => setComment('')}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    ยกเลิก
+                  </button>
+                )}
+                <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
+                  <Send size={14} /> {sending ? 'กำลังส่ง...' : 'Comment'}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </Card>
+       </div>
+
+        {/* Floating manage button */}
+        {!manageOpen && (
+          <button onClick={() => setManageOpen(true)}
+            className="fixed bottom-[8rem] right-3 md:bottom-20 md:right-4 z-40 flex items-center gap-2 bg-primary-600 text-white rounded-full px-3.5 py-2 shadow-lg hover:bg-primary-700 transition-colors text-sm font-medium">
+            <Settings2 size={15} /> จัดการ Ticket
+          </button>
+        )}
+
+        {/* Manage slide-over panel */}
+        {manageOpen && <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setManageOpen(false)} />}
+        <div className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] z-50 bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-transform duration-300 ease-out flex flex-col ${manageOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
+            <h2 className="text-sm font-semibold flex items-center gap-2"><Settings2 size={15} className="text-primary-600" /> จัดการ Ticket</h2>
+            <button onClick={() => setManageOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+          </div>
+          <div className="p-4 space-y-5 overflow-y-auto">
+
         {/* Actions */}
         {isAgent && (
           <Card>
-            <h3 className="text-sm font-semibold mb-3">จัดการ Ticket</h3>
+            <h3 className="text-sm font-semibold mb-3">สถานะ &amp; Reassign</h3>
 
             {/* Status + Acknowledge */}
             <div className="space-y-3 mb-4">
@@ -245,51 +417,62 @@ export default function TicketDetail() {
           </Card>
         )}
 
+        {/* Team Members */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <UserPlus size={15} className="text-primary-600" /> ทีมงาน
+          </h3>
+
+          {/* Current members */}
+          {members.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 rounded-full pl-1 pr-2 py-1">
+                  <div className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {m.Title.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.Title}</span>
+                  {isAgent && (
+                    <button onClick={() => removeMember(m)}
+                      className="text-gray-400 hover:text-red-500 transition-colors ml-0.5">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add member */}
+          {isAgent && (
+            <div className="flex gap-2">
+              <SearchSelect
+                options={agentOptions.filter(o => !members.some(m => m.AgentEmail === o.value) && o.value !== ticket.AssignedEmail)}
+                value={inviteEmail}
+                onChange={setInviteEmail}
+                placeholder="ค้นหา Agent ที่ต้องการเพิ่ม..."
+                emptyLabel="-- เลือก Agent --"
+                className="flex-1"
+              />
+              <Button size="sm" onClick={inviteMember}
+                disabled={inviting || !inviteEmail}>
+                {inviting ? '...' : '+ Invite'}
+              </Button>
+            </div>
+          )}
+
+          {members.length === 0 && !isAgent && (
+            <p className="text-sm text-gray-400">ยังไม่มีสมาชิกในทีม</p>
+          )}
+        </Card>
+
         {/* Attachments */}
         <Card>
           <h3 className="text-sm font-semibold mb-3">ไฟล์แนบ</h3>
           <AttachmentSection listName="HD_Tickets" itemId={ticket.id} />
         </Card>
-
-        {/* Comments */}
-        <Card>
-          <h3 className="text-sm font-semibold mb-4">Comments ({comments.length})</h3>
-          <div className="space-y-3 mb-5">
-            {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Comment</p>}
-            {comments.map(c => (
-              <div key={c.id} className={`p-3 rounded-lg text-sm ${c.CommentType === 'Internal'
-                ? 'bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900'
-                : 'bg-gray-50 dark:bg-gray-800'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{c.Author?.Title ?? '—'}</span>
-                  <Badge className={c.CommentType === 'Internal' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}>{c.CommentType}</Badge>
-                  <span className="ml-auto text-xs text-gray-400">{formatDateTime(c.CommentDate)}</span>
-                </div>
-                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{c.CommentText}</p>
-              </div>
-            ))}
           </div>
-
-          <form onSubmit={sendComment} className="space-y-3">
-            {isAgent && (
-              <div className="flex gap-2">
-                {(['Internal', 'External'] as const).map(t => (
-                  <button key={t} type="button" onClick={() => setCommentType(t)}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            )}
-            <textarea required value={comment} onChange={e => setComment(e.target.value)} rows={3}
-              placeholder="พิมพ์ Comment..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none" />
-            <Button type="submit" size="sm" disabled={sending}>
-              <Send size={14} /> {sending ? 'กำลังส่ง...' : 'ส่ง Comment'}
-            </Button>
-          </form>
-        </Card>
-      </div>
+        </div>
     </div>
   )
 }

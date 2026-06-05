@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X } from 'lucide-react'
+import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon } from 'lucide-react'
+import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
+import { FloatingVideo } from '../components/common/FloatingVideo'
+
+// Convert any YouTube URL/ID → embed URL
+function youtubeEmbed(raw: string): string {
+  if (!raw) return ''
+  const s = raw.trim()
+  let id = ''
+  const m = s.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/)
+  if (m) id = m[1]
+  else if (/^[A-Za-z0-9_-]{11}$/.test(s)) id = s
+  return id ? `https://www.youtube.com/embed/${id}` : ''
+}
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Badge } from '../components/common/Badge'
@@ -13,7 +26,7 @@ import type { FocusItem, LeaveRequest } from '../types/common'
 import type { Asset as AssetType } from '../types/asset'
 import type { ProjectIncident } from '../types/project'
 import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
-import { getStatusColor } from '../utils/colorUtils'
+import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 
 interface Stats {
   openTickets: number
@@ -29,6 +42,15 @@ export default function Home() {
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [approvingId, setApprovingId] = useState<number | null>(null)
+  const [myTickets, setMyTickets] = useState<Ticket[]>([])
+  const [videoEmbed, setVideoEmbed] = useState('')
+
+  // Load Home video URL from HD_Options (Category = HomeVideo)
+  useEffect(() => {
+    spGet<{ Title: string; Category: string }>('HD_Options', "Category eq 'HomeVideo'", 'Title,Category')
+      .then(rows => { if (rows[0]?.Title) setVideoEmbed(youtubeEmbed(rows[0].Title)) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -67,8 +89,9 @@ export default function Home() {
         activeProjects: projects.length,
         openIncidents: incidents.length,
       })
+      setMyTickets(tickets)
       setFocusItems(focus)
-      setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate)))
+      setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)))
       if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
@@ -100,6 +123,7 @@ export default function Home() {
       }
       setPendingLeaves(prev => prev.filter(l => l.id !== id))
       addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')
+      // Power Automate จะส่ง email แจ้งผู้ขอลาอัตโนมัติ
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
   }
 
@@ -178,43 +202,96 @@ export default function Home() {
           </Card>
         )}
 
-        {/* Focus Items — full width */}
-        <Card>
-          <div className="flex items-center gap-2 mb-4">
-            <Pin size={16} className="text-primary-600" />
-            <h3 className="text-sm font-semibold">Focus Items</h3>
-          </div>
-          {focusItems.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">ไม่มีงาน Pin ไว้</p>
-          ) : (
-            <div className="space-y-2">
-              {focusItems.map(f => {
-                const color = getDueDateColor(f.DueDate)
-                return (
-                  <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
-                    <span className="text-base flex-shrink-0">{getDueDateEmoji(color) || '📌'}</span>
-                    <Link
-                      to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
-                      className="flex-1 min-w-0"
-                    >
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>
-                      <p className="text-xs text-gray-400">{f.FocusType} • {formatDate(f.DueDate)}</p>
-                    </Link>
-                    <Badge className={getStatusColor(f.Status)}>{f.Status}</Badge>
-                    <button
-                      onClick={() => unpinFocus(f.id)}
-                      title="ลบออกจาก Focus"
-                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                )
-              })}
+        {/* My Tickets — End User only */}
+        {user?.role === 'EndUser' && (
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <TicketIcon size={16} className="text-primary-600" />
+                <h3 className="text-sm font-semibold">Ticket ของฉัน</h3>
+              </div>
+              <Link to="/my-work" className="text-xs text-primary-600 hover:underline">ดูทั้งหมด →</Link>
             </div>
-          )}
-        </Card>
+            {loading ? (
+              <p className="text-sm text-gray-400 text-center py-4">กำลังโหลด...</p>
+            ) : myTickets.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">ยังไม่มี Ticket ที่เปิดอยู่</p>
+            ) : (
+              <div className="space-y-2">
+                {myTickets.slice(0, 5).map(t => (
+                  <Link key={t.id} to={`/tickets/${t.id}`}
+                    className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    <span className="text-base flex-shrink-0">{getDueDateEmoji(getDueDateColor(t.DueDate, false))}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{t.Title}</p>
+                      <p className="text-xs text-gray-400">{t.TicketNumber} · {formatDate(t.Created)}</p>
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
+                      <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge>
+                    </div>
+                  </Link>
+                ))}
+                {myTickets.length > 5 && (
+                  <p className="text-xs text-center text-gray-400 pt-1">และอีก {myTickets.length - 5} รายการ</p>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Focus Items (half) + Calendar (half, pinned) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <Card>
+            <div className="flex items-center gap-2 mb-4">
+              <Pin size={16} className="text-primary-600" />
+              <h3 className="text-sm font-semibold">Focus Items</h3>
+            </div>
+            {focusItems.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">ไม่มีงาน Pin ไว้</p>
+            ) : (
+              <div className="space-y-2">
+                {focusItems.map(f => {
+                  const color = getDueDateColor(f.DueDate)
+                  return (
+                    <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
+                      <span className="text-base flex-shrink-0">{getDueDateEmoji(color) || '📌'}</span>
+                      <Link
+                        to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
+                        className="flex-1 min-w-0"
+                      >
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>
+                        <p className="text-xs text-gray-400">{f.FocusType} • {formatDate(f.DueDate)}</p>
+                      </Link>
+                      <Badge className={getStatusColor(f.Status)}>{f.Status}</Badge>
+                      <button
+                        onClick={() => unpinFocus(f.id)}
+                        title="ลบออกจาก Focus"
+                        className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* Pinned calendar — visible on Home */}
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarIcon size={16} className="text-primary-600" />
+              <h3 className="text-sm font-semibold">ปฏิทิน</h3>
+            </div>
+            <OutlookCalendar />
+          </Card>
+        </div>
+
       </div>
+
+      {/* Floating draggable + resizable video */}
+      {videoEmbed && <FloatingVideo embed={videoEmbed} storageKey={`homeVideoBox_${user?.email ?? ''}`} />}
     </div>
   )
 }

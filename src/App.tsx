@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Calendar } from 'lucide-react'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
@@ -15,6 +15,7 @@ import { BottomNav } from './components/layout/BottomNav'
 import { Ticker } from './components/layout/Ticker'
 import { ToastContainer } from './components/common/Toast'
 import { CalendarDrawer } from './components/calendar/CalendarDrawer'
+import { DateTaskModal } from './components/common/DateTaskModal'
 
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -24,6 +25,7 @@ import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import TicketDetail from './pages/TicketDetail'
 import AgentDashboard from './pages/AgentDashboard'
+import Reports from './pages/Reports'
 import Assets from './pages/Assets'
 import Tracking from './pages/Tracking'
 import Skills from './pages/Skills'
@@ -78,7 +80,7 @@ function AppContent() {
     const getGraphToken = async (): Promise<string> => {
       try {
         const result = await instance.acquireTokenSilent({
-          scopes: ['User.Read', 'Calendars.ReadWrite'],
+          scopes: ['User.Read', 'Calendars.ReadWrite', 'Mail.Send'],
           account,
           redirectUri: REDIRECT_URI,
         })
@@ -86,7 +88,7 @@ function AppContent() {
       } catch (e) {
         if (e instanceof InteractionRequiredAuthError) {
           await instance.acquireTokenRedirect({
-            scopes: ['User.Read', 'Calendars.ReadWrite'],
+            scopes: ['User.Read', 'Calendars.ReadWrite', 'Mail.Send'],
             account,
             redirectUri: REDIRECT_URI,
           })
@@ -137,7 +139,7 @@ function AppContent() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950" style={{ background: 'var(--app-bg)' }}>
       <Sidebar />
       <div className="flex-1 md:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
         <Ticker />
@@ -150,6 +152,7 @@ function AppContent() {
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
             <Route path="/dashboard" element={<AgentDashboard />} />
+            <Route path="/reports" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Reports /> : <Navigate to="/" />} />
             <Route path="/assets" element={<Assets />} />
             <Route path="/tracking" element={<Tracking />} />
             <Route path="/skills" element={<Skills />} />
@@ -162,6 +165,7 @@ function AppContent() {
         </main>
         <BottomNav />
         <ToastContainer />
+        <DateTaskModal />
 
         {/* Floating calendar toggle — above BottomNav on mobile, bottom-right on desktop */}
         {!calendarOpen && (
@@ -183,9 +187,9 @@ function AppContent() {
 export default function App() {
   return (
     <MsalProvider instance={msalInstance}>
-      <BrowserRouter basename={import.meta.env.BASE_URL ?? '/'}>
+      <HashRouter>
         <AppContent />
-      </BrowserRouter>
+      </HashRouter>
     </MsalProvider>
   )
 }

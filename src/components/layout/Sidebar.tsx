@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Moon, Sun, LogOut,
-  ChevronRight, Bug, Settings, Notebook, X
+  ChevronRight, Bug, Settings, Notebook, X, PieChart
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import type { AccentColor } from '../../store/useAppStore'
@@ -15,6 +15,7 @@ const navItems = [
   { to: '/my-work',     icon: ClipboardList, label: 'งานของฉัน',           roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/projects',    icon: FolderOpen,    label: 'โครงการ',             roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/dashboard',   icon: BarChart2,     label: 'Agent Dashboard',     roles: ['Agent','Supervisor','Boss','Admin'] },
+  { to: '/reports',     icon: PieChart,      label: 'รายงาน (Reports)',    roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/assets',      icon: Monitor,       label: 'IT Assets',           roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/tracking',    icon: Pin,           label: 'My Tracking',         roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',               roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
@@ -33,7 +34,7 @@ const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
 ]
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor } = useAppStore()
+  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor, customAccent, customBg, setCustomAccent, setCustomBg, cardBg, cardOpacity, setCardStyle } = useAppStore()
   const { logout } = useAuth()
   const role = user?.role ?? 'EndUser'
   const visible = navItems.filter(n => n.roles.includes(role))
@@ -78,16 +79,60 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {/* Accent color picker */}
         <div className="px-3 py-2">
           <p className="text-[10px] text-gray-400 mb-1.5">สีธีม</p>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {ACCENT_OPTIONS.map(opt => (
               <button
                 key={opt.value}
                 title={opt.label}
-                onClick={() => setAccentColor(opt.value)}
+                onClick={() => { setCustomAccent(null); setAccentColor(opt.value) }}
                 className="w-5 h-5 rounded-full transition-transform hover:scale-110 focus:outline-none"
-                style={{ backgroundColor: opt.bg, boxShadow: accentColor === opt.value ? `0 0 0 2px white, 0 0 0 3px ${opt.bg}` : undefined }}
+                style={{ backgroundColor: opt.bg, boxShadow: (!customAccent && accentColor === opt.value) ? `0 0 0 2px white, 0 0 0 3px ${opt.bg}` : undefined }}
               />
             ))}
+            {/* Free accent picker */}
+            <label title="เลือกสีเอง" className="relative w-5 h-5 rounded-full cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+              style={{ background: customAccent ?? 'conic-gradient(red,orange,yellow,lime,cyan,blue,magenta,red)' }}>
+              <input type="color" value={customAccent ?? '#0F4C81'} onChange={e => setCustomAccent(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer" />
+            </label>
+          </div>
+
+          {/* Background picker */}
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[10px] text-gray-400">พื้นหลัง</span>
+            <label title="เลือกสีพื้นหลัง" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+              style={{ background: customBg ?? '#f8fafc' }}>
+              <input type="color" value={customBg ?? '#f8fafc'} onChange={e => setCustomBg(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer" />
+            </label>
+            {(customAccent || customBg) && (
+              <button onClick={() => { setCustomAccent(null); setCustomBg(null) }}
+                className="text-[10px] text-gray-400 hover:text-red-500 underline">รีเซ็ต</button>
+            )}
+          </div>
+
+          {/* Card / panel style */}
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400">การ์ด</span>
+              <label title="สีพื้นหลังการ์ด" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+                style={{ background: cardBg ?? '#ffffff' }}>
+                <input type="color" value={cardBg ?? '#ffffff'} onChange={e => setCardStyle(e.target.value, cardOpacity)}
+                  className="absolute inset-0 opacity-0 cursor-pointer" />
+              </label>
+              {cardBg && (
+                <button onClick={() => setCardStyle(null, 100)} className="text-[10px] text-gray-400 hover:text-red-500 underline">รีเซ็ต</button>
+              )}
+            </div>
+            {cardBg && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-400 w-9">ทึบ</span>
+                <input type="range" min={20} max={100} value={cardOpacity}
+                  onChange={e => setCardStyle(cardBg, Number(e.target.value))}
+                  className="flex-1 accent-primary-600 h-1" />
+                <span className="text-[10px] text-gray-400 w-7 text-right">{cardOpacity}%</span>
+              </div>
+            )}
           </div>
         </div>
 

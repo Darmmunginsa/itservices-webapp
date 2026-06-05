@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
+import { SmartText } from '../components/common/SmartText'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
@@ -11,9 +12,11 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
-import type { Project, Task, Note, ProjectIncident, ProjectLink } from '../types/project'
+import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
-import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
+import type { Asset } from '../types/asset'
+import { OptionSelect } from '../components/common/OptionSelect'
+import { getStatusColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
@@ -51,11 +54,20 @@ export default function ProjectDetail() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets'>('tasks')
   const [showSecure, setShowSecure] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(true)
+
+  // Linked assets (PM_ProjectAssets) + asset picker
+  const [linkedAssets, setLinkedAssets] = useState<ProjectAsset[]>([])
+  const [allAssets, setAllAssets] = useState<Asset[]>([])
+  const [showAssetPicker, setShowAssetPicker] = useState(false)
+  const [assetSearch, setAssetSearch] = useState('')
+  const [viewAsset, setViewAsset] = useState<Asset | null>(null)
 
   // Attachment panel toggle key: 'task-42' | 'note-7' | 'incident-3'
   const [attachKey, setAttachKey] = useState<string | null>(null)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
 
   // Project edit modal
   const [showEditProject, setShowEditProject] = useState(false)
@@ -106,12 +118,14 @@ export default function ProjectDetail() {
       spGet<Note>('PM_Notes', `ProjectID eq ${numId}`, undefined, 'Created desc'),
       spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`),
       spGet<ProjectLink>('PM_Links', `ProjectID eq ${numId}`, undefined, 'Title asc'),
-    ]).then(([proj, t, n, inc, lnk]) => {
+      spGet<ProjectAsset>('PM_ProjectAssets', `ProjectID eq ${numId}`).catch(() => []),
+    ]).then(([proj, t, n, inc, lnk, pa]) => {
       setProject(proj[0] ?? null)
       setTasks(t)
       setNotes(n)
       setIncidents(inc)
       setLinks(lnk)
+      setLinkedAssets(pa as ProjectAsset[])
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
@@ -119,11 +133,37 @@ export default function ProjectDetail() {
     load()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
+    spGet<Asset>('IT_Assets', undefined, undefined, 'Title asc')
+      .then(setAllAssets).catch(() => {})
     if (user?.email) {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
         .then(setFocusItems).catch(() => {})
     }
   }, [id, user?.email])
+
+  // ── Asset linking ───────────────────────────────────────────────────────────
+  async function linkAsset(asset: Asset) {
+    if (!id) return
+    if (linkedAssets.some(la => la.AssetID === asset.id)) { addToast('info', 'อุปกรณ์นี้ผูกอยู่แล้ว'); return }
+    try {
+      const res = await spCreate('PM_ProjectAssets', {
+        Title: asset.Title,
+        ProjectID: Number(id),
+        AssetID: asset.id,
+        AssetTitle: asset.Title,
+        AssetCode: asset.AssetCode || '',
+      })
+      setLinkedAssets(prev => [...prev, { id: res.id, ProjectID: Number(id), AssetID: asset.id, AssetTitle: asset.Title, AssetCode: asset.AssetCode || '', Title: asset.Title }])
+      addToast('success', `ผูก ${asset.Title} แล้ว`)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+  async function unlinkAsset(la: ProjectAsset) {
+    try {
+      await spDelete('PM_ProjectAssets', la.id)
+      setLinkedAssets(prev => prev.filter(x => x.id !== la.id))
+      addToast('success', 'นำอุปกรณ์ออกแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
 
   // ── Project Edit ────────────────────────────────────────────────────────────
   function openEditProject() {
@@ -133,8 +173,8 @@ export default function ProjectDetail() {
       company: project.Company ?? '',
       projectGroup: project.ProjectGroup ?? 'Internal',
       status: project.Status,
-      startDate: project.StartDate ?? '',
-      endDate: project.EndDate ?? '',
+      startDate: project.StartDate ? project.StartDate.slice(0, 10) : '',
+      endDate: project.EndDate ? project.EndDate.slice(0, 10) : '',
       daysCount: '',
       progress: String(project.Progress ?? 0),
       comment: project.Comment ?? '',
@@ -207,7 +247,7 @@ export default function ProjectDetail() {
     setTaskForm({
       title: task.Title,
       assignedEmail: task.AssignedEmail ?? '',
-      dueDate: task.DueDate ?? '',
+      dueDate: task.DueDate ? task.DueDate.slice(0, 10) : '',
       daysCount: '',
       taskNote: task.TaskNote ?? '',
     })
@@ -312,8 +352,8 @@ export default function ProjectDetail() {
       title: inc.Title,
       severity: inc.Severity,
       status: inc.Status,
-      incidentDate: inc.IncidentDate ?? new Date().toISOString().slice(0, 10),
-      resolvedDate: inc.ResolvedDate ?? '',
+      incidentDate: inc.IncidentDate ? inc.IncidentDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      resolvedDate: inc.ResolvedDate ? inc.ResolvedDate.slice(0, 10) : '',
       description: inc.Description ?? '',
       assignedAgentEmail: inc.AssignedEmail ?? '',
       resolution: inc.Resolution ?? '',
@@ -413,6 +453,144 @@ export default function ProjectDetail() {
     setAttachKey(prev => prev === key ? null : key)
   }
 
+  function toggleExpand(key: string) {
+    setExpandedKey(prev => prev === key ? null : key)
+  }
+
+  // Kanban columns wrapper for project sections
+  function PdColumns<T>({ cols, items, keyOf, render }: { cols: { key: string; label: string; color?: string }[]; items: T[]; keyOf: (i: T) => string; render: (i: T) => React.ReactNode }) {
+    return (
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {cols.map(col => {
+          const list = items.filter(i => keyOf(i) === col.key)
+          return (
+            <div key={col.key} className="flex-shrink-0 w-72">
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <span className={`w-2 h-2 rounded-full ${col.color ?? 'bg-gray-400'}`} />
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{col.label}</span>
+                <span className="text-xs text-gray-400">({list.length})</span>
+              </div>
+              <div className="space-y-3">
+                {list.length === 0 ? <p className="text-xs text-gray-300 dark:text-gray-600 text-center py-6 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">—</p> : list.map(render)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderTaskCard(task: Task) {
+    const color = getDueDateColor(task.DueDate, task.IsCompleted)
+    const ak = `task-${task.id}`
+    const isOpen = expandedKey === ak
+    return (
+      <div key={task.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${getDueDateRowClass(color)}`}>
+        <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
+          <button onClick={(e) => { e.stopPropagation(); completeTask(task) }}
+            className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${task.IsCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-primary-500'}`}>
+            {task.IsCompleted && <CheckCircle2 size={12} className="text-white" />}
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-medium leading-snug ${task.IsCompleted ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>{getDueDateEmoji(color)} {task.Title}</p>
+            <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 flex-wrap">
+              {task.DueDate && <span>{formatDate(task.DueDate)}</span>}
+              {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> รับทราบ</span>}
+            </div>
+          </div>
+          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+        {isOpen && (
+          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5 space-y-2">
+            {task.AssignedTo && <p className="text-xs text-gray-500">ผู้รับผิดชอบ: {task.AssignedTo}</p>}
+            {task.TaskNote && <p className="text-xs text-gray-600 dark:text-gray-300 italic">{task.TaskNote}</p>}
+            <div className="flex items-center gap-1 flex-wrap">
+              {!task.IsAcknowledged && task.AssignedEmail === user?.email && (
+                <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
+              )}
+              <button onClick={() => pinFocusItem('Task', task)} title="Pin"
+                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
+                <Pin size={14} />
+              </button>
+              {isAgent && (<>
+                <button onClick={() => toggleAttach('task', task.id)} title="ไฟล์แนบ"
+                  className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
+                  <Paperclip size={14} />
+                </button>
+                <button onClick={() => openEditTask(task)} title="แก้ไข"
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                  <Edit2 size={14} />
+                </button>
+                <button onClick={() => deleteTask(task.id)} title="ลบ"
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              </>)}
+            </div>
+            {attachKey === ak && <AttachmentSection listName="PM_Tasks" itemId={task.id} />}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderIncidentCard(inc: ProjectIncident) {
+    const ak = `incident-${inc.id}`
+    const isOpen = expandedKey === ak
+    return (
+      <div key={inc.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug">{inc.Title}</p>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+              {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
+            </div>
+          </div>
+          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+        {isOpen && (
+          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5 space-y-2">
+            {inc.Description && <p className="text-xs text-gray-600 dark:text-gray-300">{inc.Description}</p>}
+            {inc.Resolution && <p className="text-xs text-green-600">✓ {inc.Resolution}</p>}
+            <div className="flex items-center gap-1">
+              <button onClick={() => pinFocusItem('Incident', inc)} title="Pin"
+                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
+                <Pin size={14} />
+              </button>
+              <button onClick={() => toggleAttach('incident', inc.id)} title="ไฟล์แนบ"
+                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
+                <Paperclip size={14} />
+              </button>
+              <button onClick={() => openEditIncident(inc)} title="แก้ไข"
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                <Edit2 size={14} />
+              </button>
+              {isBossAdmin && (
+                <button onClick={() => deleteIncident(inc.id)} title="ลบ"
+                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+            {attachKey === ak && <AttachmentSection listName="PM_Incidents" itemId={inc.id} />}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const PD_TASK_COLS = [
+    { key: 'open', label: 'กำลังทำ', color: 'bg-blue-500' },
+    { key: 'done', label: 'เสร็จแล้ว', color: 'bg-green-500' },
+  ]
+  const PD_INCIDENT_COLS = [
+    { key: 'Critical', label: 'Critical', color: 'bg-red-600' },
+    { key: 'High', label: 'High', color: 'bg-orange-500' },
+    { key: 'Medium', label: 'Medium', color: 'bg-amber-500' },
+    { key: 'Low', label: 'Low', color: 'bg-green-500' },
+  ]
+
   async function pinFocusItem(type: 'Task' | 'Incident', item: Task | ProjectIncident) {
     if (!user || !project) return
     try {
@@ -459,7 +637,7 @@ export default function ProjectDetail() {
 
   return (
     <div>
-      <Header title={project.Title} />
+      <Header title={project.Title} backTo="/projects" backLabel="โครงการ" />
       <div className="p-4 md:p-6 space-y-5">
 
         {/* Info Card */}
@@ -477,8 +655,13 @@ export default function ProjectDetail() {
                   <Edit2 size={14} />
                 </button>
               )}
+              <button onClick={() => setInfoOpen(o => !o)} title={infoOpen ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                <ChevronDown size={16} className={`transition-transform ${infoOpen ? 'rotate-180' : ''}`} />
+              </button>
             </div>
           </div>
+          {infoOpen && (<>
           <div className="mb-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
               <span>ความคืบหน้า</span><span className="font-medium">{project.Progress ?? 0}%</span>
@@ -497,7 +680,7 @@ export default function ProjectDetail() {
             </span>
           )}
           {project.Comment && (
-            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{project.Comment}</p>
+            <SmartText text={project.Comment} className="mt-3 text-sm text-gray-600 dark:text-gray-400" />
           )}
 
           {/* Secure Note */}
@@ -518,14 +701,15 @@ export default function ProjectDetail() {
               : <p className="text-xs text-gray-400 flex items-center gap-1"><Lock size={12} /> ข้อมูลลับ</p>
             }
           </div>
+          </>)}
         </Card>
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'notes', 'incidents', 'links'] as const).map(t => (
+          {(['tasks', 'notes', 'incidents', 'links', 'assets'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : `Links (${links.length})`}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : `อุปกรณ์ (${linkedAssets.length})`}
             </button>
           ))}
         </div>
@@ -536,65 +720,10 @@ export default function ProjectDetail() {
             {isAgent && (
               <Button size="sm" onClick={openAddTask}><Plus size={14} /> เพิ่ม Task</Button>
             )}
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-              {sortedTasks.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Task</p>
-                : sortedTasks.map(task => {
-                    const color = getDueDateColor(task.DueDate, task.IsCompleted)
-                    const ak = `task-${task.id}`
-                    return (
-                      <div key={task.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                        <div className={`flex items-start gap-3 p-3 ${getDueDateRowClass(color)}`}>
-                          <button onClick={() => completeTask(task)}
-                            className={`flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${task.IsCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-primary-500'}`}>
-                            {task.IsCompleted && <CheckCircle2 size={12} className="text-white" />}
-                          </button>
-                          <span className="text-sm w-4 mt-0.5">{getDueDateEmoji(color)}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${task.IsCompleted ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>{task.Title}</p>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 flex-wrap">
-                              {task.AssignedTo && <span>{task.AssignedTo}</span>}
-                              {task.DueDate && <span>{formatDate(task.DueDate)}</span>}
-                              {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> {task.AcknowledgedBy}</span>}
-                            </div>
-                            {task.TaskNote && <p className="text-xs text-gray-500 mt-1 italic">{task.TaskNote}</p>}
-                          </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {!task.IsAcknowledged && task.AssignedEmail === user?.email && (
-                              <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
-                            )}
-                            <button onClick={() => pinFocusItem('Task', task)} title="Pin ไว้ใน Focus"
-                              className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
-                              <Pin size={13} />
-                            </button>
-                            {isAgent && (
-                              <>
-                                <button onClick={() => toggleAttach('task', task.id)} title="ไฟล์แนบ"
-                                  className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
-                                  <Paperclip size={13} />
-                                </button>
-                                <button onClick={() => openEditTask(task)} title="แก้ไข"
-                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
-                                  <Edit2 size={13} />
-                                </button>
-                                <button onClick={() => deleteTask(task.id)} title="ลบ"
-                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
-                                  <Trash2 size={13} />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {attachKey === ak && (
-                          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
-                            <AttachmentSection listName="PM_Tasks" itemId={task.id} />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-              }
-            </div>
+            {sortedTasks.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Task</p>
+              : <PdColumns cols={PD_TASK_COLS} items={sortedTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => renderTaskCard(t)} />
+            }
           </div>
         )}
 
@@ -602,36 +731,44 @@ export default function ProjectDetail() {
         {tab === 'notes' && (
           <div className="space-y-3">
             <Button size="sm" onClick={openAddNote}><Plus size={14} /> เพิ่ม Note</Button>
-            {notes.map(note => {
-              const ak = `note-${note.id}`
-              const canEdit = user?.role === 'Admin' || note.NoteBy === user?.displayName
-              return (
-                <Card key={note.id}>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{note.NoteText}</p>
-                  <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
-                    <span>{note.NoteBy} • {formatDate(note.Created)}</span>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => toggleAttach('note', note.id)} title="ไฟล์แนบ"
-                        className={`hover:text-primary-600 transition-colors ${attachKey === ak ? 'text-primary-600' : ''}`}>
-                        <Paperclip size={13} />
-                      </button>
-                      {canEdit && (
-                        <>
-                          <button onClick={() => openEditNote(note)} className="hover:text-primary-600 transition-colors"><Edit2 size={13} /></button>
-                          <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={13} /></button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {attachKey === ak && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-                      <AttachmentSection listName="PM_Notes" itemId={note.id} />
-                    </div>
-                  )}
-                </Card>
-              )
-            })}
-            {notes.length === 0 && <p className="text-sm text-gray-400 text-center py-8">ไม่มี Note</p>}
+            {notes.length === 0
+              ? <p className="text-sm text-gray-400 text-center py-8">ไม่มี Note</p>
+              : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {notes.map(note => {
+                    const ak = `note-${note.id}`
+                    const isOpen = expandedKey === ak
+                    const canEdit = user?.role === 'Admin' || note.NoteBy === user?.displayName
+                    const firstLine = (note.NoteText || '').split('\n')[0]
+                    return (
+                      <div key={note.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+                        <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm text-gray-800 dark:text-gray-200 ${isOpen ? '' : 'truncate'}`}>{isOpen ? '' : firstLine}</p>
+                            {isOpen && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300" />}
+                            <p className="text-xs text-gray-400 mt-1">{note.NoteBy} • {formatDate(note.Created)}</p>
+                          </div>
+                          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                        {isOpen && (
+                          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5">
+                            <div className="flex items-center gap-2 text-gray-400">
+                              <button onClick={() => toggleAttach('note', note.id)} title="ไฟล์แนบ"
+                                className={`hover:text-primary-600 transition-colors ${attachKey === ak ? 'text-primary-600' : ''}`}>
+                                <Paperclip size={14} />
+                              </button>
+                              {canEdit && (<>
+                                <button onClick={() => openEditNote(note)} className="hover:text-primary-600 transition-colors"><Edit2 size={14} /></button>
+                                <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
+                              </>)}
+                            </div>
+                            {attachKey === ak && <div className="mt-2"><AttachmentSection listName="PM_Notes" itemId={note.id} /></div>}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+            }
           </div>
         )}
 
@@ -639,55 +776,10 @@ export default function ProjectDetail() {
         {tab === 'incidents' && (
           <div className="space-y-3">
             <Button size="sm" variant="outline" onClick={openAddIncident}><Plus size={14} /> แจ้ง Incident</Button>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-              {incidents.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Incident</p>
-                : incidents.map(inc => {
-                    const ak = `incident-${inc.id}`
-                    return (
-                      <div key={inc.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                        <div className="flex items-start gap-3 p-3">
-                          <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inc.Title}</p>
-                            {inc.Description && <p className="text-xs text-gray-400 truncate">{inc.Description}</p>}
-                            {inc.Resolution && <p className="text-xs text-green-600 mt-0.5">✓ {inc.Resolution}</p>}
-                          </div>
-                          <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                            <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
-                            {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <button onClick={() => pinFocusItem('Incident', inc)} title="Pin ไว้ใน Focus"
-                                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
-                                <Pin size={13} />
-                              </button>
-                              <button onClick={() => toggleAttach('incident', inc.id)} title="ไฟล์แนบ"
-                                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
-                                <Paperclip size={13} />
-                              </button>
-                              <button onClick={() => openEditIncident(inc)} title="แก้ไข"
-                                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
-                                <Edit2 size={13} />
-                              </button>
-                              {isBossAdmin && (
-                                <button onClick={() => deleteIncident(inc.id)} title="ลบ"
-                                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
-                                  <Trash2 size={13} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        {attachKey === ak && (
-                          <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
-                            <AttachmentSection listName="PM_Incidents" itemId={inc.id} />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-              }
-            </div>
+            {incidents.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Incident</p>
+              : <PdColumns cols={PD_INCIDENT_COLS} items={incidents} keyOf={i => i.Severity} render={i => renderIncidentCard(i)} />
+            }
           </div>
         )}
 
@@ -695,23 +787,21 @@ export default function ProjectDetail() {
         {tab === 'links' && (
           <div className="space-y-3">
             <Button size="sm" onClick={openAddLink}><Plus size={14} /> เพิ่ม Link</Button>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-              {links.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Link</p>
-                : links.map(link => (
-                    <div key={link.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <LinkIcon size={15} className="text-gray-400 flex-shrink-0" />
+            {links.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Link</p>
+              : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {links.map(link => (
+                    <div key={link.id} className="flex items-start gap-2 p-4 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
+                      <LinkIcon size={15} className="text-gray-400 flex-shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0">
                         <a href={resolveUrl(link.URL)} target="_blank" rel="noopener noreferrer"
-                          className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1 truncate">
-                          {link.Title || resolveUrl(link.URL)}
+                          className="text-sm font-medium text-primary-600 hover:underline flex items-center gap-1">
+                          <span className="truncate">{link.Title || resolveUrl(link.URL)}</span>
                           <ExternalLink size={11} className="flex-shrink-0" />
                         </a>
-                        {link.LinkNote && <p className="text-xs text-gray-400 truncate">{link.LinkNote}</p>}
+                        {link.LinkNote && <p className="text-xs text-gray-400 mt-0.5">{link.LinkNote}</p>}
+                        {link.LinkType && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 mt-1.5">{link.LinkType}</Badge>}
                       </div>
-                      {link.LinkType && (
-                        <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 flex-shrink-0">{link.LinkType}</Badge>
-                      )}
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onClick={() => openEditLink(link)} title="แก้ไข"
                           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
@@ -725,12 +815,92 @@ export default function ProjectDetail() {
                         )}
                       </div>
                     </div>
-                  ))
-              }
-            </div>
+                  ))}
+                </div>
+            }
+          </div>
+        )}
+
+        {/* ── Assets (linked IT_Assets) ── */}
+        {tab === 'assets' && (
+          <div className="space-y-3">
+            {isAgent && (
+              <Button size="sm" onClick={() => { setAssetSearch(''); setShowAssetPicker(true) }}><Plus size={14} /> เพิ่มอุปกรณ์</Button>
+            )}
+            {linkedAssets.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-10">ยังไม่มีอุปกรณ์ที่ผูกกับโครงการนี้</p>
+              : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {linkedAssets.map(la => {
+                    const asset = allAssets.find(a => a.id === la.AssetID)
+                    return (
+                      <div key={la.id} className="flex items-start gap-2 p-4 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
+                        <Monitor size={16} className="text-primary-600 flex-shrink-0 mt-0.5" />
+                        <button onClick={() => asset && setViewAsset(asset)} className="flex-1 min-w-0 text-left">
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 leading-snug">{la.AssetTitle || asset?.Title}</p>
+                          {la.AssetCode && <p className="text-xs text-gray-400 font-mono">{la.AssetCode}</p>}
+                          {asset && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 mt-1.5">{asset.Category}</Badge>}
+                          {!asset && <p className="text-xs text-amber-500 mt-1">(อุปกรณ์ถูกลบหรือปลดระวาง)</p>}
+                        </button>
+                        {isAgent && (
+                          <button onClick={() => unlinkAsset(la)} title="นำออก"
+                            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+            }
           </div>
         )}
       </div>
+
+      {/* ── Asset Picker Modal ── */}
+      <Modal open={showAssetPicker} onClose={() => setShowAssetPicker(false)} title="เลือกอุปกรณ์จาก IT Assets" size="md">
+        <div className="space-y-3">
+          <input value={assetSearch} onChange={e => setAssetSearch(e.target.value)}
+            placeholder="ค้นหาอุปกรณ์..." autoFocus
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          <div className="max-h-[50vh] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {allAssets
+              .filter(a => !assetSearch || a.Title.toLowerCase().includes(assetSearch.toLowerCase()) || a.AssetCode?.toLowerCase().includes(assetSearch.toLowerCase()))
+              .map(a => {
+                const linked = linkedAssets.some(la => la.AssetID === a.id)
+                return (
+                  <button key={a.id} disabled={linked} onClick={() => linkAsset(a)}
+                    className={`flex items-start gap-2 p-3 rounded-lg border text-left transition-colors ${linked ? 'border-gray-100 dark:border-gray-800 opacity-50 cursor-default' : 'border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/10'}`}>
+                    <Monitor size={15} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
+                      <p className="text-xs text-gray-400">{a.Category}{a.AssetCode ? ` · ${a.AssetCode}` : ''}</p>
+                    </div>
+                    {linked && <span className="text-xs text-green-600 flex-shrink-0">✓ ผูกแล้ว</span>}
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── View Asset Detail Modal ── */}
+      <Modal open={!!viewAsset} onClose={() => setViewAsset(null)} title={viewAsset?.Title ?? ''} size="md">
+        {viewAsset && (
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {viewAsset.AssetCode && <div><p className="text-xs text-gray-400">รหัส</p><p className="font-mono">{viewAsset.AssetCode}</p></div>}
+            <div><p className="text-xs text-gray-400">หมวดหมู่</p><p>{viewAsset.Category}</p></div>
+            <div><p className="text-xs text-gray-400">สถานะ</p><p>{viewAsset.Status}</p></div>
+            {viewAsset.IPAddress && <div><p className="text-xs text-gray-400">IP</p><p className="font-mono">{viewAsset.IPAddress}</p></div>}
+            {viewAsset.SerialNumber && <div><p className="text-xs text-gray-400">Serial</p><p>{viewAsset.SerialNumber}</p></div>}
+            {viewAsset.OS && <div><p className="text-xs text-gray-400">OS</p><p>{viewAsset.OS}</p></div>}
+            {viewAsset.Vendor && <div><p className="text-xs text-gray-400">Vendor</p><p>{viewAsset.Vendor}</p></div>}
+            {viewAsset.Spec && <div className="col-span-2"><p className="text-xs text-gray-400">Spec</p><p>{viewAsset.Spec}</p></div>}
+            {viewAsset.AssignedTo && <div><p className="text-xs text-gray-400">ผู้ใช้งาน</p><p>{viewAsset.AssignedTo}</p></div>}
+            {viewAsset.AccessMethod && <div className="col-span-2"><p className="text-xs text-gray-400">Access / URL</p><p className="break-all">{viewAsset.AccessMethod}</p></div>}
+            {viewAsset.Note && <div className="col-span-2"><p className="text-xs text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap">{viewAsset.Note}</p></div>}
+          </div>
+        )}
+      </Modal>
 
       {/* ── Edit Project Modal ── */}
       <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title="แก้ไขโครงการ" size="md">
@@ -743,21 +913,17 @@ export default function ProjectDetail() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lc}>บริษัท/ลูกค้า</label>
-              <input value={projectForm.company} onChange={e => pf('company', e.target.value)} className={ic} />
+              <OptionSelect category="ProjectCompany" defaults={[]} value={projectForm.company} onChange={v => pf('company', v)} className={ic} />
             </div>
             <div>
               <label className={lc}>กลุ่มโครงการ</label>
-              <select value={projectForm.projectGroup} onChange={e => pf('projectGroup', e.target.value)} className={ic}>
-                {PROJECT_GROUPS.map(g => <option key={g}>{g}</option>)}
-              </select>
+              <OptionSelect category="ProjectGroup" defaults={[...PROJECT_GROUPS]} value={projectForm.projectGroup} onChange={v => pf('projectGroup', v)} className={ic} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lc}>สถานะ</label>
-              <select value={projectForm.status} onChange={e => pf('status', e.target.value)} className={ic}>
-                {PROJECT_STATUSES.map(s => <option key={s}>{s}</option>)}
-              </select>
+              <OptionSelect category="ProjectStatus" defaults={[...PROJECT_STATUSES]} value={projectForm.status} onChange={v => pf('status', v)} className={ic} />
             </div>
             <div>
               <label className={lc}>ความคืบหน้า (%)</label>
@@ -884,17 +1050,11 @@ export default function ProjectDetail() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lc}>ความรุนแรง</label>
-              <select value={incidentForm.severity}
-                onChange={e => setIncidentForm(f => ({ ...f, severity: e.target.value }))} className={ic}>
-                {['Low', 'Medium', 'High', 'Critical'].map(s => <option key={s}>{s}</option>)}
-              </select>
+              <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={incidentForm.severity} onChange={v => setIncidentForm(f => ({ ...f, severity: v }))} className={ic} />
             </div>
             <div>
               <label className={lc}>สถานะ</label>
-              <select value={incidentForm.status}
-                onChange={e => setIncidentForm(f => ({ ...f, status: e.target.value }))} className={ic}>
-                {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
-              </select>
+              <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={incidentForm.status} onChange={v => setIncidentForm(f => ({ ...f, status: v }))} className={ic} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -956,10 +1116,7 @@ export default function ProjectDetail() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lc}>ประเภท</label>
-              <select value={linkForm.linkType}
-                onChange={e => setLinkForm(f => ({ ...f, linkType: e.target.value }))} className={ic}>
-                {LINK_TYPES.map(t => <option key={t}>{t}</option>)}
-              </select>
+              <OptionSelect category="LinkType" defaults={[...LINK_TYPES]} value={linkForm.linkType} onChange={v => setLinkForm(f => ({ ...f, linkType: v }))} className={ic} />
             </div>
             <div>
               <label className={lc}>หมายเหตุ</label>

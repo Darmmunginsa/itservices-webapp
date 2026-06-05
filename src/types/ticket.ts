@@ -35,6 +35,16 @@ export interface TicketComment {
   Author?: { Title: string }  // SP Created By — expanded via $expand=Author
 }
 
+export interface TicketMember {
+  id: number
+  Title: string        // AgentName
+  TicketID: number
+  TicketTitle: string
+  TicketNumber: string
+  AgentEmail: string
+  AddedBy: string
+}
+
 export interface Contract {
   id: number
   Title: string

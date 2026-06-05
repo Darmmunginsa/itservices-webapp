@@ -23,11 +23,11 @@ export function CalendarDrawer({ open, onClose }: Props) {
 
       {/* Drawer panel — slides up from bottom */}
       <div
-        className={`fixed inset-x-0 md:left-56 bottom-0 z-50 transition-transform duration-300 ease-out ${
+        className={`fixed inset-x-0 bottom-0 md:inset-x-auto md:right-4 md:bottom-0 md:w-[26rem] z-50 transition-transform duration-300 ease-out ${
           open ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
-        <div className="bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl border-t border-x border-gray-200 dark:border-gray-800 max-h-[82vh] flex flex-col">
+        <div className="bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl border-t border-x border-gray-200 dark:border-gray-800 max-h-[82vh] md:max-h-[80vh] flex flex-col">
 
           {/* Header / pull handle */}
           <div

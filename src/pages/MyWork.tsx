@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, Pin, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Header } from '../components/layout/Header'
@@ -6,11 +6,11 @@ import { Badge } from '../components/common/Badge'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
-import type { Ticket } from '../types/ticket'
+import type { Ticket, TicketMember } from '../types/ticket'
 import type { Task, ProjectIncident } from '../types/project'
 import type { FocusItem } from '../types/common'
 import { getDueDateColor, getDueDateRowClass, getDueDateBadgeClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
-import { getPriorityColor, getStatusColor, getSeverityColor } from '../utils/colorUtils'
+import { getPriorityColor, getSeverityColor } from '../utils/colorUtils'
 
 type TabType = 'tickets' | 'tasks' | 'incidents'
 
@@ -45,8 +45,19 @@ export default function MyWork() {
       spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
       spGet<ProjectIncident>('PM_Incidents', `AssignedEmail eq '${user.email}'`, undefined, 'Created desc'),
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`),
-    ]).then(([t, tk, inc, focus]) => {
-      setTickets(t)
+      spGet<TicketMember>('HD_TicketMembers', `AgentEmail eq '${user.email}'`),
+    ]).then(async ([assigned, tk, inc, focus, memberships]) => {
+      // Load member tickets that aren't already in assigned list
+      let memberTickets: Ticket[] = []
+      if (memberships.length > 0) {
+        const assignedIds = new Set(assigned.map(t => t.id))
+        const memberIds = [...new Set(memberships.map(m => m.TicketID))].filter(id => !assignedIds.has(id))
+        if (memberIds.length > 0) {
+          const filter = memberIds.map(id => `Id eq ${id}`).join(' or ')
+          memberTickets = await spGet<Ticket>('HD_Tickets', filter, undefined, 'Modified desc').catch(() => [])
+        }
+      }
+      setTickets([...assigned, ...memberTickets])
       setTasks(tk)
       setIncidents(inc)
       setFocusItems(focus)
@@ -137,6 +148,107 @@ export default function MyWork() {
     incidents: incidents.filter(inc => inc.Status !== 'Resolved').length,
   }
 
+  // ── Card renderers ──
+  function ticketCard(t: Ticket) {
+    const color = getDueDateColor(t.DueDate, t.Status === 'Closed')
+    return (
+      <div key={t.id} className={`flex flex-col gap-2 p-3 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${getDueDateRowClass(color)}`}>
+        <div className="flex items-start gap-2">
+          <span className="text-base flex-shrink-0">{getDueDateEmoji(color)}</span>
+          <Link to={`/tickets/${t.id}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{t.Title}</Link>
+          <button onClick={() => pinFocus('Ticket', t)} className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 ${pinnedSet.has(`Ticket|${t.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin"><Pin size={14} /></button>
+        </div>
+        <span className="text-xs text-gray-400">{t.TicketNumber}</span>
+        <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
+          <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
+          {t.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(t.DueDate)}</span>}
+          {!t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
+            <button onClick={() => acknowledgeTicket(t)} className="ml-auto p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600" title="รับทราบ"><CheckCircle2 size={15} /></button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function taskCard(task: Task) {
+    const color = getDueDateColor(task.DueDate, task.IsCompleted)
+    return (
+      <div key={task.id} className={`flex flex-col gap-2 p-3 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${getDueDateRowClass(color)}`}>
+        <div className="flex items-start gap-2">
+          <span className="text-base flex-shrink-0">{getDueDateEmoji(color)}</span>
+          {task.ProjectID
+            ? <Link to={`/projects/${task.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{task.Title}</Link>
+            : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 leading-snug">{task.Title}</p>}
+          <button onClick={() => pinFocus('Task', task)} className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin"><Pin size={14} /></button>
+        </div>
+        {task.TaskNote && <p className="text-xs text-gray-500 italic line-clamp-2">{task.TaskNote}</p>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
+          {task.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(task.DueDate)}</span>}
+          {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> รับทราบ</span>}
+        </div>
+      </div>
+    )
+  }
+
+  function incidentCard(inc: ProjectIncident) {
+    return (
+      <div key={inc.id} className="flex flex-col gap-2 p-3 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={15} className="flex-shrink-0 text-orange-500 mt-0.5" />
+          {inc.ProjectID > 0
+            ? <Link to={`/projects/${inc.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{inc.Title}</Link>
+            : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 leading-snug">{inc.Title}</p>}
+          <button onClick={() => pinFocus('Incident', inc)} className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin"><Pin size={14} /></button>
+        </div>
+        {inc.Description && <p className="text-xs text-gray-500 line-clamp-2">{inc.Description}</p>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
+          <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
+          {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  // Kanban column wrapper
+  function Columns<T>({ cols, items, keyOf, render }: { cols: { key: string; label: string; color?: string }[]; items: T[]; keyOf: (i: T) => string; render: (i: T) => ReactNode }) {
+    return (
+      <div className="flex gap-3 overflow-x-auto pb-2">
+        {cols.map(col => {
+          const list = items.filter(i => keyOf(i) === col.key)
+          return (
+            <div key={col.key} className="flex-shrink-0 w-72">
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <span className={`w-2 h-2 rounded-full ${col.color ?? 'bg-gray-400'}`} />
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{col.label}</span>
+                <span className="text-xs text-gray-400">({list.length})</span>
+              </div>
+              <div className="space-y-3">
+                {list.length === 0 ? <p className="text-xs text-gray-300 dark:text-gray-600 text-center py-6 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">—</p> : list.map(render)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const TICKET_COLS = [
+    { key: 'Open', label: 'Open', color: 'bg-blue-500' },
+    { key: 'In Progress', label: 'In Progress', color: 'bg-amber-500' },
+    { key: 'Pending', label: 'Pending', color: 'bg-purple-500' },
+    { key: 'Resolved', label: 'Resolved', color: 'bg-green-500' },
+    { key: 'Closed', label: 'Closed', color: 'bg-gray-400' },
+  ]
+  const INCIDENT_COLS = [
+    { key: 'Open', label: 'Open', color: 'bg-red-500' },
+    { key: 'In Progress', label: 'In Progress', color: 'bg-amber-500' },
+    { key: 'Resolved', label: 'Resolved', color: 'bg-green-500' },
+  ]
+  const TASK_COLS = [
+    { key: 'open', label: 'กำลังทำ', color: 'bg-blue-500' },
+    { key: 'done', label: 'เสร็จแล้ว', color: 'bg-green-500' },
+  ]
+
   return (
     <div>
       <Header title="งานของฉัน" />
@@ -209,125 +321,31 @@ export default function MyWork() {
           )}
         </div>
 
-        {/* Tickets */}
+        {/* Tickets — columns by status */}
         {tab === 'tickets' && (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            {loading
-              ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
-              : filteredTickets.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Ticket ที่ยังค้างอยู่</p>
-                : filteredTickets.map(t => {
-                    const color = getDueDateColor(t.DueDate, t.Status === 'Closed')
-                    return (
-                      <div key={t.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${getDueDateRowClass(color)}`}>
-                        <span className="text-base w-5 text-center">{getDueDateEmoji(color)}</span>
-                        <div className="flex-1 min-w-0">
-                          <Link to={`/tickets/${t.id}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
-                            {t.Title}
-                          </Link>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-gray-400">{t.TicketNumber}</span>
-                            {t.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(t.DueDate)}</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <Badge className={`hidden sm:inline-flex ${getPriorityColor(t.Priority)}`}>{t.Priority}</Badge>
-                          <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge>
-                          {!t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
-                            <button onClick={() => acknowledgeTicket(t)}
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600" title="รับทราบ">
-                              <CheckCircle2 size={15} />
-                            </button>
-                          )}
-                          <button onClick={() => pinFocus('Ticket', t)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Ticket|${t.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
-                            <Pin size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })
-            }
-          </div>
+          loading
+            ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
+            : filteredTickets.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Ticket ที่ยังค้างอยู่</p>
+              : <Columns cols={TICKET_COLS.filter(c => showAllTickets || !DONE_TICKET_STATUSES.has(c.key))} items={filteredTickets} keyOf={t => t.Status} render={t => ticketCard(t)} />
         )}
 
-        {/* Tasks */}
+        {/* Tasks — columns by open/closed */}
         {tab === 'tasks' && (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            {loading
-              ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
-              : filteredTasks.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Task ที่ยังค้างอยู่</p>
-                : filteredTasks.map(task => {
-                    const color = getDueDateColor(task.DueDate, task.IsCompleted)
-                    return (
-                      <div key={task.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${getDueDateRowClass(color)}`}>
-                        <span className="text-base w-5 text-center flex-shrink-0">{getDueDateEmoji(color)}</span>
-                        <div className="flex-1 min-w-0">
-                          {task.ProjectID
-                            ? (
-                              <Link to={`/projects/${task.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
-                                {task.Title}
-                              </Link>
-                            )
-                            : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{task.Title}</p>
-                          }
-                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                            {task.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(task.DueDate)}</span>}
-                            {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> รับทราบแล้ว</span>}
-                          </div>
-                          {task.TaskNote && <p className="text-xs text-gray-500 mt-0.5 italic truncate">{task.TaskNote}</p>}
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {task.IsCompleted
-                            ? <Badge className="bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">Done</Badge>
-                            : <Badge className="bg-blue-600 text-white dark:bg-blue-500 dark:text-white">Active</Badge>
-                          }
-                          <button onClick={() => pinFocus('Task', task)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
-                            <Pin size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })
-            }
-          </div>
+          loading
+            ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
+            : filteredTasks.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Task ที่ยังค้างอยู่</p>
+              : <Columns cols={TASK_COLS} items={filteredTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => taskCard(t)} />
         )}
 
-        {/* Incidents */}
+        {/* Incidents — columns by status */}
         {tab === 'incidents' && (
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            {loading
-              ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
-              : filteredIncidents.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Incident ที่ยังค้างอยู่</p>
-                : filteredIncidents.map(inc => (
-                    <div key={inc.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <AlertTriangle size={15} className="flex-shrink-0 text-orange-500" />
-                      <div className="flex-1 min-w-0">
-                        {inc.ProjectID > 0
-                          ? (
-                            <Link to={`/projects/${inc.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">
-                              {inc.Title}
-                            </Link>
-                          )
-                          : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{inc.Title}</p>
-                        }
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
-                          {inc.Description && <span className="text-xs text-gray-400 truncate">{inc.Description}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <Badge className={`hidden sm:inline-flex ${getSeverityColor(inc.Severity)}`}>{inc.Severity}</Badge>
-                        <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
-                        <button onClick={() => pinFocus('Incident', inc)} className={`hidden sm:block p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin">
-                          <Pin size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-            }
-          </div>
+          loading
+            ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
+            : filteredIncidents.length === 0
+              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Incident ที่ยังค้างอยู่</p>
+              : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
         )}
       </div>
     </div>

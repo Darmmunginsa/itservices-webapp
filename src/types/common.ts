@@ -33,6 +33,7 @@ export interface Holiday {
   Title: string
   HolidayDate: string
   HolidayType: 'ราชการ' | 'บริษัท'
+  CalendarEventId?: string
 }
 
 export interface LeaveRequest {

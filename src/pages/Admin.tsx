@@ -7,8 +7,9 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
+import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
-import type { Holiday, Announcement } from '../types/common'
+import type { Holiday, Announcement, AgentProfile } from '../types/common'
 import { formatDate } from '../utils/dateUtils'
 
 const HOLIDAY_TYPES: Holiday['HolidayType'][] = ['ราชการ', 'บริษัท']
@@ -47,7 +48,30 @@ export default function Admin() {
       .then(setAnnouncements).catch(() => {}).finally(() => setAnnLoading(false))
   }
 
-  useEffect(() => { load(); loadAnn() }, [])
+  // Home video (HD_Options Category=HomeVideo, single row)
+  const [videoUrl, setVideoUrl] = useState('')
+  const [videoRowId, setVideoRowId] = useState<number | null>(null)
+  const [savingVideo, setSavingVideo] = useState(false)
+
+  function loadVideo() {
+    spGet<{ id: number; Title: string; Category: string }>('HD_Options', "Category eq 'HomeVideo'", 'Id,Title,Category')
+      .then(rows => { if (rows[0]) { setVideoRowId(rows[0].id); setVideoUrl(rows[0].Title || '') } })
+      .catch(() => {})
+  }
+
+  async function saveVideo() {
+    setSavingVideo(true)
+    try {
+      if (videoRowId) await spUpdate('HD_Options', videoRowId, { Title: videoUrl })
+      else {
+        const res = await spCreate('HD_Options', { Title: videoUrl, Category: 'HomeVideo', SortOrder: 0 })
+        setVideoRowId(res.id)
+      }
+      addToast('success', 'บันทึกวิดีโอหน้าหลักแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingVideo(false) }
+  }
+
+  useEffect(() => { load(); loadAnn(); loadVideo() }, [])
 
   async function addHoliday(e: React.FormEvent) {
     e.preventDefault()
@@ -59,19 +83,53 @@ export default function Admin() {
         HolidayDate: form.holidayDate,
         HolidayType: form.holidayType,
       })
-      addToast('success', 'เพิ่มวันหยุดสำเร็จ')
+
+      // สร้าง Calendar event + invite ทีมทั้งหมด
+      try {
+        const agents = await spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText')
+        const attendees = agents.map(a => a.EmailText).filter(Boolean)
+
+        // all-day event: end = วันถัดไป
+        const startDate = new Date(form.holidayDate)
+        const endDate = new Date(form.holidayDate)
+        endDate.setDate(endDate.getDate() + 1)
+        const toISO = (d: Date) => d.toISOString().split('T')[0] + 'T00:00:00'
+
+        const calEvent = await createCalendarEvent({
+          subject: `🏖 ${form.holidayType === 'ราชการ' ? '[วันหยุดราชการ]' : '[วันหยุดบริษัท]'} ${form.title}`,
+          start: toISO(startDate),
+          end: toISO(endDate),
+          attendees,
+          isAllDay: true,
+          body: `วันหยุด${form.holidayType}: ${form.title}\nวันที่: ${form.holidayDate}`,
+        })
+        // บันทึก CalendarEventId กลับ SP เพื่อใช้ตอนลบ
+        if (calEvent?.id) {
+          const latest = await spGet<Holiday>('HD_Holidays',
+            `Title eq '${form.title}' and HolidayDate eq '${form.holidayDate}'`)
+          if (latest[0]) await spUpdate('HD_Holidays', latest[0].id, { CalendarEventId: calEvent.id })
+        }
+        addToast('success', `เพิ่มวันหยุดและส่ง Calendar invite ให้ทีม ${attendees.length} คนแล้ว`)
+      } catch {
+        addToast('success', 'เพิ่มวันหยุดสำเร็จ (Calendar invite ไม่สำเร็จ)')
+      }
+
       setForm({ ...EMPTY_FORM })
       setShowAdd(false)
       load()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSaving(false) }
   }
 
-  async function deleteHoliday(id: number, title: string) {
-    if (!window.confirm(`ลบ "${title}"?`)) return
+  async function deleteHoliday(id: number, title: string, calEventId?: string) {
+    if (!window.confirm(`ลบ "${title}"?\nจะยกเลิก Calendar event ของทีมด้วย`)) return
     try {
+      // ลบ Calendar event (ส่ง cancellation ให้ attendees อัตโนมัติ)
+      if (calEventId) {
+        try { await deleteCalendarEvent(calEventId) } catch { /* non-critical */ }
+      }
       await spDelete('HD_Holidays', id)
       setHolidays(prev => prev.filter(h => h.id !== id))
-      addToast('success', 'ลบวันหยุดแล้ว')
+      addToast('success', calEventId ? 'ลบวันหยุดและยกเลิก Calendar event แล้ว' : 'ลบวันหยุดแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
@@ -220,7 +278,7 @@ export default function Admin() {
                         : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}>
                         {h.HolidayType}
                       </Badge>
-                      <button onClick={() => deleteHoliday(h.id, h.Title)}
+                      <button onClick={() => deleteHoliday(h.id, h.Title, h.CalendarEventId)}
                         className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
                         <Trash2 size={14} />
                       </button>
@@ -229,6 +287,21 @@ export default function Admin() {
             }
           </div>
           <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
+        </Card>
+
+        {/* Home Video */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays size={16} className="text-red-600" />
+            <h2 className="text-sm font-semibold">วิดีโอหน้าหลัก (YouTube)</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-2">วางลิงก์ YouTube (เช่น https://youtu.be/xxxx หรือ https://www.youtube.com/watch?v=xxxx) — เว้นว่างเพื่อซ่อน</p>
+          <div className="flex gap-2">
+            <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)}
+              placeholder="https://youtu.be/..."
+              className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <Button size="sm" onClick={saveVideo} disabled={savingVideo}>{savingVideo ? '...' : 'บันทึก'}</Button>
+          </div>
         </Card>
       </div>
 

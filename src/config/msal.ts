@@ -37,6 +37,7 @@ export const loginRequest: PopupRequest = {
   scopes: [
     'User.Read',
     'Calendars.ReadWrite',
+    'Mail.Send',
   ],
 }
 

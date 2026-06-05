@@ -5,6 +5,7 @@ import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { Modal } from '../components/common/Modal'
+import { OptionSelect } from '../components/common/OptionSelect'
 import { spGet, spCreate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, ProjectStatus } from '../types/project'
@@ -217,21 +218,17 @@ export default function Projects() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>บริษัท/ลูกค้า</label>
-              <input value={form.company} onChange={e => set('company', e.target.value)} className={inputClass} />
+              <OptionSelect category="ProjectCompany" defaults={[]} value={form.company} onChange={v => set('company', v)} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>กลุ่มโครงการ</label>
-              <select value={form.projectGroup} onChange={e => set('projectGroup', e.target.value)} className={inputClass}>
-                {PROJECT_GROUPS.map(g => <option key={g}>{g}</option>)}
-              </select>
+              <OptionSelect category="ProjectGroup" defaults={[...PROJECT_GROUPS]} value={form.projectGroup} onChange={v => set('projectGroup', v)} className={inputClass} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>สถานะเริ่มต้น</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className={inputClass}>
-                {PROJECT_STATUSES.map(s => <option key={s}>{s}</option>)}
-              </select>
+              <OptionSelect category="ProjectStatus" defaults={[...PROJECT_STATUSES]} value={form.status} onChange={v => set('status', v)} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>ความคืบหน้า (%)</label>

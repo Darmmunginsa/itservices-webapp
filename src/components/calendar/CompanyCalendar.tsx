@@ -8,6 +8,7 @@ import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
+import { OptionSelect } from '../common/OptionSelect'
 
 const WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
 
@@ -78,15 +79,15 @@ export function CompanyCalendar() {
       const approver  = agents.find(a => a.EmailText === leaveForm.approverEmail)
       const dateStr   = format(selectedDay, 'yyyy-MM-dd')
       await spCreate('HD_LeaveRequests', {
-        Title:         leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
-        LeaveDate:     dateStr,
-        LeaveType:     leaveForm.leaveType,
-        RequestedBy:   user.displayName,
+        Title:          leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
+        LeaveDate:      dateStr,
+        LeaveType:      leaveForm.leaveType,
+        RequestedBy:    user.displayName,
         RequestedEmail: user.email,
-        ApproverEmail: leaveForm.approverEmail,
-        ApproverName:  approver?.Title ?? '',
-        Status:        'Pending',
-        Note:          leaveForm.reason,
+        ApproverEmail:  leaveForm.approverEmail,
+        ApproverName:   approver?.Title ?? '',
+        Status:         'Pending',
+        Note:           leaveForm.reason,
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
       closeModal()
@@ -232,11 +233,7 @@ export function CompanyCalendar() {
           <form onSubmit={submitLeave} className="space-y-3">
             <div>
               <label className={labelCx}>ประเภทการลา</label>
-              <select value={leaveForm.leaveType}
-                onChange={e => setLeaveForm(f => ({ ...f, leaveType: e.target.value }))}
-                className={inputCx}>
-                {['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ'].map(t => <option key={t}>{t}</option>)}
-              </select>
+              <OptionSelect category="LeaveType" defaults={['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']} value={leaveForm.leaveType} onChange={v => setLeaveForm(f => ({ ...f, leaveType: v }))} className={inputCx} />
             </div>
             <div>
               <label className={labelCx}>เหตุผล</label>

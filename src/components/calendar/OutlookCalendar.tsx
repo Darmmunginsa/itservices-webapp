@@ -12,8 +12,11 @@ import { spGet, spCreate } from '../../services/sharepoint'
 import { createCalendarEvent } from '../../services/graph'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
+import { SearchMultiSelect } from '../common/SearchSelect'
 import type { OutlookEvent } from '../../services/graph'
 import type { Project } from '../../types/project'
+import type { AgentProfile } from '../../types/common'
+import type { Contract } from '../../types/ticket'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -203,12 +206,14 @@ const EMPTY_TASK = {
   title: '', date: '', startTime: '09:00', endTime: '10:00', note: '',
   taskType: 'personal' as 'personal' | 'project',
   projectId: '',
+  isOnlineMeeting: false,
+  externalAttendees: '',
 }
 
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
   const { user, addToast } = useAppStore()
-  const [view, setView] = useState<ViewMode>('week')
+  const [view, setView] = useState<ViewMode>('month')
   const [cursor, setCursor] = useState(new Date())
 
   // Task modal
@@ -216,14 +221,31 @@ export function OutlookCalendar() {
   const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
   const [projects, setProjects] = useState<Project[]>([])
   const [saving, setSaving] = useState(false)
+  const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [internalEmails, setInternalEmails] = useState<string[]>([])
+  const [customerEmails, setCustomerEmails] = useState<string[]>([])
 
   useEffect(() => {
     spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
       .then(setProjects).catch(() => {})
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
+      .then(setAgents).catch(() => {})
+    spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc')
+      .then(setContracts).catch(() => {})
   }, [])
+
+  const internalOptions = agents
+    .map(a => ({ value: a.EmailText ?? '', label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
+    .filter(o => o.value)
+  const customerOptions = contracts
+    .filter(c => c.CustomerEmail)
+    .map(c => ({ value: c.CustomerEmail ?? '', label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
+    .filter(o => o.value)
 
   function openTaskModal(date?: Date) {
     setTaskForm({ ...EMPTY_TASK, date: format(date ?? new Date(), 'yyyy-MM-dd') })
+    setInternalEmails([]); setCustomerEmails([])
     setShowTaskModal(true)
   }
 
@@ -255,8 +277,8 @@ export function OutlookCalendar() {
         start:           `${taskForm.date}T${taskForm.startTime}:00`,
         end:             `${taskForm.date}T${taskForm.endTime}:00`,
         body:            taskForm.note,
-        attendees:       [],
-        isOnlineMeeting: false,
+        attendees:       [...internalEmails, ...customerEmails, ...taskForm.externalAttendees.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)],
+        isOnlineMeeting: taskForm.isOnlineMeeting,
       })
       addToast('success', taskForm.taskType === 'project' ? 'สร้าง Task และเพิ่มใน Calendar แล้ว' : 'เพิ่มนัดหมายใน Calendar แล้ว')
       setShowTaskModal(false)
@@ -474,6 +496,30 @@ export function OutlookCalendar() {
               className="flex-1 border-0 bg-transparent focus:outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 resize-none"
             />
           </div>
+
+          {/* Teams online meeting */}
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+            <input type="checkbox" checked={taskForm.isOnlineMeeting}
+              onChange={e => setTaskForm(f => ({ ...f, isOnlineMeeting: e.target.checked }))}
+              className="rounded accent-primary-600" />
+            <span className="text-base">💻</span> เพิ่มการประชุมออนไลน์ (Teams)
+          </label>
+
+          {/* Attendees — shown only after checking Teams */}
+          {taskForm.isOnlineMeeting && (
+            <div className="space-y-2">
+              <SearchMultiSelect label="ผู้เข้าร่วม Internal" options={internalOptions} selected={internalEmails}
+                onToggle={v => setInternalEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
+              <SearchMultiSelect label="ผู้เข้าร่วม ลูกค้า" options={customerOptions} selected={customerEmails}
+                onToggle={v => setCustomerEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
+              <input
+                value={taskForm.externalAttendees}
+                onChange={e => setTaskForm(f => ({ ...f, externalAttendees: e.target.value }))}
+                placeholder="Email ภายนอก (คั่นด้วย , )"
+                className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">

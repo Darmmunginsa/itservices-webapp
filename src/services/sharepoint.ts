@@ -18,6 +18,19 @@ async function getHeaders(): Promise<HeadersInit> {
   }
 }
 
+// Fetch list items from ANY site under the same SharePoint host (same token works).
+// siteRelativeUrl e.g. '/sites/SalesQuotation'
+export async function spGetFromSite<T>(siteRelativeUrl: string, listName: string, select?: string, top = 999): Promise<T[]> {
+  const headers = await getHeaders()
+  let url = `${SP_HOST}${siteRelativeUrl}/_api/web/lists/getbytitle('${listName}')/items?$top=${top}`
+  if (select) url += `&$select=${encodeURIComponent(select)}`
+  const res = await fetch(url, { headers })
+  if (!res.ok) throw new Error(`SP cross-site GET failed: ${res.status} ${listName}`)
+  const data = await res.json()
+  const items = (data.value || []) as Array<Record<string, unknown>>
+  return items.map(item => ({ ...item, id: (item['ID'] ?? item['Id']) as number })) as T[]
+}
+
 export async function spGet<T>(listName: string, filter?: string, select?: string, orderby?: string, top = 500, expand?: string): Promise<T[]> {
   const headers = await getHeaders()
   let url = `${SHAREPOINT_API}('${listName}')/items?$top=${top}`

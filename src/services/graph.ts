@@ -58,6 +58,30 @@ export async function getWeeklyCalendar(): Promise<OutlookEvent[]> {
   return getCalendarRange(start, end)
 }
 
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  const headers = await graphHeaders()
+  await fetch(`https://graph.microsoft.com/v1.0/me/events/${eventId}`, {
+    method: 'DELETE',
+    headers,
+  })
+}
+
+export async function sendMail(to: string, subject: string, body: string): Promise<void> {
+  const headers = await graphHeaders()
+  await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: body },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: true,
+    }),
+  })
+}
+
 export async function createCalendarEvent(event: {
   subject: string
   start: string
@@ -66,12 +90,15 @@ export async function createCalendarEvent(event: {
   attendees?: string[]
   body?: string
   isOnlineMeeting?: boolean
+  isAllDay?: boolean
 }): Promise<OutlookEvent> {
   const headers = await graphHeaders()
   const payload = {
     subject: event.subject,
+    isAllDay: event.isAllDay ?? false,
     start: { dateTime: event.start, timeZone: 'Asia/Bangkok' },
     end: { dateTime: event.end, timeZone: 'Asia/Bangkok' },
+    showAs: event.isAllDay ? 'free' : undefined,
     location: event.location ? { displayName: event.location } : undefined,
     attendees: event.attendees?.filter(Boolean).map(email => ({
       emailAddress: { address: email },

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, Search, Notebook } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
+import { OptionSelect } from '../components/common/OptionSelect'
 import { Modal } from '../components/common/Modal'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
@@ -129,9 +130,9 @@ export default function Tools() {
   const lc = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen">
       <Header title="Tools & Notes" />
-      <div className="md:ml-56 p-4 md:p-6">
+      <div className="p-4 md:p-6">
 
         {/* Title */}
         <div className="flex items-center justify-between mb-5">
@@ -190,7 +191,7 @@ export default function Tools() {
               <div
                 key={note.id}
                 onClick={() => setViewing(note)}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 transition-all group"
+                className="subpanel bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 transition-all group"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 line-clamp-1 flex-1">
@@ -269,14 +270,7 @@ export default function Tools() {
           </div>
           <div>
             <label className={lc}>หมวดหมู่</label>
-            <select
-              value={form.category}
-              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-              className={ic}
-            >
-              <option value="">— ไม่ระบุ —</option>
-              {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-            </select>
+            <OptionSelect category="ToolNoteCategory" defaults={[...CATEGORIES]} value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} className={ic} />
           </div>
           <div>
             <label className={lc}>เนื้อหา *</label>

@@ -93,3 +93,6 @@
     100% { transform: translateX(-100%); }
   }
 }
+
+/* Sub-card panels follow custom card theme (transparent / bg color) */
+.subpanel { background: var(--card-bg); backdrop-filter: var(--card-blur); }

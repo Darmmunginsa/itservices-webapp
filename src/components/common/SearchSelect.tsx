@@ -93,7 +93,7 @@ export function SearchSelect({
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[200px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+        <div className="relative z-10 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
           {/* Search */}
           <div className="p-2 border-b border-gray-100 dark:border-gray-800">
             <input
@@ -178,7 +178,7 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full min-w-[220px] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+        <div className="relative z-10 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
           <div className="p-2 border-b border-gray-100 dark:border-gray-800">
             <input
               autoFocus
