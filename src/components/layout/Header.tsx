@@ -1,6 +1,7 @@
 import { Bell, Menu, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
+import { ProfileMenu } from './ProfileMenu'
 
 interface HeaderProps {
   title: string
@@ -9,7 +10,7 @@ interface HeaderProps {
 }
 
 export function Header({ title, backTo, backLabel }: HeaderProps) {
-  const { user, setMobileNavOpen } = useAppStore()
+  const { setMobileNavOpen } = useAppStore()
 
   return (
     <header className="sticky top-0 z-[29] bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-4 md:px-6 py-3 flex items-center gap-3">
@@ -35,9 +36,7 @@ export function Header({ title, backTo, backLabel }: HeaderProps) {
         <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
           <Bell size={18} />
         </button>
-        <div className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold">
-          {user?.displayName?.charAt(0).toUpperCase() ?? '?'}
-        </div>
+        <ProfileMenu />
       </div>
     </header>
   )
