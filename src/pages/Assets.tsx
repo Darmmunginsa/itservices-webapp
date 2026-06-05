@@ -333,12 +333,12 @@ export default function Assets() {
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center text-xs font-medium text-gray-500 gap-2">
-            <span className="flex-1">ชื่อ / รหัส</span>
-            <span className="hidden sm:block w-24">หมวดหมู่</span>
-            <span className="w-20">สถานะ</span>
-            <span className="hidden md:block w-28">ผู้ใช้งาน</span>
-            <span className="hidden md:block w-28">ประกัน / หมดอายุ</span>
-            <span className="w-4" />
+            <span className="flex-1 min-w-0">ชื่อ / รหัส</span>
+            <span className="hidden sm:block w-36 flex-shrink-0">หมวดหมู่</span>
+            <span className="w-20 flex-shrink-0">สถานะ</span>
+            <span className="hidden md:block w-40 flex-shrink-0">ผู้ใช้งาน</span>
+            <span className="hidden md:block w-36 flex-shrink-0">ประกัน / หมดอายุ</span>
+            <span className="w-4 flex-shrink-0" />
           </div>
           {loading
             ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
@@ -357,13 +357,13 @@ export default function Assets() {
                           <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
                           {a.AssetCode && <p className="text-xs text-gray-400 font-mono">{a.AssetCode}</p>}
                         </div>
-                        <div className="hidden sm:block w-24 flex-shrink-0"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 truncate max-w-full">{a.Category}</Badge></div>
+                        <div className="hidden sm:block w-36 flex-shrink-0"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 truncate max-w-full">{a.Category}</Badge></div>
                         <div className="w-20 flex-shrink-0"><Badge className={getStatusColor(a.Status)}>{a.Status}</Badge></div>
-                        <div className="hidden md:block w-28 flex-shrink-0 text-xs text-gray-500 truncate">{a.AssignedTo || '-'}</div>
-                        <div className="hidden md:block w-28 flex-shrink-0">
+                        <div className="hidden md:block w-40 flex-shrink-0 text-xs text-gray-500 truncate">{a.AssignedTo || '-'}</div>
+                        <div className="hidden md:block w-36 flex-shrink-0">
                           {warrantyDate ? (
-                            <div className={`flex items-center gap-1 text-xs ${expiring ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-                              {expiring && <AlertTriangle size={11} />}
+                            <div className={`flex items-center gap-1 text-xs whitespace-nowrap ${expiring ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                              {expiring && <AlertTriangle size={11} className="flex-shrink-0" />}
                               {formatDate(warrantyDate)}
                               {days !== null && days >= 0 && <span>({days}d)</span>}
                               {days !== null && days < 0 && <span className="text-red-600">(หมดแล้ว)</span>}
