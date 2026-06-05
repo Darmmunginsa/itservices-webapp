@@ -12,6 +12,22 @@ import { OptionSelect } from '../common/OptionSelect'
 
 const WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
 
+// mapping ภาษาอังกฤษ ↔ ไทย (รองรับข้อมูลเก่าที่กรอกเป็นอังกฤษ)
+const LEAVE_TYPE_ALIASES: Record<string, string[]> = {
+  'ลาพักร้อน': ['annual', 'vacation', 'พักร้อน'],
+  'ลาป่วย':    ['sick', 'ป่วย'],
+  'ลากิจ':     ['personal', 'กิจ', 'ลากิจธุระ'],
+  'ลาคลอด':   ['maternity', 'คลอด'],
+  'ลาอื่นๆ':   ['other', 'others', 'อื่น', 'อื่นๆ'],
+}
+function leaveTypeMatch(stored: string, quotaTitle: string): boolean {
+  const s = stored.trim().toLowerCase()
+  const q = quotaTitle.trim().toLowerCase()
+  if (s === q) return true
+  const aliases = LEAVE_TYPE_ALIASES[quotaTitle] ?? []
+  return aliases.some(a => s === a || s.startsWith(a))
+}
+
 type ModalMode = 'leave' | 'holiday'
 
 const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
@@ -76,10 +92,8 @@ export function CompanyCalendar() {
   const curYear = String(new Date().getFullYear())
   const balance = quotas.map(q => {
     const rows = myLeaves.filter(l => {
-      // รองรับ LeaveDate ทั้ง 'yyyy-MM-dd' และ 'yyyy-MM-ddTHH:mm:ssZ'
       const dateStr = (l.LeaveDate ?? '').slice(0, 4)
-      const typeMatch = (l.LeaveType ?? '').trim().toLowerCase() === q.Title.trim().toLowerCase()
-      return typeMatch && dateStr === curYear
+      return leaveTypeMatch(l.LeaveType ?? '', q.Title) && dateStr === curYear
     })
     const used = rows.filter(l => l.Status === 'Approved').length
     const pending = rows.filter(l => l.Status === 'Pending').length
@@ -290,7 +304,7 @@ export function CompanyCalendar() {
               <label className={labelCx}>ประเภทการลา</label>
               <OptionSelect category="LeaveType" defaults={['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']} value={leaveForm.leaveType} onChange={v => setLeaveForm(f => ({ ...f, leaveType: v }))} className={inputCx} />
               {(() => {
-                const b = balance.find(x => x.type === leaveForm.leaveType)
+                const b = balance.find(x => leaveTypeMatch(leaveForm.leaveType, x.type) || leaveTypeMatch(x.type, leaveForm.leaveType))
                 if (!b) return null
                 const color = b.remaining <= 0 ? 'text-red-600' : b.remaining <= 2 ? 'text-amber-600' : 'text-green-600'
                 return (
