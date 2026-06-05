@@ -33,6 +33,7 @@ export interface TicketComment {
   CommentType: 'Internal' | 'External'
   CommentDate: string
   LikedBy?: string            // JSON array of emails who liked — multi-line text column
+  ParentID?: number           // Id of parent comment for threaded replies (0/empty = top-level)
   Author?: { Title: string }  // SP Created By — expanded via $expand=Author
 }
 

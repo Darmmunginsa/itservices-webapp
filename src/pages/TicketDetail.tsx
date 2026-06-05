@@ -41,6 +41,8 @@ export default function TicketDetail() {
   const [reassigning, setReassigning] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(true)
   const [likeBusy, setLikeBusy] = useState<number | null>(null)
+  const [replyTo, setReplyTo] = useState<{ id: number; author: string } | null>(null)
+  const [openThreads, setOpenThreads] = useState<Record<number, boolean>>({})
   const [manageOpen, setManageOpen] = useState(false)
   const [members, setMembers] = useState<TicketMember[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
@@ -51,7 +53,7 @@ export default function TicketDetail() {
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
       // TicketID is a Number field — no quotes in the filter
-      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,Author/Title', 'CommentDate asc', 500, 'Author'),
+      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title', 'CommentDate asc', 500, 'Author'),
     ]).then(([t, c]) => {
       setTicket(t[0] ?? null)
       if (t[0]) {
@@ -129,8 +131,11 @@ export default function TicketDetail() {
         CommentText: comment,
         CommentType: isAgent ? commentType : 'External',
         CommentDate: new Date().toISOString(),
+        ParentID: replyTo?.id ?? 0,
       })
       setComment('')
+      if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
+      setReplyTo(null)
       load()
       addToast('success', 'บันทึก Comment แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSending(false) }
@@ -219,6 +224,55 @@ export default function TicketDetail() {
   if (loading) return <div className="p-6"><Skeleton className="h-96" /></div>
   if (!ticket) return <div className="p-6 text-gray-400">ไม่พบ Ticket</div>
 
+  // group replies under their parent
+  const repliesByParent = new Map<number, TicketComment[]>()
+  comments.forEach(c => {
+    if (c.ParentID) {
+      const arr = repliesByParent.get(c.ParentID) ?? []
+      arr.push(c)
+      repliesByParent.set(c.ParentID, arr)
+    }
+  })
+  const topComments = comments.filter(c => !c.ParentID)
+
+  const renderComment = (c: TicketComment, isReply: boolean) => {
+    const author = c.Author?.Title ?? '—'
+    const handle = '@' + author.replace(/\s+/g, '')
+    const likeList = parseLikes(c.LikedBy)
+    const liked = !!user?.email && likeList.includes(user.email)
+    const avatarSize = isReply ? 'w-7 h-7 text-xs' : 'w-9 h-9 text-sm'
+    return (
+      <div key={c.id} className="flex gap-3">
+        <div className={`${avatarSize} rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0`}
+          style={{ backgroundColor: avatarColor(author) }} title={author}>
+          {author.charAt(0).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
+            <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
+            {c.CommentType === 'Internal' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">ภายใน</span>
+            )}
+          </div>
+          <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
+            <button type="button" disabled={likeBusy === c.id} onClick={() => toggleLike(c)}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors disabled:opacity-50 ${liked ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              <ThumbsUp size={14} fill={liked ? 'currentColor' : 'none'} />
+              {likeList.length > 0 && <span>{likeList.length}</span>}
+            </button>
+            <button type="button"
+              onClick={() => { setReplyTo({ id: isReply ? (c.ParentID as number) : c.id, author }); document.getElementById('comment-box')?.focus() }}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <MessageSquare size={13} /> ตอบกลับ
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <Header title={ticket.TicketNumber ?? 'Ticket'} backTo="/my-work" backLabel="งานของฉัน" />
@@ -281,42 +335,22 @@ export default function TicketDetail() {
           {commentsOpen && (
             <div className="space-y-5 mb-6">
               {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Comment</p>}
-              {comments.map(c => {
-                const author = c.Author?.Title ?? '—'
-                const handle = '@' + author.replace(/\s+/g, '')
-                const likeList = parseLikes(c.LikedBy)
-                const liked = !!user?.email && likeList.includes(user.email)
+              {topComments.map(c => {
+                const kids = repliesByParent.get(c.id) ?? []
+                const open = openThreads[c.id]
                 return (
-                  <div key={c.id} className="flex gap-3">
-                    {/* Avatar */}
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-                      style={{ backgroundColor: avatarColor(author) }} title={author}>
-                      {author.charAt(0).toUpperCase()}
-                    </div>
-                    {/* Body */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
-                        <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
-                        {c.CommentType === 'Internal' && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">ภายใน</span>
-                        )}
-                      </div>
-                      <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
-                      {/* Action row */}
-                      <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
-                        <button type="button" disabled={likeBusy === c.id} onClick={() => toggleLike(c)}
-                          className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors disabled:opacity-50 ${liked ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-                          <ThumbsUp size={14} fill={liked ? 'currentColor' : 'none'} />
-                          {likeList.length > 0 && <span>{likeList.length}</span>}
+                  <div key={c.id}>
+                    {renderComment(c, false)}
+                    {kids.length > 0 && (
+                      <div className="ml-12 mt-2">
+                        <button type="button" onClick={() => setOpenThreads(p => ({ ...p, [c.id]: !p[c.id] }))}
+                          className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-full transition-colors">
+                          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                          {kids.length} การตอบกลับ
                         </button>
-                        <button type="button"
-                          onClick={() => { setComment(`${handle} `); document.getElementById('comment-box')?.focus() }}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                          <MessageSquare size={13} /> ตอบกลับ
-                        </button>
+                        {open && <div className="space-y-4 mt-3">{kids.map(k => renderComment(k, true))}</div>}
                       </div>
-                    </div>
+                    )}
                   </div>
                 )
               })}
@@ -329,6 +363,15 @@ export default function TicketDetail() {
               {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1 space-y-2">
+              {replyTo && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-400">กำลังตอบกลับ</span>
+                  <span className="font-medium text-primary-600">@{replyTo.author.replace(/\s+/g, '')}</span>
+                  <button type="button" onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500">
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
               {isAgent && (
                 <div className="flex gap-2">
                   {(['Internal', 'External'] as const).map(t => (
@@ -344,8 +387,8 @@ export default function TicketDetail() {
                 onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
                 className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
               <div className="flex justify-end gap-2">
-                {comment && (
-                  <button type="button" onClick={() => setComment('')}
+                {(comment || replyTo) && (
+                  <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
                     className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                     ยกเลิก
                   </button>
