@@ -53,15 +53,34 @@ export function CompanyCalendar() {
     if (!user?.email) return
     spGet<LeaveQuota>('HD_LeaveQuota', `EmployeeEmail eq '${user.email}'`, 'Id,Title,Days,EmployeeEmail', 'Title asc', 100)
       .then(setQuotas).catch(() => {})
-    spGet<LeaveRequest>('HD_LeaveRequests', `RequestedEmail eq '${user.email}'`,
-      'Id,LeaveType,LeaveDate,Status', undefined, 500)
-      .then(setMyLeaves).catch(() => {})
+    // ดึงทุก record ของปีนี้ แล้ว filter email ฝั่ง client (case-insensitive)
+    // เพื่อรองรับข้อมูลที่กรอก manual ซึ่ง email อาจว่าง/ต่างเคส
+    const year = new Date().getFullYear()
+    spGet<LeaveRequest & { RequestedEmail: string }>(
+      'HD_LeaveRequests',
+      `LeaveDate ge '${year}-01-01' and LeaveDate le '${year}-12-31'`,
+      'Id,LeaveType,LeaveDate,Status,RequestedEmail',
+      undefined, 2000
+    ).then(all => {
+      const myEmail = user.email.toLowerCase()
+      // match: RequestedEmail ตรง (case-insensitive) หรือว่าง (กรอก manual ไม่ได้ใส่)
+      const mine = all.filter(l => {
+        const re = (l.RequestedEmail ?? '').toLowerCase()
+        return re === myEmail || re === ''
+      })
+      setMyLeaves(mine)
+    }).catch(() => {})
   }, [user?.email])
 
   // คำนวณวันลาคงเหลือปีปัจจุบัน แยกตามประเภท
-  const curYear = String(currentDate.getFullYear())
+  const curYear = String(new Date().getFullYear())
   const balance = quotas.map(q => {
-    const rows = myLeaves.filter(l => l.LeaveType === q.Title && (l.LeaveDate ?? '').startsWith(curYear))
+    const rows = myLeaves.filter(l => {
+      // รองรับ LeaveDate ทั้ง 'yyyy-MM-dd' และ 'yyyy-MM-ddTHH:mm:ssZ'
+      const dateStr = (l.LeaveDate ?? '').slice(0, 4)
+      const typeMatch = (l.LeaveType ?? '').trim().toLowerCase() === q.Title.trim().toLowerCase()
+      return typeMatch && dateStr === curYear
+    })
     const used = rows.filter(l => l.Status === 'Approved').length
     const pending = rows.filter(l => l.Status === 'Pending').length
     return { type: q.Title, quota: q.Days, used, pending, remaining: q.Days - used - pending }
@@ -115,7 +134,17 @@ export function CompanyCalendar() {
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
       // refresh balance
-      if (user.email) spGet<LeaveRequest>('HD_LeaveRequests', `RequestedEmail eq '${user.email}'`, 'Id,LeaveType,LeaveDate,Status', undefined, 500).then(setMyLeaves).catch(() => {})
+      if (user.email) {
+        const yr = new Date().getFullYear()
+        spGet<LeaveRequest & { RequestedEmail: string }>(
+          'HD_LeaveRequests',
+          `LeaveDate ge '${yr}-01-01' and LeaveDate le '${yr}-12-31'`,
+          'Id,LeaveType,LeaveDate,Status,RequestedEmail', undefined, 2000
+        ).then(all => {
+          const myEmail = user.email.toLowerCase()
+          setMyLeaves(all.filter(l => { const re = (l.RequestedEmail ?? '').toLowerCase(); return re === myEmail || re === '' }))
+        }).catch(() => {})
+      }
       closeModal()
     } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
     finally  { setSaving(false) }
