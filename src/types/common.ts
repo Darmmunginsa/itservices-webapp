@@ -54,8 +54,9 @@ export interface LeaveRequest {
 
 export interface LeaveQuota {
   id: number
-  Title: string   // ชื่อประเภทการลา (ตรงกับ LeaveType) เช่น "ลาพักร้อน"
-  Days: number    // จำนวนวันที่ใช้ได้ต่อปี
+  Title: string          // ชื่อประเภทการลา (ตรงกับ LeaveType) เช่น "ลาพักร้อน"
+  Days: number           // จำนวนวันที่ใช้ได้ต่อปี
+  EmployeeEmail: string  // อีเมลพนักงานที่ได้โควต้านี้ (โควต้ารายบุคคล)
 }
 
 export interface FocusItem {

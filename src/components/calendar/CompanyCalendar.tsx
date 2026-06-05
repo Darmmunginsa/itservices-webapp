@@ -46,13 +46,13 @@ export function CompanyCalendar() {
     loadData()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
-    spGet<LeaveQuota>('HD_LeaveQuota', undefined, 'Id,Title,Days', 'Title asc', 100)
-      .then(setQuotas).catch(() => {})
   }, [])
 
-  // โหลดคำขอลาของตัวเอง (ทุกสถานะ) เพื่อคำนวณวันคงเหลือ
+  // โหลดโควต้า + คำขอลาของตัวเอง (ทุกสถานะ) เพื่อคำนวณวันคงเหลือ
   useEffect(() => {
     if (!user?.email) return
+    spGet<LeaveQuota>('HD_LeaveQuota', `EmployeeEmail eq '${user.email}'`, 'Id,Title,Days,EmployeeEmail', 'Title asc', 100)
+      .then(setQuotas).catch(() => {})
     spGet<LeaveRequest>('HD_LeaveRequests', `RequestedEmail eq '${user.email}'`,
       'Id,LeaveType,LeaveDate,Status', undefined, 500)
       .then(setMyLeaves).catch(() => {})

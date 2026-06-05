@@ -48,27 +48,39 @@ export default function Admin() {
       .then(setAnnouncements).catch(() => {}).finally(() => setAnnLoading(false))
   }
 
-  // Leave quota state
-  const [quotas, setQuotas] = useState<LeaveQuota[]>([])
-  const [quotaLoading, setQuotaLoading] = useState(true)
+  // Leave quota state (per-employee)
+  const [agentsList, setAgentsList] = useState<AgentProfile[]>([])
+  const [quotaEmail, setQuotaEmail] = useState('')      // พนักงานที่เลือก
+  const [quotas, setQuotas] = useState<LeaveQuota[]>([]) // โควต้าของพนักงานที่เลือก
+  const [quotaLoading, setQuotaLoading] = useState(false)
   const [qForm, setQForm] = useState({ title: '', days: '' })
   const [savingQuota, setSavingQuota] = useState(false)
 
-  function loadQuotas() {
+  const LEAVE_TYPES = ['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']
+
+  function loadAgentsList() {
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role', 'Title asc', 500)
+      .then(setAgentsList).catch(() => {})
+  }
+
+  function loadQuotas(email: string) {
+    if (!email) { setQuotas([]); return }
     setQuotaLoading(true)
-    spGet<LeaveQuota>('HD_LeaveQuota', undefined, 'Id,Title,Days', 'Title asc', 100)
+    spGet<LeaveQuota>('HD_LeaveQuota', `EmployeeEmail eq '${email}'`, 'Id,Title,Days,EmployeeEmail', 'Title asc', 100)
       .then(setQuotas).catch(() => {}).finally(() => setQuotaLoading(false))
   }
 
   async function addQuota(e: React.FormEvent) {
     e.preventDefault()
+    if (!quotaEmail) { addToast('error', 'เลือกพนักงานก่อน'); return }
     if (!qForm.title.trim() || qForm.days === '') return
+    if (quotas.some(q => q.Title === qForm.title.trim())) { addToast('error', 'ประเภทนี้มีอยู่แล้ว'); return }
     setSavingQuota(true)
     try {
-      await spCreate('HD_LeaveQuota', { Title: qForm.title.trim(), Days: Number(qForm.days) })
+      await spCreate('HD_LeaveQuota', { Title: qForm.title.trim(), Days: Number(qForm.days), EmployeeEmail: quotaEmail })
       setQForm({ title: '', days: '' })
       addToast('success', 'เพิ่มโควต้าวันลาแล้ว')
-      loadQuotas()
+      loadQuotas(quotaEmail)
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingQuota(false) }
   }
 
@@ -76,7 +88,7 @@ export default function Admin() {
     if (days === q.Days) return
     setQuotas(prev => prev.map(x => x.id === q.id ? { ...x, Days: days } : x))
     try { await spUpdate('HD_LeaveQuota', q.id, { Days: days }) }
-    catch { addToast('error', 'บันทึกไม่สำเร็จ'); loadQuotas() }
+    catch { addToast('error', 'บันทึกไม่สำเร็จ'); loadQuotas(quotaEmail) }
   }
 
   async function deleteQuota(id: number, title: string) {
@@ -86,6 +98,22 @@ export default function Admin() {
       setQuotas(prev => prev.filter(q => q.id !== id))
       addToast('success', 'ลบแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
+  // คัดลอกโควต้าเริ่มต้นให้พนักงานที่เลือก (เฉพาะประเภทที่ยังไม่มี)
+  async function applyDefaultQuota() {
+    if (!quotaEmail) { addToast('error', 'เลือกพนักงานก่อน'); return }
+    const defaults: Record<string, number> = { 'ลาพักร้อน': 6, 'ลาป่วย': 30, 'ลากิจ': 3 }
+    const missing = Object.entries(defaults).filter(([t]) => !quotas.some(q => q.Title === t))
+    if (missing.length === 0) { addToast('error', 'มีครบแล้ว'); return }
+    setSavingQuota(true)
+    try {
+      for (const [title, days] of missing) {
+        await spCreate('HD_LeaveQuota', { Title: title, Days: days, EmployeeEmail: quotaEmail })
+      }
+      addToast('success', `เพิ่มโควต้าเริ่มต้น ${missing.length} ประเภทแล้ว`)
+      loadQuotas(quotaEmail)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingQuota(false) }
   }
 
   // Home video (HD_Options Category=HomeVideo, single row)
@@ -111,7 +139,8 @@ export default function Admin() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingVideo(false) }
   }
 
-  useEffect(() => { load(); loadAnn(); loadVideo(); loadQuotas() }, [])
+  useEffect(() => { load(); loadAnn(); loadVideo(); loadAgentsList() }, [])
+  useEffect(() => { loadQuotas(quotaEmail) }, [quotaEmail])
 
   async function addHoliday(e: React.FormEvent) {
     e.preventDefault()
@@ -329,44 +358,62 @@ export default function Admin() {
           <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
         </Card>
 
-        {/* Leave Quota Management */}
+        {/* Leave Quota Management (per-employee) */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Plane size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">โควต้าวันลา (HD_LeaveQuota)</h2>
+            <h2 className="text-sm font-semibold">โควต้าวันลารายบุคคล (HD_LeaveQuota)</h2>
           </div>
-          <p className="text-xs text-gray-400 mb-3">กำหนดจำนวนวันลาที่พนักงานใช้ได้ต่อปีในแต่ละประเภท — ชื่อประเภทต้องตรงกับ "ประเภทการลา" ในฟอร์มขอลา</p>
+          <p className="text-xs text-gray-400 mb-3">เลือกพนักงานแล้วกำหนดจำนวนวันลาที่ใช้ได้ต่อปีในแต่ละประเภท — พนักงานจะกดตรวจสอบวันคงเหลือของตัวเองในฟอร์มขอลาได้</p>
 
-          {/* Add row */}
-          <form onSubmit={addQuota} className="flex gap-2 mb-3">
-            <input value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))}
-              placeholder="ประเภท เช่น ลาพักร้อน" className={`flex-1 ${inputClass}`} />
-            <input type="number" min={0} value={qForm.days} onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
-              placeholder="วัน/ปี" className={`w-24 ${inputClass}`} />
-            <Button type="submit" size="sm" disabled={savingQuota}><Plus size={14} /> เพิ่ม</Button>
-          </form>
-
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            {quotaLoading
-              ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
-              : quotas.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ยังไม่ได้กำหนดโควต้า</p>
-                : quotas.map(q => (
-                    <div key={q.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <span className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">{q.Title}</span>
-                      <input type="number" min={0} defaultValue={q.Days}
-                        onBlur={e => updateQuotaDays(q, Number(e.target.value))}
-                        className="w-20 px-2 py-1 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                      <span className="text-xs text-gray-400 w-10">วัน/ปี</span>
-                      <button onClick={() => deleteQuota(q.id, q.Title)}
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))
-            }
+          {/* Employee selector */}
+          <div className="mb-3">
+            <label className={labelClass}>พนักงาน</label>
+            <select value={quotaEmail} onChange={e => setQuotaEmail(e.target.value)} className={inputClass}>
+              <option value="">-- เลือกพนักงาน --</option>
+              {agentsList.map(a => <option key={a.id} value={a.EmailText}>{a.Title} ({a.Role})</option>)}
+            </select>
           </div>
-          <p className="text-xs text-gray-400 mt-2">แก้จำนวนวันแล้วคลิกออกจากช่องเพื่อบันทึกอัตโนมัติ</p>
+
+          {quotaEmail && (
+            <>
+              {/* Add row */}
+              <form onSubmit={addQuota} className="flex gap-2 mb-3">
+                <select value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))} className={`flex-1 ${inputClass}`}>
+                  <option value="">-- ประเภท --</option>
+                  {LEAVE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <input type="number" min={0} value={qForm.days} onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
+                  placeholder="วัน/ปี" className={`w-24 ${inputClass}`} />
+                <Button type="submit" size="sm" disabled={savingQuota}><Plus size={14} /> เพิ่ม</Button>
+              </form>
+
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+                {quotaLoading
+                  ? Array.from({ length: 2 }).map((_, i) => <SkeletonRow key={i} />)
+                  : quotas.length === 0
+                    ? <div className="text-center py-8">
+                        <p className="text-sm text-gray-400 mb-3">ยังไม่ได้กำหนดโควต้าให้พนักงานคนนี้</p>
+                        <Button size="sm" variant="secondary" onClick={applyDefaultQuota} disabled={savingQuota}>ใช้ค่าเริ่มต้น (พักร้อน 6 / ป่วย 30 / กิจ 3)</Button>
+                      </div>
+                    : quotas.map(q => (
+                        <div key={q.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          <span className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">{q.Title}</span>
+                          <input type="number" min={0} defaultValue={q.Days}
+                            onBlur={e => updateQuotaDays(q, Number(e.target.value))}
+                            className="w-20 px-2 py-1 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                          <span className="text-xs text-gray-400 w-10">วัน/ปี</span>
+                          <button onClick={() => deleteQuota(q.id, q.Title)}
+                            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                }
+              </div>
+              <p className="text-xs text-gray-400 mt-2">แก้จำนวนวันแล้วคลิกออกจากช่องเพื่อบันทึกอัตโนมัติ</p>
+            </>
+          )}
         </Card>
 
         {/* Home Video */}
