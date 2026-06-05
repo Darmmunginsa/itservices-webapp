@@ -68,6 +68,7 @@ export interface FocusItem {
   FocusedEmail: string
   DueDate?: string
   Status: string
+  SortOrder?: number
 }
 
 export interface TrackingItem {

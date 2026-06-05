@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon } from 'lucide-react'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
@@ -42,6 +42,8 @@ export default function Home() {
   const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [approvingId, setApprovingId] = useState<number | null>(null)
+  const dragId = useRef<number | null>(null)
+  const [dragOverId, setDragOverId] = useState<number | null>(null)
   const [myTickets, setMyTickets] = useState<Ticket[]>([])
   const [videoEmbed, setVideoEmbed] = useState('')
 
@@ -68,7 +70,7 @@ export default function Home() {
     const promises: Promise<unknown>[] = [
       spGet<Ticket>('HD_Tickets', ticketFilter),
       spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc'),
-      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
+      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, 'Id,Title,RefID,FocusType,FocusedBy,FocusedEmail,DueDate,Status,SortOrder', 'SortOrder asc', 200),
       spGet<AssetType>('IT_Assets'),
       spGet<ProjectIncident>('PM_Incidents', incidentFilter),
     ]
@@ -102,6 +104,31 @@ export default function Home() {
       setFocusItems(prev => prev.filter(f => f.id !== focusId))
       addToast('success', 'ลบออกจาก Focus Items แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
+  function onDragStart(id: number) { dragId.current = id }
+
+  function onDragOver(e: React.DragEvent, overId: number) {
+    e.preventDefault()
+    if (dragId.current === null || dragId.current === overId) return
+    setDragOverId(overId)
+  }
+
+  function onDrop(overId: number) {
+    if (dragId.current === null || dragId.current === overId) { setDragOverId(null); return }
+    const from = focusItems.findIndex(f => f.id === dragId.current)
+    const to   = focusItems.findIndex(f => f.id === overId)
+    if (from === -1 || to === -1) { setDragOverId(null); return }
+    const reordered = [...focusItems]
+    const [moved] = reordered.splice(from, 1)
+    reordered.splice(to, 0, moved)
+    // assign new SortOrder (10, 20, 30, ...) แล้วบันทึก
+    const updated = reordered.map((f, i) => ({ ...f, SortOrder: (i + 1) * 10 }))
+    setFocusItems(updated)
+    setDragOverId(null)
+    dragId.current = null
+    // บันทึกลง SharePoint (fire-and-forget)
+    updated.forEach(f => spUpdate('HD_Focus', f.id, { SortOrder: f.SortOrder }).catch(() => {}))
   }
 
   async function approveLeave(id: number, approved: boolean) {
@@ -253,8 +280,19 @@ export default function Home() {
               <div className="space-y-2">
                 {focusItems.map(f => {
                   const color = getDueDateColor(f.DueDate)
+                  const isDragOver = dragOverId === f.id
                   return (
-                    <div key={f.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 group">
+                    <div key={f.id}
+                      draggable
+                      onDragStart={() => onDragStart(f.id)}
+                      onDragOver={e => onDragOver(e, f.id)}
+                      onDrop={() => onDrop(f.id)}
+                      onDragEnd={() => { setDragOverId(null); dragId.current = null }}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all group cursor-grab active:cursor-grabbing select-none
+                        ${isDragOver
+                          ? 'border-primary-400 bg-primary-50 dark:bg-primary-900/20 scale-[1.01] shadow-md'
+                          : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                      <span className="text-gray-300 dark:text-gray-600 flex-shrink-0 cursor-grab" title="ลากเพื่อเรียงลำดับ">⠿</span>
                       <span className="text-base flex-shrink-0">{getDueDateEmoji(color) || '📌'}</span>
                       <Link
                         to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`}
