@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, ThumbsDown, MessageSquare } from 'lucide-react'
+import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -40,7 +40,7 @@ export default function TicketDetail() {
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
   const [reassigning, setReassigning] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(true)
-  const [likes, setLikes] = useState<Record<number, 1 | -1 | 0>>({})
+  const [likeBusy, setLikeBusy] = useState<number | null>(null)
   const [manageOpen, setManageOpen] = useState(false)
   const [members, setMembers] = useState<TicketMember[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
@@ -51,7 +51,7 @@ export default function TicketDetail() {
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
       // TicketID is a Number field — no quotes in the filter
-      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,Author/Title', 'CommentDate asc', 500, 'Author'),
+      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,Author/Title', 'CommentDate asc', 500, 'Author'),
     ]).then(([t, c]) => {
       setTicket(t[0] ?? null)
       if (t[0]) {
@@ -134,6 +134,30 @@ export default function TicketDetail() {
       load()
       addToast('success', 'บันทึก Comment แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSending(false) }
+  }
+
+  function parseLikes(raw: string | undefined): string[] {
+    if (!raw) return []
+    try { const a = JSON.parse(raw); return Array.isArray(a) ? a : [] } catch { return [] }
+  }
+
+  async function toggleLike(c: TicketComment) {
+    if (!user?.email || likeBusy === c.id) return
+    const current = parseLikes(c.LikedBy)
+    const next = current.includes(user.email)
+      ? current.filter(e => e !== user.email)
+      : [...current, user.email]
+    const json = JSON.stringify(next)
+    // optimistic
+    setComments(prev => prev.map(x => x.id === c.id ? { ...x, LikedBy: json } : x))
+    setLikeBusy(c.id)
+    try {
+      await spUpdate('HD_TicketComments', c.id, { LikedBy: json })
+    } catch {
+      // revert on failure
+      setComments(prev => prev.map(x => x.id === c.id ? { ...x, LikedBy: c.LikedBy } : x))
+      addToast('error', 'กดถูกใจไม่สำเร็จ')
+    } finally { setLikeBusy(null) }
   }
 
   async function updateStatus() {
@@ -260,7 +284,8 @@ export default function TicketDetail() {
               {comments.map(c => {
                 const author = c.Author?.Title ?? '—'
                 const handle = '@' + author.replace(/\s+/g, '')
-                const vote = likes[c.id] ?? 0
+                const likeList = parseLikes(c.LikedBy)
+                const liked = !!user?.email && likeList.includes(user.email)
                 return (
                   <div key={c.id} className="flex gap-3">
                     {/* Avatar */}
@@ -280,14 +305,10 @@ export default function TicketDetail() {
                       <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
                       {/* Action row */}
                       <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
-                        <button type="button" onClick={() => setLikes(p => ({ ...p, [c.id]: vote === 1 ? 0 : 1 }))}
-                          className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors ${vote === 1 ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-                          <ThumbsUp size={14} fill={vote === 1 ? 'currentColor' : 'none'} />
-                          {vote === 1 && <span>1</span>}
-                        </button>
-                        <button type="button" onClick={() => setLikes(p => ({ ...p, [c.id]: vote === -1 ? 0 : -1 }))}
-                          className={`p-1 rounded-full transition-colors ${vote === -1 ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-                          <ThumbsDown size={14} fill={vote === -1 ? 'currentColor' : 'none'} />
+                        <button type="button" disabled={likeBusy === c.id} onClick={() => toggleLike(c)}
+                          className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors disabled:opacity-50 ${liked ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                          <ThumbsUp size={14} fill={liked ? 'currentColor' : 'none'} />
+                          {likeList.length > 0 && <span>{likeList.length}</span>}
                         </button>
                         <button type="button"
                           onClick={() => { setComment(`${handle} `); document.getElementById('comment-box')?.focus() }}
