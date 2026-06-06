@@ -110,7 +110,7 @@ export function FloatingFocus() {
 
   return (
     <div
-      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 55 }}
+      style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 210 }}
       className={dragging ? 'select-none' : ''}
     >
       {/* Popup */}
