@@ -267,6 +267,7 @@ export default function Admin() {
     task_assigned:           'Task Assigned',
     ticket_status_changed:   'Ticket Status Changed',
     comment_added:           'Comment Added',
+    comment_mention:         'Comment Mention (@)',
     incident_created:        'Incident Created',
     incident_status_changed: 'Incident Status Changed',
     leave_requested:         'Leave Requested',
@@ -305,6 +306,13 @@ export default function Admin() {
       { key: 'customer_name', desc: 'ชื่อลูกค้า' },
       { key: 'assigned_name', desc: 'ชื่อ Agent' },
       { key: 'comment_text',  desc: 'ข้อความ Comment' },
+      { key: 'link',          desc: 'ลิงก์เข้าระบบ' },
+    ],
+    comment_mention: [
+      { key: 'ticket_number', desc: 'หมายเลข Ticket' },
+      { key: 'ticket_title',  desc: 'ชื่อ Ticket' },
+      { key: 'mentioned_by',  desc: 'คนที่ tag คุณ' },
+      { key: 'comment_text',  desc: 'ข้อความ/คำถาม' },
       { key: 'link',          desc: 'ลิงก์เข้าระบบ' },
     ],
     incident_created: [

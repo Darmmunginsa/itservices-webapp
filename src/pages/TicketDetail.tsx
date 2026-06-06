@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare } from 'lucide-react'
 import { Header } from '../components/layout/Header'
@@ -36,6 +36,11 @@ export default function TicketDetail() {
   const [comment, setComment] = useState('')
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
   const [sending, setSending] = useState(false)
+  // @mention เพื่อนในทีม
+  const commentRef = useRef<HTMLTextAreaElement>(null)
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionStart, setMentionStart] = useState(-1)
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
   const [resolutionNote, setResolutionNote] = useState('')
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
@@ -121,6 +126,47 @@ export default function TicketDetail() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
+  // รายชื่อที่ @mention ได้ — เฉพาะคนใน Ticket (assignee + สมาชิกที่ invite)
+  const mentionCandidates = (() => {
+    const list: { name: string; email: string }[] = []
+    if (ticket?.AssignedEmail) list.push({ name: ticket.AssignedToName || ticket.AssignedEmail, email: ticket.AssignedEmail })
+    for (const m of members) if (m.AgentEmail) list.push({ name: m.Title, email: m.AgentEmail })
+    // dedupe ตามอีเมล
+    return list.filter((c, i, arr) => arr.findIndex(x => x.email.toLowerCase() === c.email.toLowerCase()) === i)
+  })()
+
+  const mentionMatches = mentionCandidates.filter(c =>
+    c.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+
+  // ตรวจ @ ที่ตำแหน่ง cursor แล้วเปิด dropdown
+  function onCommentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value
+    setComment(val)
+    const pos = e.target.selectionStart ?? val.length
+    const before = val.slice(0, pos)
+    const at = before.lastIndexOf('@')
+    // @ ต้องอยู่ต้นข้อความ หรือมีช่องว่าง/ขึ้นบรรทัดนำหน้า และยังไม่ขึ้นบรรทัดใหม่หลัง @
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1])) && !/\n/.test(before.slice(at))) {
+      setMentionStart(at)
+      setMentionQuery(before.slice(at + 1))
+      setMentionOpen(true)
+    } else {
+      setMentionOpen(false)
+    }
+  }
+
+  function selectMention(c: { name: string; email: string }) {
+    const el = commentRef.current
+    const pos = el?.selectionStart ?? comment.length
+    const tag = `@${c.name} `
+    const next = comment.slice(0, mentionStart) + tag + comment.slice(pos)
+    setComment(next)
+    setMentionOpen(false)
+    requestAnimationFrame(() => {
+      if (el) { el.focus(); const p = mentionStart + tag.length; el.setSelectionRange(p, p) }
+    })
+  }
+
   async function sendComment(e: React.FormEvent) {
     e.preventDefault()
     if (!user || !comment.trim()) return
@@ -153,6 +199,18 @@ export default function TicketDetail() {
             comment_text: comment.slice(0, 200).replace(/\n/g, '<br>'),
             link: window.location.origin,
           }, internal.slice(0, 1), internal.slice(1))
+        }
+        // @mention — แจ้งคนที่ถูก tag เป็นพิเศษ (template comment_mention)
+        const mentioned = mentionCandidates.filter(c =>
+          comment.includes(`@${c.name}`) && c.email.toLowerCase() !== user.email.toLowerCase())
+        if (mentioned.length) {
+          sendTemplateEmail('comment_mention', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title: ticket.Title,
+            mentioned_by: user.displayName,
+            comment_text: comment.slice(0, 200).replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, mentioned.map(m => m.email))
         }
       }
       addToast('success', 'บันทึก Comment แล้ว')
@@ -426,10 +484,28 @@ export default function TicketDetail() {
                   ))}
                 </div>
               )}
-              <textarea id="comment-box" required value={comment} onChange={e => setComment(e.target.value)} rows={1}
-                placeholder="เพิ่ม Comment..."
-                onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
-                className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
+              <div className="relative">
+                <textarea ref={commentRef} id="comment-box" required value={comment} onChange={onCommentChange} rows={1}
+                  placeholder="เพิ่ม Comment... (พิมพ์ @ เพื่อถามเพื่อนในทีม)"
+                  onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                  className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
+                {/* @mention dropdown */}
+                {mentionOpen && mentionMatches.length > 0 && (
+                  <div className="absolute z-20 left-0 bottom-full mb-1 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">ถามเพื่อนในทีม</p>
+                    {mentionMatches.map(c => (
+                      <button key={c.email} type="button" onClick={() => selectMention(c)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                        <span className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">{c.name.charAt(0)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-gray-800 dark:text-gray-100">{c.name}</span>
+                          <span className="block truncate text-[11px] text-gray-400">{c.email}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex justify-end gap-2">
                 {(comment || replyTo) && (
                   <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
