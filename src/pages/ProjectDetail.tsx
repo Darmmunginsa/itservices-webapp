@@ -9,12 +9,14 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
-import { SearchSelect } from '../components/common/SearchSelect'
+import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { sendTemplateEmail } from '../services/emailService'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
+import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
@@ -24,7 +26,13 @@ const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
 const PROJECT_STATUSES = ['Planning', 'Active', 'On Hold', 'Completed', 'Cancelled']
 
-const EMPTY_TASK = { title: '', assignedEmail: '', dueDate: '', daysCount: '', taskNote: '' }
+const HOURS = Array.from({ length: 29 }, (_, i) => {
+  const h = String(Math.floor(i / 2) + 7).padStart(2, '0')
+  const m = i % 2 === 0 ? '00' : '30'
+  return `${h}:${m}`
+})
+
+const EMPTY_TASK = { title: '', assignedEmail: '', dueDate: '', daysCount: '', taskNote: '', calendarDate: '', startHour: '09:00', endHour: '10:00', externalAttendees: '' }
 const EMPTY_INCIDENT = {
   title: '', severity: 'Medium', status: 'Open',
   incidentDate: new Date().toISOString().slice(0, 10),
@@ -80,6 +88,13 @@ export default function ProjectDetail() {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
   const [savingTask, setSavingTask] = useState(false)
+  // Task: Track + Outlook Calendar (เหมือนหน้าแจ้งงาน)
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [trackTask, setTrackTask] = useState(false)
+  const [addCalendar, setAddCalendar] = useState(false)
+  const [isOnlineMeeting, setIsOnlineMeeting] = useState(false)
+  const [calInternalEmails, setCalInternalEmails] = useState<string[]>([])
+  const [calCustomerEmails, setCalCustomerEmails] = useState<string[]>([])
 
   // Note modal (create & edit)
   const [showNoteModal, setShowNoteModal] = useState(false)
@@ -110,6 +125,17 @@ export default function ProjectDetail() {
     label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}`,
   }))
 
+  // Customer (contract) options for calendar attendees
+  const contractEmailOptions = contracts
+    .filter(c => c.CustomerEmail)
+    .map(c => ({ value: c.CustomerEmail, label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
+
+  const buildCalendarAttendees = () => [
+    ...calInternalEmails,
+    ...calCustomerEmails,
+    ...taskForm.externalAttendees.split(',').map(s => s.trim()).filter(Boolean),
+  ]
+
   function load() {
     if (!id || !/^\d+$/.test(id)) return
     const numId = Number(id)
@@ -137,6 +163,8 @@ export default function ProjectDetail() {
       .then(setAgents).catch(() => {})
     spGet<Asset>('IT_Assets', undefined, undefined, 'Title asc')
       .then(setAllAssets).catch(() => {})
+    spGet<Contract>('HD_Contracts', undefined, 'Id,Title,CustomerEmail,Company', 'Title asc', 500)
+      .then(setContracts).catch(() => {})
     if (user?.email) {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
         .then(setFocusItems).catch(() => {})
@@ -238,9 +266,14 @@ export default function ProjectDetail() {
   }
 
   // ── Task CRUD ───────────────────────────────────────────────────────────────
+  function resetTaskExtras() {
+    setTrackTask(false); setAddCalendar(false); setIsOnlineMeeting(false)
+    setCalInternalEmails([]); setCalCustomerEmails([])
+  }
   function openAddTask() {
     setEditingTask(null)
     setTaskForm({ ...EMPTY_TASK })
+    resetTaskExtras()
     setShowTaskModal(true)
   }
 
@@ -281,8 +314,37 @@ export default function ProjectDetail() {
         await spUpdate('PM_Tasks', editingTask.id, payload)
         addToast('success', 'อัปเดต Task แล้ว')
       } else {
-        await spCreate('PM_Tasks', { ...payload, ProjectID: Number(id), IsCompleted: false, IsAcknowledged: false })
+        const created = await spCreate('PM_Tasks', { ...payload, ProjectID: Number(id), IsCompleted: false, IsAcknowledged: false })
         addToast('success', 'เพิ่ม Task แล้ว')
+
+        // เพิ่มนัดหมาย Outlook Calendar (+ Teams ถ้าติ๊ก)
+        if (addCalendar && taskForm.calendarDate) {
+          try {
+            await createCalendarEvent({
+              subject: taskForm.title,
+              start: `${taskForm.calendarDate}T${taskForm.startHour}:00`,
+              end: `${taskForm.calendarDate}T${taskForm.endHour}:00`,
+              attendees: buildCalendarAttendees(),
+              body: taskForm.taskNote,
+              isOnlineMeeting,
+            })
+          } catch { addToast('error', 'สร้าง Task แล้ว แต่สร้างนัดหมายไม่สำเร็จ') }
+        }
+
+        // Track Task
+        if (trackTask && created?.id && user) {
+          await spCreate('HD_Tracking', {
+            Title: taskForm.title,
+            TrackingType: 'Task',
+            RefID: created.id,
+            TrackedBy: user.displayName,
+            TrackedEmail: user.email,
+            AssignedTo: agent?.Title ?? taskForm.assignedEmail,
+            Status: 'Pending',
+            IsAcknowledged: false,
+          }).catch(() => {})
+        }
+
         // Email: แจ้ง agent + ผู้สร้าง (เหมือน webapp Submit)
         if (taskForm.assignedEmail) {
           sendTemplateEmail('task_assigned', {
@@ -1089,6 +1151,73 @@ export default function ProjectDetail() {
               onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
               rows={3} className={ic} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
           </div>
+
+          {/* Track + Outlook Calendar (เฉพาะตอนสร้างใหม่ — เหมือนหน้าแจ้งงาน) */}
+          {!editingTask && (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={trackTask} onChange={e => setTrackTask(e.target.checked)}
+                  className="rounded accent-primary-600" />
+                <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Task นี้</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={addCalendar} onChange={e => setAddCalendar(e.target.checked)}
+                  className="rounded accent-primary-600" />
+                <span className="text-sm text-gray-600 dark:text-gray-400">📅 เพิ่มใน Outlook Calendar</span>
+              </label>
+
+              {addCalendar && (
+                <div className="space-y-3 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
+                  <p className="text-xs font-medium text-primary-600">📅 ตั้งค่านัดหมาย Outlook Calendar</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-3 sm:col-span-1">
+                      <label className={lc}>วันที่ *</label>
+                      <input required={addCalendar} type="date" value={taskForm.calendarDate}
+                        onChange={e => setTaskForm(f => ({ ...f, calendarDate: e.target.value }))} className={ic} />
+                    </div>
+                    <div>
+                      <label className={lc}>เริ่ม</label>
+                      <select value={taskForm.startHour} onChange={e => setTaskForm(f => ({ ...f, startHour: e.target.value }))} className={ic}>
+                        {HOURS.map(h => <option key={h}>{h}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={lc}>สิ้นสุด</label>
+                      <select value={taskForm.endHour} onChange={e => setTaskForm(f => ({ ...f, endHour: e.target.value }))} className={ic}>
+                        {HOURS.map(h => <option key={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={isOnlineMeeting} onChange={e => setIsOnlineMeeting(e.target.checked)}
+                      className="rounded accent-primary-600" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">🎥 เพิ่มการประชุมออนไลน์ (Teams)</span>
+                  </label>
+                  <div>
+                    <label className={lc}>ผู้เข้าร่วม Internal (เลือกได้หลายคน)</label>
+                    <SearchMultiSelect label="Internal" options={agentOptions} selected={calInternalEmails}
+                      onToggle={v => setCalInternalEmails(prev => prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v])} />
+                    {calInternalEmails.length > 0 && <p className="text-xs text-gray-400 mt-1 truncate">{calInternalEmails.join(', ')}</p>}
+                  </div>
+                  <div>
+                    <label className={lc}>ผู้เข้าร่วม ลูกค้า (เลือกได้หลายคน)</label>
+                    <SearchMultiSelect label="ลูกค้า" options={contractEmailOptions} selected={calCustomerEmails}
+                      onToggle={v => setCalCustomerEmails(prev => prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v])} />
+                    {calCustomerEmails.length > 0 && <p className="text-xs text-gray-400 mt-1 truncate">{calCustomerEmails.join(', ')}</p>}
+                  </div>
+                  <div>
+                    <label className={lc}>Email ภายนอก (คั่นด้วย ,)</label>
+                    <input value={taskForm.externalAttendees} onChange={e => setTaskForm(f => ({ ...f, externalAttendees: e.target.value }))}
+                      className={ic} placeholder="ext@company.com, partner@co.th" />
+                  </div>
+                  {buildCalendarAttendees().length > 0 && (
+                    <p className="text-xs text-primary-600">รวม {buildCalendarAttendees().length} ผู้เข้าร่วม</p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           <Button type="submit" disabled={savingTask} className="w-full justify-center">
             {savingTask ? 'กำลังบันทึก...' : editingTask ? 'บันทึกการแก้ไข' : 'เพิ่ม Task'}
           </Button>
