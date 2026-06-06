@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { UserProfile } from '../types/common'
 import type { DateMatch } from '../utils/detectDates'
+import { spUpdate } from '../services/sharepoint'
 
 export type AccentColor = 'blue' | 'teal' | 'violet' | 'rose' | 'amber'
 
@@ -97,6 +98,36 @@ function applyCardStyle(hex: string | null, opacity: number) {
   root.style.setProperty('--card-blur', a < 0.95 ? 'blur(8px)' : 'none')
 }
 
+// ── Sync ธีมขึ้น HD_AgentProfiles (ตามผู้ใช้ทุกเครื่อง) ──
+interface ThemeSnapshot {
+  isDarkMode: boolean
+  accentColor: AccentColor
+  customAccent: string | null
+  customBg: string | null
+  cardBg: string | null
+  cardOpacity: number
+}
+let _themeSaveTimer: ReturnType<typeof setTimeout> | null = null
+function persistTheme(snapshot: ThemeSnapshot, profileId?: number) {
+  if (!profileId) return  // EndUser ไม่มี profile → ใช้ localStorage อย่างเดียว
+  if (_themeSaveTimer) clearTimeout(_themeSaveTimer)
+  _themeSaveTimer = setTimeout(() => {
+    spUpdate('HD_AgentProfiles', profileId, { ThemeJSON: JSON.stringify(snapshot) }).catch(() => {})
+  }, 600)  // debounce — กัน spam ตอนลาก slider
+}
+// อ่าน snapshot ปัจจุบันจาก store แล้ว sync ขึ้น SharePoint
+function syncTheme(get: () => AppState) {
+  const s = get()
+  persistTheme({
+    isDarkMode: s.isDarkMode,
+    accentColor: s.accentColor,
+    customAccent: s.customAccent,
+    customBg: s.customBg,
+    cardBg: s.cardBg,
+    cardOpacity: s.cardOpacity,
+  }, s.user?.agentProfile?.id)
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isDarkMode: localStorage.getItem('darkMode') === 'true',
@@ -124,28 +155,57 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setUser: (user) => {
     set({ user })
-    // Re-load accent keyed by email once user is known
-    if (user?.email) {
-      const color = loadAccent(user.email)
-      applyAccent(color)
-      const ca = localStorage.getItem(`customAccent_${user.email}`) || null
-      const cb = localStorage.getItem(`customBg_${user.email}`) || null
-      const cardb = localStorage.getItem(`cardBg_${user.email}`) || null
-      const cardo = Number(localStorage.getItem(`cardOpacity_${user.email}`) ?? '100')
-      applyCustomAccent(ca)
-      applyCustomBg(cb)
-      applyCardStyle(cardb, cardo)
-      set({ accentColor: color, customAccent: ca, customBg: cb, cardBg: cardb, cardOpacity: cardo })
+    if (!user?.email) return
+
+    // 1) ลองโหลดธีมจาก HD_AgentProfiles ก่อน (sync ข้ามเครื่อง)
+    const themeJson = user.agentProfile?.ThemeJSON
+    if (themeJson) {
+      try {
+        const t = JSON.parse(themeJson) as Partial<ThemeSnapshot>
+        const color = (t.accentColor ?? 'blue') as AccentColor
+        const ca = t.customAccent ?? null
+        const cb = t.customBg ?? null
+        const cardb = t.cardBg ?? null
+        const cardo = t.cardOpacity ?? 100
+        const dark = !!t.isDarkMode
+        // apply + cache ลง localStorage ให้โหลดเร็วครั้งหน้า
+        applyAccent(color); applyCustomAccent(ca); applyCustomBg(cb); applyCardStyle(cardb, cardo)
+        if (dark) document.documentElement.classList.add('dark')
+        else document.documentElement.classList.remove('dark')
+        localStorage.setItem('darkMode', String(dark))
+        localStorage.setItem('accent', color)
+        if (ca) localStorage.setItem('customAccent', ca); else localStorage.removeItem('customAccent')
+        if (cb) localStorage.setItem('customBg', cb); else localStorage.removeItem('customBg')
+        if (cardb) { localStorage.setItem('cardBg', cardb); localStorage.setItem('cardOpacity', String(cardo)) }
+        else { localStorage.removeItem('cardBg'); localStorage.removeItem('cardOpacity') }
+        set({ isDarkMode: dark, accentColor: color, customAccent: ca, customBg: cb, cardBg: cardb, cardOpacity: cardo })
+        return
+      } catch { /* JSON เสีย → ตกไปใช้ localStorage */ }
     }
+
+    // 2) Fallback — โหลดจาก localStorage รายผู้ใช้ (เครื่องเดิม)
+    const color = loadAccent(user.email)
+    applyAccent(color)
+    const ca = localStorage.getItem(`customAccent_${user.email}`) || null
+    const cb = localStorage.getItem(`customBg_${user.email}`) || null
+    const cardb = localStorage.getItem(`cardBg_${user.email}`) || null
+    const cardo = Number(localStorage.getItem(`cardOpacity_${user.email}`) ?? '100')
+    applyCustomAccent(ca)
+    applyCustomBg(cb)
+    applyCardStyle(cardb, cardo)
+    set({ accentColor: color, customAccent: ca, customBg: cb, cardBg: cardb, cardOpacity: cardo })
   },
 
-  toggleDarkMode: () => set((s) => {
-    const next = !s.isDarkMode
-    localStorage.setItem('darkMode', String(next))
-    if (next) document.documentElement.classList.add('dark')
-    else document.documentElement.classList.remove('dark')
-    return { isDarkMode: next }
-  }),
+  toggleDarkMode: () => {
+    set((s) => {
+      const next = !s.isDarkMode
+      localStorage.setItem('darkMode', String(next))
+      if (next) document.documentElement.classList.add('dark')
+      else document.documentElement.classList.remove('dark')
+      return { isDarkMode: next }
+    })
+    syncTheme(get)
+  },
 
   setCustomAccent: (hex) => {
     const email = get().user?.email
@@ -155,6 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!hex) localStorage.removeItem('customAccent')
     applyCustomAccent(hex)
     set({ customAccent: hex })
+    syncTheme(get)
   },
 
   setCustomBg: (hex) => {
@@ -165,6 +226,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!hex) localStorage.removeItem('customBg')
     applyCustomBg(hex)
     set({ customBg: hex })
+    syncTheme(get)
   },
 
   setCardStyle: (hex, opacity) => {
@@ -178,6 +240,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     applyCardStyle(hex, opacity)
     set({ cardBg: hex, cardOpacity: opacity })
+    syncTheme(get)
   },
 
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
@@ -188,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem('accent', color)   // key กลาง — ให้ apply ทันทีตอนโหลดก่อน login
     applyAccent(color)
     set({ accentColor: color })
+    syncTheme(get)
   },
 
   addToast: (type, message) => set((s) => {
