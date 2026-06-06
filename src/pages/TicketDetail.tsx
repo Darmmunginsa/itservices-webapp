@@ -199,11 +199,12 @@ export default function TicketDetail() {
         Status: newStatus,
         ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
       } : prev)
-      // Email: แจ้งภายใน (agent + ผู้แจ้ง) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
+      // Email: แจ้งภายใน (agent + ผู้แจ้ง + สมาชิกที่ invite) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
       {
         const actorEmail = user?.email?.toLowerCase() ?? ''
         const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
-        const internal = [...new Set([ticket.AssignedEmail, submitter].filter(Boolean) as string[])]
+        const memberEmails = members.map(m => m.AgentEmail)
+        const internal = [...new Set([ticket.AssignedEmail, submitter, ...memberEmails].filter(Boolean) as string[])]
           .filter(e => e.toLowerCase() !== actorEmail)
         if (internal.length) {
           sendTemplateEmail('ticket_status_changed', {
