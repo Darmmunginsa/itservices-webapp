@@ -83,6 +83,7 @@ export default function ProjectDetail() {
   // Note modal (create & edit)
   const [showNoteModal, setShowNoteModal] = useState(false)
   const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [noteTitle, setNoteTitle] = useState('')
   const [noteText, setNoteText] = useState('')
 
   // Incident modal (create & edit)
@@ -299,31 +300,31 @@ export default function ProjectDetail() {
   // ── Note CRUD ───────────────────────────────────────────────────────────────
   function openAddNote() {
     setEditingNote(null)
+    setNoteTitle('')
     setNoteText('')
     setShowNoteModal(true)
   }
 
   function openEditNote(note: Note) {
     setEditingNote(note)
+    setNoteTitle(note.Title ?? '')
     setNoteText(note.NoteText)
     setShowNoteModal(true)
   }
 
   async function saveNote(e: React.FormEvent) {
     e.preventDefault()
-    if (!user || !noteText.trim()) return
+    if (!user || !noteTitle.trim()) return
+    const payload = { Title: noteTitle.trim(), NoteText: noteText }
     try {
       if (editingNote) {
-        await spUpdate('PM_Notes', editingNote.id, { Title: noteText.slice(0, 100), NoteText: noteText })
+        await spUpdate('PM_Notes', editingNote.id, payload)
         addToast('success', 'อัปเดต Note แล้ว')
       } else {
-        await spCreate('PM_Notes', {
-          Title: noteText.slice(0, 100),
-          ProjectID: Number(id),
-          NoteText: noteText,
-        })
+        await spCreate('PM_Notes', { ...payload, ProjectID: Number(id), NoteBy: user.displayName })
         addToast('success', 'บันทึก Note แล้ว')
       }
+      setNoteTitle('')
       setNoteText('')
       setShowNoteModal(false)
       load()
@@ -744,8 +745,9 @@ export default function ProjectDetail() {
                       <div key={note.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
                         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm text-gray-800 dark:text-gray-200 ${isOpen ? '' : 'truncate'}`}>{isOpen ? '' : firstLine}</p>
-                            {isOpen && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300" />}
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{note.Title || '(ไม่มีชื่อ)'}</p>
+                            {!isOpen && note.NoteText && <p className="text-xs text-gray-400 truncate mt-0.5">{(note.NoteText).split('\n')[0]}</p>}
+                            {isOpen && note.NoteText && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300 mt-1.5" />}
                             <p className="text-xs text-gray-400 mt-1">{note.NoteBy} • {formatDate(note.Created)}</p>
                           </div>
                           <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -1030,8 +1032,16 @@ export default function ProjectDetail() {
       <Modal open={showNoteModal} onClose={() => setShowNoteModal(false)}
         title={editingNote ? 'แก้ไข Note' : 'เพิ่ม Note'}>
         <form onSubmit={saveNote} className="space-y-3">
-          <textarea required value={noteText} onChange={e => setNoteText(e.target.value)}
-            rows={5} className={ic} placeholder="รายละเอียด Note..." />
+          <div>
+            <label className={lc}>ชื่อ Note *</label>
+            <input required value={noteTitle} onChange={e => setNoteTitle(e.target.value)}
+              className={ic} placeholder="เช่น สรุปการประชุม, ขั้นตอน deploy..." />
+          </div>
+          <div>
+            <label className={lc}>รายละเอียด</label>
+            <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
+              rows={5} className={ic} placeholder="รายละเอียด Note..." />
+          </div>
           <Button type="submit" className="w-full justify-center">
             {editingNote ? 'บันทึกการแก้ไข' : 'บันทึก'}
           </Button>
