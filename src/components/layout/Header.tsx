@@ -1,7 +1,8 @@
-import { Bell, Menu, ArrowLeft } from 'lucide-react'
+import { Menu, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
 import { ProfileMenu } from './ProfileMenu'
+import { NotificationBell } from './NotificationBell'
 
 interface HeaderProps {
   title: string
@@ -33,9 +34,7 @@ export function Header({ title, backTo, backLabel }: HeaderProps) {
         <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate leading-tight">{title}</h1>
       </div>
       <div className="flex items-center gap-2">
-        <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
-          <Bell size={18} />
-        </button>
+        <NotificationBell />
         <ProfileMenu />
       </div>
     </header>

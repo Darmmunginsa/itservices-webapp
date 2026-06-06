@@ -11,7 +11,7 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { sendMail } from '../services/graph'
-import { sendTemplateEmail } from '../services/emailService'
+import { createNotification } from '../services/notificationService'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
@@ -184,33 +184,37 @@ export default function TicketDetail() {
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
-      // Email: แจ้งภายใน (agent + ผู้แจ้ง + สมาชิกที่ invite) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
+      // แจ้งเตือนภายใน (in-app) — agent + ผู้แจ้ง + สมาชิก ยกเว้นคนที่กดเอง
       if (ticket) {
         const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
         const memberEmails = members.map(m => m.AgentEmail)
-        const internal = [...new Set([ticket.AssignedEmail, submitter, ...memberEmails].filter(Boolean) as string[])]
-          .filter(e => e.toLowerCase() !== user.email.toLowerCase())
-        if (internal.length) {
-          sendTemplateEmail('comment_added', {
-            ticket_number: ticket.TicketNumber,
-            ticket_title: ticket.Title,
-            customer_name: ticket.CustomerName,
-            assigned_name: user.displayName,
-            comment_text: comment.slice(0, 200).replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, internal.slice(0, 1), internal.slice(1))
-        }
-        // @mention — แจ้งคนที่ถูก tag เป็นพิเศษ (template comment_mention)
         const mentioned = mentionCandidates.filter(c =>
           comment.includes(`@${c.name}`) && c.email.toLowerCase() !== user.email.toLowerCase())
+        const mentionedSet = new Set(mentioned.map(m => m.email.toLowerCase()))
+        const link = `/tickets/${id}`
+        const snippet = comment.slice(0, 200)
+
+        // คนที่ถูก @ → แจ้งแบบเจาะจง (ไม่ให้ซ้ำกับ comment ปกติ)
         if (mentioned.length) {
-          sendTemplateEmail('comment_mention', {
-            ticket_number: ticket.TicketNumber,
-            ticket_title: ticket.Title,
-            mentioned_by: user.displayName,
-            comment_text: comment.slice(0, 200).replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, mentioned.map(m => m.email))
+          createNotification({
+            recipients: mentioned.map(m => m.email),
+            title: `📣 ${user.displayName} ถามถึงคุณใน ${ticket.TicketNumber}`,
+            message: snippet,
+            linkPath: link,
+            eventType: 'comment_mention',
+          })
+        }
+        // คนภายในอื่นๆ → แจ้ง comment ปกติ (ตัดคนที่ถูก @ และคนกดเองออก)
+        const internal = [...new Set([ticket.AssignedEmail, submitter, ...memberEmails].filter(Boolean) as string[])]
+          .filter(e => e.toLowerCase() !== user.email.toLowerCase() && !mentionedSet.has(e.toLowerCase()))
+        if (internal.length) {
+          createNotification({
+            recipients: internal,
+            title: `💬 ${user.displayName} คอมเมนต์ใน ${ticket.TicketNumber}`,
+            message: snippet,
+            linkPath: link,
+            eventType: 'comment_added',
+          })
         }
       }
       addToast('success', 'บันทึก Comment แล้ว')
@@ -257,7 +261,7 @@ export default function TicketDetail() {
         Status: newStatus,
         ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
       } : prev)
-      // Email: แจ้งภายใน (agent + ผู้แจ้ง + สมาชิกที่ invite) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
+      // แจ้งเตือนภายใน (in-app) — agent + ผู้แจ้ง + สมาชิก ยกเว้นคนที่กดเอง
       {
         const actorEmail = user?.email?.toLowerCase() ?? ''
         const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
@@ -265,14 +269,13 @@ export default function TicketDetail() {
         const internal = [...new Set([ticket.AssignedEmail, submitter, ...memberEmails].filter(Boolean) as string[])]
           .filter(e => e.toLowerCase() !== actorEmail)
         if (internal.length) {
-          sendTemplateEmail('ticket_status_changed', {
-            ticket_number: ticket.TicketNumber,
-            ticket_title: ticket.Title,
-            ticket_status: newStatus,
-            customer_name: ticket.CustomerName,
-            assigned_name: ticket.AssignedToName || '-',
-            link: window.location.origin,
-          }, internal.slice(0, 1), internal.slice(1))
+          createNotification({
+            recipients: internal,
+            title: `🔄 ${ticket.TicketNumber} เปลี่ยนสถานะเป็น ${newStatus}`,
+            message: ticket.Title,
+            linkPath: `/tickets/${id}`,
+            eventType: 'ticket_status_changed',
+          })
         }
       }
       addToast('success', 'อัปเดตสถานะแล้ว')

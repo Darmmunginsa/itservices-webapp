@@ -13,7 +13,7 @@ import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSele
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
-import { sendTemplateEmail } from '../services/emailService'
+import { createNotification } from '../services/notificationService'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
 import type { Contract } from '../types/ticket'
@@ -347,15 +347,15 @@ export default function ProjectDetail() {
           }).catch(() => {})
         }
 
-        // Email: แจ้ง agent + ผู้สร้าง (เหมือน webapp Submit)
-        if (taskForm.assignedEmail) {
-          sendTemplateEmail('task_assigned', {
-            task_title: taskForm.title,
-            assigned_name: agent?.Title ?? taskForm.assignedEmail,
-            due_date: dueDate ?? '-',
-            task_note: (taskForm.taskNote || '-').replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, [...new Set([taskForm.assignedEmail, user?.email].filter(Boolean) as string[])])
+        // แจ้ง agent ที่ถูก assign (in-app) — ยกเว้นคนสร้างเอง
+        if (taskForm.assignedEmail && taskForm.assignedEmail.toLowerCase() !== (user?.email?.toLowerCase() ?? '')) {
+          createNotification({
+            recipients: [taskForm.assignedEmail],
+            title: `📋 ได้รับมอบหมาย Task: ${taskForm.title}`,
+            message: taskForm.taskNote || (dueDate ? `กำหนดส่ง ${dueDate}` : 'มี Task ใหม่'),
+            linkPath: `/projects/${id}`,
+            eventType: 'task_assigned',
+          })
         }
       }
       setShowTaskModal(false)
@@ -456,34 +456,33 @@ export default function ProjectDetail() {
       Resolution: incidentForm.resolution || undefined,
     }
     try {
+      const actorEmail = user?.email?.toLowerCase() ?? ''
       if (editingIncident) {
         await spUpdate('PM_Incidents', editingIncident.id, payload)
         addToast('success', 'อัปเดต Incident แล้ว')
-        // Email: แจ้ง Requester (ผู้แจ้ง) เมื่อสถานะเปลี่ยน
+        // แจ้ง Requester (ผู้แจ้ง) เมื่อสถานะเปลี่ยน (in-app)
         const requester = editingIncident.Author?.EMail || editingIncident.CreatedByEmail
-        if (incidentForm.status !== editingIncident.Status && requester) {
-          sendTemplateEmail('incident_status_changed', {
-            incident_title: incidentForm.title,
-            incident_status: incidentForm.status,
-            severity: incidentForm.severity,
-            assigned_name: agent?.Title ?? '-',
-            resolution: (incidentForm.resolution || '-').replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, [requester])
+        if (incidentForm.status !== editingIncident.Status && requester && requester.toLowerCase() !== actorEmail) {
+          createNotification({
+            recipients: [requester],
+            title: `🚨 Incident เปลี่ยนสถานะเป็น ${incidentForm.status}`,
+            message: incidentForm.title,
+            linkPath: `/projects/${id}`,
+            eventType: 'incident_status_changed',
+          })
         }
       } else {
         await spCreate('PM_Incidents', { ...payload, ProjectID: Number(id) })
         addToast('success', 'บันทึก Incident แล้ว')
-        // Email: แจ้ง Assigned เมื่อสร้าง Incident
-        if (incidentForm.assignedAgentEmail) {
-          sendTemplateEmail('incident_created', {
-            incident_title: incidentForm.title,
-            severity: incidentForm.severity,
-            incident_status: incidentForm.status,
-            assigned_name: agent?.Title ?? '-',
-            description: (incidentForm.description || '-').replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, [incidentForm.assignedAgentEmail])
+        // แจ้ง Assigned เมื่อสร้าง Incident (in-app) — ยกเว้นคนสร้างเอง
+        if (incidentForm.assignedAgentEmail && incidentForm.assignedAgentEmail.toLowerCase() !== actorEmail) {
+          createNotification({
+            recipients: [incidentForm.assignedAgentEmail],
+            title: `🚨 ได้รับมอบหมาย Incident: ${incidentForm.title}`,
+            message: `ความรุนแรง ${incidentForm.severity}${incidentForm.description ? ' — ' + incidentForm.description.slice(0, 120) : ''}`,
+            linkPath: `/projects/${id}`,
+            eventType: 'incident_created',
+          })
         }
       }
       setShowIncidentModal(false)

@@ -6,6 +6,7 @@ import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
+import { createNotification } from '../services/notificationService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import type { AgentProfile } from '../types/common'
@@ -219,14 +220,16 @@ export default function Submit() {
             IsAcknowledged: false,
           })
         }
-        // Email: แจ้ง agent ที่ถูก assign + ผู้แจ้ง (submitter)
-        sendTemplateEmail('task_assigned', {
-          task_title: form.title,
-          assigned_name: form.assignedName || form.assignedEmail || '-',
-          due_date: dueDate ?? '-',
-          task_note: (form.taskNote || '-').replace(/\n/g, '<br>'),
-          link: window.location.origin,
-        }, [...new Set([form.assignedEmail, user.email].filter(Boolean) as string[])])
+        // แจ้งเตือน agent ที่ถูก assign (in-app) — ยกเว้นคนสร้างเอง
+        if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
+          createNotification({
+            recipients: [form.assignedEmail],
+            title: `📋 ได้รับมอบหมาย Task: ${form.title}`,
+            message: form.taskNote || (dueDate ? `กำหนดส่ง ${dueDate}` : 'มี Task ใหม่'),
+            linkPath: form.projectId ? `/projects/${form.projectId}` : '/my-work',
+            eventType: 'task_assigned',
+          })
+        }
         addToast('success', 'สร้าง Task สำเร็จ')
 
       } else if (type === 'Incident') {
@@ -241,16 +244,15 @@ export default function Submit() {
           AssignedEmail: form.assignedEmail || undefined,
           IncidentDate: form.incidentDate || undefined,
         })
-        // Email: แจ้ง Assigned เมื่อสร้าง Incident
-        if (form.assignedEmail) {
-          sendTemplateEmail('incident_created', {
-            incident_title: form.title,
-            severity: form.incidentSeverity,
-            incident_status: form.incidentStatus,
-            assigned_name: (agent?.Title ?? form.assignedName) || '-',
-            description: (form.description || '-').replace(/\n/g, '<br>'),
-            link: window.location.origin,
-          }, [form.assignedEmail])
+        // แจ้งเตือน Assigned เมื่อสร้าง Incident (in-app) — ยกเว้นคนสร้างเอง
+        if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
+          createNotification({
+            recipients: [form.assignedEmail],
+            title: `🚨 ได้รับมอบหมาย Incident: ${form.title}`,
+            message: `ความรุนแรง ${form.incidentSeverity}${form.description ? ' — ' + form.description.slice(0, 120) : ''}`,
+            linkPath: form.projectId ? `/projects/${form.projectId}` : '/my-work',
+            eventType: 'incident_created',
+          })
         }
         addToast('success', 'บันทึก Incident สำเร็จ')
       }
