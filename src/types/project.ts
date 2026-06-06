@@ -57,6 +57,8 @@ export interface ProjectIncident {
   ResolvedDate?: string
   Resolution?: string
   Created: string
+  CreatedByEmail?: string
+  Author?: { Title: string; EMail?: string }  // SP Created By — ผู้แจ้ง (expand via $expand=Author)
 }
 
 export interface ProjectLink {

@@ -28,6 +28,7 @@ export interface Asset {
   AccessMethod?: string
   ExpiryDate?: string
   LicenseType?: string
+  PortalURL?: string
   // General
   Note?: string
   Created: string

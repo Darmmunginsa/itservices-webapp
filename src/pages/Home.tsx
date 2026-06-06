@@ -27,6 +27,7 @@ import type { Asset as AssetType } from '../types/asset'
 import type { ProjectIncident } from '../types/project'
 import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
+import { sendTemplateEmail } from '../services/emailService'
 
 interface Stats {
   openTickets: number
@@ -148,9 +149,20 @@ export default function Home() {
           RejectReason: reason,
         })
       }
+      const leaveItem = pendingLeaves.find(l => l.id === id)
       setPendingLeaves(prev => prev.filter(l => l.id !== id))
       addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')
-      // Power Automate จะส่ง email แจ้งผู้ขอลาอัตโนมัติ
+      // ส่ง email แจ้งผู้ขอลา
+      if (leaveItem?.RequestedEmail) {
+        sendTemplateEmail('leave_decision', {
+          requester_name:  leaveItem.RequestedBy ?? '',
+          leave_type:      leaveItem.LeaveType ?? '',
+          leave_date:      leaveItem.LeaveDate ?? '',
+          leave_status:    approved ? 'อนุมัติ' : 'ไม่อนุมัติ',
+          approver_name:   user?.displayName ?? '',
+          link:            window.location.origin,
+        }, [leaveItem.RequestedEmail])
+      }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
   }
 

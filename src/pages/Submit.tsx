@@ -5,6 +5,7 @@ import { Card } from '../components/common/Card'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate } from '../services/sharepoint'
+import { sendTemplateEmail } from '../services/emailService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import type { AgentProfile } from '../types/common'
@@ -53,6 +54,7 @@ export default function Submit() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
+  const [activeProjectsOnly, setActiveProjectsOnly] = useState(true)
 
   const [form, setForm] = useState({ ...EMPTY_FORM })
 
@@ -62,12 +64,17 @@ export default function Submit() {
     // Load ALL agents — no IsAvailable filter
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
-    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
+    // Load ALL projects — filter client-side via activeProjectsOnly
+    spGet<Project>('PM_Projects', undefined, undefined, 'Title asc')
       .then(setProjects).catch(() => {})
     // Include Active + Inactive contracts, exclude only Expired
     spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc')
       .then(setContracts).catch(() => {})
   }, [])
+
+  const filteredProjects = activeProjectsOnly
+    ? projects.filter(p => p.Status === 'Active')
+    : projects
 
   const set = (key: keyof typeof EMPTY_FORM, val: string) =>
     setForm(f => ({ ...f, [key]: val }))
@@ -159,6 +166,21 @@ export default function Submit() {
             IsAcknowledged: false,
           })
         }
+        // Email: 1 ฉบับ — To = ลูกค้า, CC = agent + ผู้แจ้ง (อยู่ใน thread เดียว reply ได้)
+        sendTemplateEmail('ticket_created', {
+          ticket_number: ticketNum,
+          ticket_title: form.title,
+          priority: form.priority || '-',
+          category: form.category || '-',
+          description: (form.description || '-').replace(/\n/g, '<br>'),
+          customer_name: form.customerName || user.displayName,
+          assigned_name: form.assignedName || '-',
+          link: window.location.origin,
+        },
+          [form.customerEmail || user.email],            // To
+          [form.assignedEmail, user.email].filter(Boolean) as string[],  // CC
+        )
+
         addToast('success', `สร้าง Ticket สำเร็จ (${ticketNum})`)
 
       } else if (type === 'Task') {
@@ -197,6 +219,14 @@ export default function Submit() {
             IsAcknowledged: false,
           })
         }
+        // Email: แจ้ง agent ที่ถูก assign + ผู้แจ้ง (submitter)
+        sendTemplateEmail('task_assigned', {
+          task_title: form.title,
+          assigned_name: form.assignedName || form.assignedEmail || '-',
+          due_date: dueDate ?? '-',
+          task_note: (form.taskNote || '-').replace(/\n/g, '<br>'),
+          link: window.location.origin,
+        }, [...new Set([form.assignedEmail, user.email].filter(Boolean) as string[])])
         addToast('success', 'สร้าง Task สำเร็จ')
 
       } else if (type === 'Incident') {
@@ -211,6 +241,17 @@ export default function Submit() {
           AssignedEmail: form.assignedEmail || undefined,
           IncidentDate: form.incidentDate || undefined,
         })
+        // Email: แจ้ง Assigned เมื่อสร้าง Incident
+        if (form.assignedEmail) {
+          sendTemplateEmail('incident_created', {
+            incident_title: form.title,
+            severity: form.incidentSeverity,
+            incident_status: form.incidentStatus,
+            assigned_name: (agent?.Title ?? form.assignedName) || '-',
+            description: (form.description || '-').replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, [form.assignedEmail])
+        }
         addToast('success', 'บันทึก Incident สำเร็จ')
       }
 
@@ -356,11 +397,14 @@ export default function Submit() {
               <input required value={form.title} onChange={e => set('title', e.target.value)}
                 className={cx} placeholder={type === 'Incident' ? 'อธิบายปัญหา / ชื่อ Incident...' : 'ระบุหัวข้อ...'} />
             </div>
-            <div>
-              <label className={lx}>รายละเอียด</label>
-              <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม..." />
-            </div>
+            {/* Task ใช้ช่อง "Task Note" แทน — ซ่อนช่องนี้เพื่อไม่ให้ซ้ำซ้อน */}
+            {type !== 'Task' && (
+              <div>
+                <label className={lx}>รายละเอียด</label>
+                <textarea value={form.description} onChange={e => set('description', e.target.value)}
+                  className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม..." />
+              </div>
+            )}
 
             {/* ── Ticket fields ── */}
             {type === 'Ticket' && (
@@ -446,11 +490,18 @@ export default function Submit() {
             {type === 'Task' && (
               <>
                 <div>
-                  <label className={lx}>โครงการ *</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className={lx} style={{marginBottom:0}}>โครงการ *</label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                      <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)}
+                        className="w-3 h-3 accent-primary-600" />
+                      เฉพาะ Active
+                    </label>
+                  </div>
                   <select required value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
                     <option value="">-- เลือกโครงการ --</option>
-                    {projects.length > 0
-                      ? projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Company ? ` (${p.Company})` : ''}</option>)
+                    {filteredProjects.length > 0
+                      ? filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)
                       : <option disabled>กำลังโหลด...</option>}
                   </select>
                 </div>
@@ -533,10 +584,17 @@ export default function Submit() {
                     <input type="date" value={form.incidentDate} onChange={e => set('incidentDate', e.target.value)} className={cx} />
                   </div>
                   <div>
-                    <label className={lx}>โครงการที่เกี่ยวข้อง</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className={lx} style={{marginBottom:0}}>โครงการที่เกี่ยวข้อง</label>
+                      <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                        <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)}
+                          className="w-3 h-3 accent-primary-600" />
+                        เฉพาะ Active
+                      </label>
+                    </div>
                     <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
                       <option value="">-- ไม่ระบุ --</option>
-                      {projects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Company ? ` (${p.Company})` : ''}</option>)}
+                      {filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)}
                     </select>
                   </div>
                 </div>

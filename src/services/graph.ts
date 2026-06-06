@@ -66,19 +66,28 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
   })
 }
 
-export async function sendMail(to: string, subject: string, body: string): Promise<void> {
+export async function sendMail(
+  to: string | string[],
+  subject: string,
+  body: string,
+  opts?: { from?: string; cc?: string[] },
+): Promise<void> {
   const headers = await graphHeaders()
+  const toArr = (Array.isArray(to) ? to : [to]).filter(Boolean)
+  const message: Record<string, unknown> = {
+    subject,
+    body: { contentType: 'HTML', content: body },
+    toRecipients: toArr.map(a => ({ emailAddress: { address: a } })),
+  }
+  // CC — ใส่ผู้ที่ต้องการให้อยู่ใน loop เดียวกัน (reply ได้ทั้ง thread)
+  const cc = (opts?.cc ?? []).filter(Boolean)
+  if (cc.length) message.ccRecipients = cc.map(a => ({ emailAddress: { address: a } }))
+  // ส่งในนามบัญชีกลาง (ต้องมีสิทธิ์ Send As บน mailbox นั้นใน M365)
+  if (opts?.from) message.from = { emailAddress: { address: opts.from } }
   await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      message: {
-        subject,
-        body: { contentType: 'HTML', content: body },
-        toRecipients: [{ emailAddress: { address: to } }],
-      },
-      saveToSentItems: true,
-    }),
+    body: JSON.stringify({ message, saveToSentItems: true }),
   })
 }
 

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameDay, isToday, getDay } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
+import { sendTemplateEmail } from '../../services/emailService'
 import type { Holiday, LeaveRequest, AgentProfile, LeaveQuota } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
@@ -147,6 +148,16 @@ export function CompanyCalendar() {
         Note:           leaveForm.reason,
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
+      // ส่ง email แจ้งผู้อนุมัติ
+      if (leaveForm.approverEmail) {
+        sendTemplateEmail('leave_requested', {
+          requester_name: user.displayName,
+          leave_type:     leaveForm.leaveType,
+          leave_date:     dateStr,
+          approver_name:  approver?.Title ?? '',
+          link:           window.location.origin,
+        }, [leaveForm.approverEmail])
+      }
       // refresh balance
       if (user.email) {
         const yr = new Date().getFullYear()

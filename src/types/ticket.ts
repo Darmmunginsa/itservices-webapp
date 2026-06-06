@@ -24,6 +24,7 @@ export interface Ticket {
   Created: string
   Modified: string
   CreatedByEmail?: string   // not present in SP list schema — read-only, may be absent
+  Author?: { Title: string; EMail?: string }  // SP Created By — expanded via $expand=Author (ผู้แจ้งตัวจริง)
 }
 
 export interface TicketComment {

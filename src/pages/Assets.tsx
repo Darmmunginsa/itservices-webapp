@@ -41,8 +41,11 @@ const EMPTY_FORM = {
   OwnerType: 'Company', AssignedTo: '', AssignedEmail: '',
   PurchaseDate: '', Price: '', WarrantyDate: '',
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
+  PortalURL: '',
   Note: '',
 }
+
+const PORTAL_CATEGORIES = new Set(['VM', 'Software', 'Certificate'])
 
 type AssetForm = typeof EMPTY_FORM
 
@@ -59,7 +62,8 @@ function assetToForm(a: Asset): AssetForm {
     WarrantyDate: a.WarrantyDate?.slice(0, 10) || '',
     AppName: a.AppName || '', AccessMethod: a.AccessMethod || '',
     ExpiryDate: a.ExpiryDate?.slice(0, 10) || '',
-    LicenseType: a.LicenseType || '', Note: a.Note || '',
+    LicenseType: a.LicenseType || '', PortalURL: a.PortalURL || '',
+    Note: a.Note || '',
   }
 }
 
@@ -76,6 +80,7 @@ function formToPayload(form: AssetForm) {
     WarrantyDate: form.WarrantyDate || undefined,
     AppName: form.AppName || undefined, AccessMethod: form.AccessMethod || undefined,
     ExpiryDate: form.ExpiryDate || undefined, LicenseType: form.LicenseType || undefined,
+    PortalURL: form.PortalURL || undefined,
     Note: form.Note || undefined,
   }
 }
@@ -89,12 +94,13 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
   sslChecking: number | 'new' | null
 }) {
   const isCert = f.Category === 'Certificate'
+  const hasPortal = PORTAL_CATEGORIES.has(f.Category)
   return (
     <>
       <div className="col-span-2"><label className={labelClass}>ชื่อ Asset *</label>
         <input required value={f.Title} onChange={e => upd('Title', e.target.value)} className={inputClass} placeholder="เช่น LAPTOP-JOHN-01" /></div>
-      <div><label className={labelClass}>รหัส Asset</label>
-        <input value={f.AssetCode} onChange={e => upd('AssetCode', e.target.value)} className={inputClass} placeholder="เช่น IT-2024-001" /></div>
+      <div><label className={labelClass}>รหัส Asset <span className="text-gray-400 font-normal">(Auto)</span></label>
+        <input value={f.AssetCode} onChange={e => upd('AssetCode', e.target.value)} className={`${inputClass} font-mono`} placeholder="IT-2026-001" /></div>
       <div><label className={labelClass}>หมวดหมู่</label>
         <OptionSelect category="AssetCategory" defaults={[...CATEGORIES]} value={f.Category} onChange={v => upd('Category', v)} className={inputClass} /></div>
       <div><label className={labelClass}>สถานะ</label>
@@ -104,7 +110,11 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
 
       {!isSoftware && (<>
         <div><label className={labelClass}>IP Address</label>
-          <input value={f.IPAddress} onChange={e => upd('IPAddress', e.target.value)} className={inputClass} placeholder="192.168.1.x" /></div>
+          <textarea value={f.IPAddress} onChange={e => upd('IPAddress', e.target.value)} onKeyDown={e => e.key === 'Enter' && e.stopPropagation()} rows={2} className={`${inputClass} resize-none`} placeholder={"IP Private: 192.168.x.x\nIP Public: 203.x.x.x"} /></div>
+        {hasPortal && (
+          <div><label className={labelClass}>🌐 Portal URL</label>
+            <input value={f.PortalURL} onChange={e => upd('PortalURL', e.target.value)} className={inputClass} placeholder="https://portal.example.com" /></div>
+        )}
         <div><label className={labelClass}>OS</label>
           <OptionSelect category="AssetOS" defaults={['Windows 11', 'Windows 10', 'Windows Server 2022', 'Windows Server 2019', 'Ubuntu', 'macOS', 'อื่นๆ']} value={f.OS} onChange={v => upd('OS', v)} className={inputClass} /></div>
         <div><label className={labelClass}>Serial Number</label>
@@ -124,6 +134,10 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
           <input value={f.AppName} onChange={e => upd('AppName', e.target.value)} className={inputClass} /></div>
         <div><label className={labelClass}>License Type</label>
           <input value={f.LicenseType} onChange={e => upd('LicenseType', e.target.value)} className={inputClass} placeholder="Annual, Perpetual..." /></div>
+        {hasPortal && (
+          <div className="col-span-2"><label className={labelClass}>🌐 Portal URL</label>
+            <input value={f.PortalURL} onChange={e => upd('PortalURL', e.target.value)} className={inputClass} placeholder="https://portal.example.com" /></div>
+        )}
 
         <div className={isCert ? 'col-span-2' : ''}>
           <label className={labelClass}>{isCert ? '🌐 URL / Domain' : 'วิธีเข้าถึง'}</label>
@@ -203,7 +217,6 @@ export default function Assets() {
           `Domain: ${data.host ?? url}`,
           `Issuer: ${data.issuer ?? '-'}`,
           `หมดอายุ: ${isoDate}`,
-          `เหลือ: ${data.daysRemaining} วัน`,
           `สถานะ: ${data.valid ? '✅ Valid' : '❌ Expired'}`,
         ].join('\n'))
         addToast('success', `SSL หมดอายุ: ${isoDate} (เหลือ ${data.daysRemaining} วัน)`)
@@ -241,6 +254,19 @@ export default function Assets() {
 
   const set = (key: keyof AssetForm, val: string) => setForm(f => ({ ...f, [key]: val }))
   const setEdit = (key: keyof AssetForm, val: string) => setEditForm(f => ({ ...f, [key]: val }))
+
+  function generateAssetCode(): string {
+    const year = new Date().getFullYear()
+    const prefix = `IT-${year}-`
+    let maxNum = 0
+    for (const a of assets) {
+      if (a.AssetCode?.startsWith(prefix)) {
+        const n = parseInt(a.AssetCode.slice(prefix.length), 10)
+        if (!isNaN(n) && n > maxNum) maxNum = n
+      }
+    }
+    return `${prefix}${String(maxNum + 1).padStart(3, '0')}`
+  }
 
   async function createAsset(e: React.FormEvent) {
     e.preventDefault()
@@ -324,7 +350,7 @@ export default function Assets() {
             <option value="">สถานะทั้งหมด</option>
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-          {canAdmin && <Button size="sm" onClick={() => setShowCreate(true)}><Plus size={14} /> เพิ่ม Asset</Button>}
+          {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> เพิ่ม Asset</Button>}
           <button onClick={() => setShowRetired(s => !s)}
             className={`text-xs underline ml-1 ${showRetired ? 'text-primary-600' : 'text-gray-400'}`}>
             {showRetired ? 'ซ่อนที่ปลดระวาง' : 'แสดงที่ปลดระวาง'}
@@ -378,7 +404,7 @@ export default function Assets() {
                       {isExpanded && (
                         <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 pt-3">
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-4">
-                            {a.IPAddress && <div><p className="text-gray-400">IP Address</p><p className="font-mono">{a.IPAddress}</p></div>}
+                            {a.IPAddress && <div><p className="text-gray-400">IP Address</p><p className="font-mono whitespace-pre-line">{a.IPAddress}</p></div>}
                             {a.SerialNumber && <div><p className="text-gray-400">Serial No.</p><p>{a.SerialNumber}</p></div>}
                             {a.OS && <div><p className="text-gray-400">OS</p><p>{a.OS}</p></div>}
                             {a.Vendor && <div><p className="text-gray-400">Vendor</p><p>{a.Vendor}</p></div>}
@@ -387,6 +413,12 @@ export default function Assets() {
                             {a.Spec && <div className="col-span-2"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
                             {a.AppName && <div><p className="text-gray-400">App</p><p>{a.AppName}</p></div>}
                             {a.LicenseType && <div><p className="text-gray-400">License</p><p>{a.LicenseType}</p></div>}
+                            {a.PortalURL && (
+                              <div>
+                                <p className="text-gray-400">🌐 Portal</p>
+                                <a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a>
+                              </div>
+                            )}
                             {a.AccessMethod && (
                               <div>
                                 <p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p>
@@ -412,7 +444,27 @@ export default function Assets() {
                               </div>
                             )}
                             {a.AssignedEmail && <div><p className="text-gray-400">Email ผู้ใช้</p><p className="truncate">{a.AssignedEmail}</p></div>}
-                            {a.Note && <div className="col-span-2 md:col-span-4"><p className="text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap">{a.Note}</p></div>}
+                            {a.Note && (
+                              <div className="col-span-2 md:col-span-4">
+                                <p className="text-gray-400">หมายเหตุ</p>
+                                <p className="whitespace-pre-wrap">{
+                                  // ถ้าเป็น SSL note → inject "เหลือ: X วัน" แบบ real-time จาก ExpiryDate
+                                  a.Note.includes('🔒 SSL Certificate') && a.ExpiryDate
+                                    ? (() => {
+                                        const d = daysUntil(a.ExpiryDate)
+                                        const liveNote = a.Note.replace(/เหลือ:.*วัน\n?/, '')  // ลบบรรทัดเก่า (ถ้ามี)
+                                        const insertAfter = 'หมดอายุ:'
+                                        const idx = liveNote.indexOf(insertAfter)
+                                        if (idx === -1) return liveNote
+                                        const end = liveNote.indexOf('\n', idx)
+                                        const pos = end === -1 ? liveNote.length : end
+                                        const color = d !== null && d < 0 ? '❌' : d !== null && d <= 30 ? '⚠️' : '✅'
+                                        return liveNote.slice(0, pos) + `\nเหลือ: ${d !== null ? d : '-'} วัน ${color}` + liveNote.slice(pos)
+                                      })()
+                                    : a.Note
+                                }</p>
+                              </div>
+                            )}
                             {a.Username && canAdmin && <div><p className="text-gray-400">Username</p><p className="font-mono">{a.Username}</p></div>}
                             {assetProjects[a.id]?.length > 0 && (
                               <div className="col-span-2 md:col-span-4">

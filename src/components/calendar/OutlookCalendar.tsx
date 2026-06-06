@@ -220,6 +220,7 @@ export function OutlookCalendar() {
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ ...EMPTY_TASK })
   const [projects, setProjects] = useState<Project[]>([])
+  const [activeProjectsOnly, setActiveProjectsOnly] = useState(true)
   const [saving, setSaving] = useState(false)
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
@@ -227,7 +228,7 @@ export function OutlookCalendar() {
   const [customerEmails, setCustomerEmails] = useState<string[]>([])
 
   useEffect(() => {
-    spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc')
+    spGet<Project>('PM_Projects', undefined, undefined, 'Title asc')
       .then(setProjects).catch(() => {})
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
@@ -426,21 +427,30 @@ export function OutlookCalendar() {
 
           {/* Project dropdown */}
           {taskForm.taskType === 'project' && (
-            <div className="flex items-center gap-2">
-              <span className="text-base">📁</span>
-              <select
-                required
-                value={taskForm.projectId}
-                onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
-                className="flex-1 border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 text-sm text-gray-700 dark:text-gray-300 py-1"
-              >
-                <option value="">-- เลือกโครงการ --</option>
-                {projects.map(p => (
-                  <option key={p.id} value={String(p.id)}>
-                    {p.Title}{p.Company ? ` (${p.Company})` : ''}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">โครงการ</span>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                  <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)} className="w-3 h-3 accent-primary-600" />
+                  เฉพาะ Active
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-base">📁</span>
+                <select
+                  required
+                  value={taskForm.projectId}
+                  onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
+                  className="flex-1 border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 text-sm text-gray-700 dark:text-gray-300 py-1"
+                >
+                  <option value="">-- เลือกโครงการ --</option>
+                  {(activeProjectsOnly ? projects.filter(p => p.Status === 'Active') : projects).map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 

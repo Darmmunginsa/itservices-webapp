@@ -12,7 +12,8 @@ export function DateTaskModal() {
   const [mode, setMode] = useState<'personal' | 'project'>('personal')
   const [title, setTitle] = useState('')
   const [projectId, setProjectId] = useState('')
-  const [projects, setProjects] = useState<{ id: number; Title: string }[]>([])
+  const [projects, setProjects] = useState<{ id: number; Title: string; Status?: string }[]>([])
+  const [activeProjectsOnly, setActiveProjectsOnly] = useState(true)
   const [saving, setSaving] = useState(false)
   const [isOnlineMeeting, setIsOnlineMeeting] = useState(false)
   const [externalAttendees, setExternalAttendees] = useState('')
@@ -23,7 +24,7 @@ export function DateTaskModal() {
 
   // Load master data once
   useEffect(() => {
-    spGet<{ id: number; Title: string }>('PM_Projects', "Status eq 'Active'", 'Id,Title', 'Title asc')
+    spGet<{ id: number; Title: string; Status?: string }>('PM_Projects', undefined, 'Id,Title,Status', 'Title asc')
       .then(setProjects).catch(() => {})
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc').then(setAgents).catch(() => {})
     spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc').then(setContracts).catch(() => {})
@@ -171,11 +172,18 @@ export function DateTaskModal() {
 
           {mode === 'project' && (
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">โครงการ (ถ้ามี)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-gray-500">โครงการ (ถ้ามี)</label>
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                  <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)} className="w-3 h-3 accent-primary-600" />
+                  เฉพาะ Active
+                </label>
+              </div>
               <select value={projectId} onChange={e => setProjectId(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">-- ไม่ระบุ --</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.Title}</option>)}
+                {(activeProjectsOnly ? projects.filter(p => p.Status === 'Active') : projects)
+                  .map(p => <option key={p.id} value={p.id}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}</option>)}
               </select>
             </div>
           )}

@@ -12,12 +12,13 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { sendTemplateEmail } from '../services/emailService'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
-import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
+import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
@@ -117,7 +118,7 @@ export default function ProjectDetail() {
       spGet<Project>('PM_Projects', `Id eq ${numId}`),
       spGet<Task>('PM_Tasks', `ProjectID eq ${numId}`, undefined, 'DueDate asc'),
       spGet<Note>('PM_Notes', `ProjectID eq ${numId}`, undefined, 'Created desc'),
-      spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`),
+      spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`, '*,Author/Title,Author/EMail', undefined, 500, 'Author'),
       spGet<ProjectLink>('PM_Links', `ProjectID eq ${numId}`, undefined, 'Title asc'),
       spGet<ProjectAsset>('PM_ProjectAssets', `ProjectID eq ${numId}`).catch(() => []),
     ]).then(([proj, t, n, inc, lnk, pa]) => {
@@ -315,7 +316,10 @@ export default function ProjectDetail() {
   async function saveNote(e: React.FormEvent) {
     e.preventDefault()
     if (!user || !noteTitle.trim()) return
-    const payload = { Title: noteTitle.trim(), NoteText: noteText }
+    const payload: Record<string, unknown> = {
+      Title: noteTitle.trim(),
+      NoteText: noteText || undefined,
+    }
     try {
       if (editingNote) {
         await spUpdate('PM_Notes', editingNote.id, payload)
@@ -381,9 +385,32 @@ export default function ProjectDetail() {
       if (editingIncident) {
         await spUpdate('PM_Incidents', editingIncident.id, payload)
         addToast('success', 'อัปเดต Incident แล้ว')
+        // Email: แจ้ง Requester (ผู้แจ้ง) เมื่อสถานะเปลี่ยน
+        const requester = editingIncident.Author?.EMail || editingIncident.CreatedByEmail
+        if (incidentForm.status !== editingIncident.Status && requester) {
+          sendTemplateEmail('incident_status_changed', {
+            incident_title: incidentForm.title,
+            incident_status: incidentForm.status,
+            severity: incidentForm.severity,
+            assigned_name: agent?.Title ?? '-',
+            resolution: (incidentForm.resolution || '-').replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, [requester])
+        }
       } else {
         await spCreate('PM_Incidents', { ...payload, ProjectID: Number(id) })
         addToast('success', 'บันทึก Incident แล้ว')
+        // Email: แจ้ง Assigned เมื่อสร้าง Incident
+        if (incidentForm.assignedAgentEmail) {
+          sendTemplateEmail('incident_created', {
+            incident_title: incidentForm.title,
+            severity: incidentForm.severity,
+            incident_status: incidentForm.status,
+            assigned_name: agent?.Title ?? '-',
+            description: (incidentForm.description || '-').replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, [incidentForm.assignedAgentEmail])
+        }
       }
       setShowIncidentModal(false)
       load()
@@ -838,8 +865,8 @@ export default function ProjectDetail() {
                       <div key={la.id} className="flex items-start gap-2 p-4 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
                         <Monitor size={16} className="text-primary-600 flex-shrink-0 mt-0.5" />
                         <button onClick={() => asset && setViewAsset(asset)} className="flex-1 min-w-0 text-left">
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 leading-snug">{la.AssetTitle || asset?.Title}</p>
-                          {la.AssetCode && <p className="text-xs text-gray-400 font-mono">{la.AssetCode}</p>}
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 leading-snug">{asset?.Title || la.AssetTitle}</p>
+                          {(asset?.AssetCode || la.AssetCode) && <p className="text-xs text-gray-400 font-mono">{asset?.AssetCode || la.AssetCode}</p>}
                           {asset && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 mt-1.5">{asset.Category}</Badge>}
                           {!asset && <p className="text-xs text-amber-500 mt-1">(อุปกรณ์ถูกลบหรือปลดระวาง)</p>}
                         </button>
@@ -887,21 +914,52 @@ export default function ProjectDetail() {
 
       {/* ── View Asset Detail Modal ── */}
       <Modal open={!!viewAsset} onClose={() => setViewAsset(null)} title={viewAsset?.Title ?? ''} size="md">
-        {viewAsset && (
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {viewAsset.AssetCode && <div><p className="text-xs text-gray-400">รหัส</p><p className="font-mono">{viewAsset.AssetCode}</p></div>}
-            <div><p className="text-xs text-gray-400">หมวดหมู่</p><p>{viewAsset.Category}</p></div>
-            <div><p className="text-xs text-gray-400">สถานะ</p><p>{viewAsset.Status}</p></div>
-            {viewAsset.IPAddress && <div><p className="text-xs text-gray-400">IP</p><p className="font-mono">{viewAsset.IPAddress}</p></div>}
-            {viewAsset.SerialNumber && <div><p className="text-xs text-gray-400">Serial</p><p>{viewAsset.SerialNumber}</p></div>}
-            {viewAsset.OS && <div><p className="text-xs text-gray-400">OS</p><p>{viewAsset.OS}</p></div>}
-            {viewAsset.Vendor && <div><p className="text-xs text-gray-400">Vendor</p><p>{viewAsset.Vendor}</p></div>}
-            {viewAsset.Spec && <div className="col-span-2"><p className="text-xs text-gray-400">Spec</p><p>{viewAsset.Spec}</p></div>}
-            {viewAsset.AssignedTo && <div><p className="text-xs text-gray-400">ผู้ใช้งาน</p><p>{viewAsset.AssignedTo}</p></div>}
-            {viewAsset.AccessMethod && <div className="col-span-2"><p className="text-xs text-gray-400">Access / URL</p><p className="break-all">{viewAsset.AccessMethod}</p></div>}
-            {viewAsset.Note && <div className="col-span-2"><p className="text-xs text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap">{viewAsset.Note}</p></div>}
-          </div>
-        )}
+        {viewAsset && (() => {
+          const expiryDate = viewAsset.ExpiryDate || viewAsset.WarrantyDate
+          const daysLeft = expiryDate ? daysUntil(expiryDate) : null
+          const expiryColor = daysLeft === null ? '' : daysLeft < 0 ? 'text-red-500' : daysLeft <= 30 ? 'text-orange-500' : 'text-green-600 dark:text-green-400'
+          // Dynamic SSL note: strip stored "เหลือ:" line, inject live calculation
+          const liveNote = (() => {
+            if (!viewAsset.Note) return ''
+            if (!viewAsset.Note.includes('🔒 SSL Certificate') || !expiryDate) return viewAsset.Note
+            const stripped = viewAsset.Note.replace(/เหลือ:.*วัน[^\n]*\n?/, '')
+            const marker = 'หมดอายุ:'
+            const idx = stripped.indexOf(marker)
+            if (idx === -1) return stripped
+            const end = stripped.indexOf('\n', idx)
+            const pos = end === -1 ? stripped.length : end
+            const icon = daysLeft !== null && daysLeft < 0 ? '❌' : daysLeft !== null && daysLeft <= 30 ? '⚠️' : '✅'
+            return stripped.slice(0, pos) + `\nเหลือ: ${daysLeft ?? '-'} วัน ${icon}` + stripped.slice(pos)
+          })()
+          return (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {viewAsset.AssetCode && <div><p className="text-xs text-gray-400">รหัส</p><p className="font-mono">{viewAsset.AssetCode}</p></div>}
+              <div><p className="text-xs text-gray-400">หมวดหมู่</p><p>{viewAsset.Category}</p></div>
+              <div><p className="text-xs text-gray-400">สถานะ</p><p>{viewAsset.Status}</p></div>
+              {viewAsset.IPAddress && <div><p className="text-xs text-gray-400">IP</p><p className="font-mono whitespace-pre-line">{viewAsset.IPAddress}</p></div>}
+              {viewAsset.SerialNumber && <div><p className="text-xs text-gray-400">Serial</p><p>{viewAsset.SerialNumber}</p></div>}
+              {viewAsset.OS && <div><p className="text-xs text-gray-400">OS</p><p>{viewAsset.OS}</p></div>}
+              {viewAsset.Vendor && <div><p className="text-xs text-gray-400">Vendor</p><p>{viewAsset.Vendor}</p></div>}
+              {viewAsset.Spec && <div className="col-span-2"><p className="text-xs text-gray-400">Spec</p><p>{viewAsset.Spec}</p></div>}
+              {viewAsset.AssignedTo && <div><p className="text-xs text-gray-400">ผู้ใช้งาน</p><p>{viewAsset.AssignedTo}</p></div>}
+              {viewAsset.PurchaseDate && <div><p className="text-xs text-gray-400">วันที่ซื้อ</p><p>{formatDate(viewAsset.PurchaseDate)}</p></div>}
+              {expiryDate && (
+                <div>
+                  <p className="text-xs text-gray-400">{viewAsset.Category === 'Certificate' ? 'วันหมดอายุ SSL' : 'วันหมดประกัน'}</p>
+                  <p className={expiryColor}>{formatDate(expiryDate)}{daysLeft !== null && <span className="ml-1 text-xs">({daysLeft < 0 ? 'หมดแล้ว' : `เหลือ ${daysLeft} วัน`})</span>}</p>
+                </div>
+              )}
+              {viewAsset.PortalURL && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400">🌐 Portal</p>
+                  <a href={viewAsset.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all">{viewAsset.PortalURL}</a>
+                </div>
+              )}
+              {viewAsset.AccessMethod && <div className="col-span-2"><p className="text-xs text-gray-400">Access / URL</p><p className="break-all">{viewAsset.AccessMethod}</p></div>}
+              {liveNote && <div className="col-span-2"><p className="text-xs text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap text-xs">{liveNote}</p></div>}
+            </div>
+          )
+        })()}
       </Modal>
 
       {/* ── Edit Project Modal ── */}

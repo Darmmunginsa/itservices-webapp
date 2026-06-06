@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane, Mail, Eye } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -7,6 +7,8 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
+import { clearEmailTemplateCache } from '../services/emailService'
+import type { EmailTemplate } from '../services/emailService'
 import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import type { Holiday, Announcement, AgentProfile, LeaveQuota } from '../types/common'
@@ -258,6 +260,225 @@ export default function Admin() {
     ? holidays.filter(h => h.HolidayDate?.startsWith(yearFilter))
     : holidays
 
+  // ── Email Templates ──────────────────────────────────────────────────────────
+  // ชื่อ event ทั้งหมดที่ระบบรองรับ (ใช้ตรวจว่ามี template ครบไหม + สร้างที่ขาด)
+  const TPL_LABELS: Record<string, string> = {
+    ticket_created:          'Ticket Created',
+    task_assigned:           'Task Assigned',
+    ticket_status_changed:   'Ticket Status Changed',
+    comment_added:           'Comment Added',
+    incident_created:        'Incident Created',
+    incident_status_changed: 'Incident Status Changed',
+    leave_requested:         'Leave Requested',
+    leave_decision:          'Leave Approved/Rejected',
+  }
+
+  const TPL_VARS: Record<string, { key: string; desc: string }[]> = {
+    ticket_created: [
+      { key: 'ticket_number', desc: 'หมายเลข Ticket' },
+      { key: 'ticket_title',  desc: 'ชื่อ Ticket' },
+      { key: 'priority',      desc: 'ความสำคัญ' },
+      { key: 'category',      desc: 'ประเภท' },
+      { key: 'description',   desc: 'รายละเอียด' },
+      { key: 'customer_name', desc: 'ชื่อลูกค้า' },
+      { key: 'assigned_name', desc: 'ชื่อ Agent' },
+      { key: 'link',          desc: 'ลิงก์เข้าระบบ' },
+    ],
+    task_assigned: [
+      { key: 'task_title',    desc: 'ชื่อ Task' },
+      { key: 'assigned_name', desc: 'ชื่อ Agent' },
+      { key: 'due_date',      desc: 'กำหนดส่ง' },
+      { key: 'task_note',     desc: 'รายละเอียด/Task Note' },
+      { key: 'link',          desc: 'ลิงก์เข้าระบบ' },
+    ],
+    ticket_status_changed: [
+      { key: 'ticket_number',  desc: 'หมายเลข Ticket' },
+      { key: 'ticket_title',   desc: 'ชื่อ Ticket' },
+      { key: 'ticket_status',  desc: 'สถานะใหม่' },
+      { key: 'customer_name',  desc: 'ชื่อลูกค้า' },
+      { key: 'assigned_name',  desc: 'ชื่อ Agent' },
+      { key: 'link',           desc: 'ลิงก์เข้าระบบ' },
+    ],
+    comment_added: [
+      { key: 'ticket_number', desc: 'หมายเลข Ticket' },
+      { key: 'ticket_title',  desc: 'ชื่อ Ticket' },
+      { key: 'customer_name', desc: 'ชื่อลูกค้า' },
+      { key: 'assigned_name', desc: 'ชื่อ Agent' },
+      { key: 'comment_text',  desc: 'ข้อความ Comment' },
+      { key: 'link',          desc: 'ลิงก์เข้าระบบ' },
+    ],
+    incident_created: [
+      { key: 'incident_title',  desc: 'ชื่อ Incident' },
+      { key: 'severity',        desc: 'ระดับความรุนแรง' },
+      { key: 'incident_status', desc: 'สถานะ' },
+      { key: 'assigned_name',   desc: 'ชื่อ Agent' },
+      { key: 'description',     desc: 'รายละเอียด' },
+      { key: 'link',            desc: 'ลิงก์เข้าระบบ' },
+    ],
+    incident_status_changed: [
+      { key: 'incident_title',  desc: 'ชื่อ Incident' },
+      { key: 'incident_status', desc: 'สถานะใหม่' },
+      { key: 'severity',        desc: 'ระดับความรุนแรง' },
+      { key: 'assigned_name',   desc: 'ชื่อ Agent' },
+      { key: 'resolution',      desc: 'แนวทางแก้ไข' },
+      { key: 'link',            desc: 'ลิงก์เข้าระบบ' },
+    ],
+    leave_requested: [
+      { key: 'requester_name', desc: 'ชื่อพนักงานผู้ขอลา' },
+      { key: 'leave_type',     desc: 'ประเภทการลา' },
+      { key: 'leave_date',     desc: 'วันที่ลา' },
+      { key: 'approver_name',  desc: 'ชื่อผู้อนุมัติ' },
+      { key: 'link',           desc: 'ลิงก์เข้าระบบ' },
+    ],
+    leave_decision: [
+      { key: 'requester_name', desc: 'ชื่อพนักงานผู้ขอลา' },
+      { key: 'leave_type',     desc: 'ประเภทการลา' },
+      { key: 'leave_date',     desc: 'วันที่ลา' },
+      { key: 'leave_status',   desc: 'ผลการพิจารณา (อนุมัติ/ไม่อนุมัติ)' },
+      { key: 'approver_name',  desc: 'ชื่อผู้อนุมัติ' },
+      { key: 'link',           desc: 'ลิงก์เข้าระบบ' },
+    ],
+  }
+
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
+  const [emailLoading, setEmailLoading] = useState(true)
+  const [editingTpl, setEditingTpl] = useState<EmailTemplate | null>(null)
+  const [tplForm, setTplForm] = useState({ Subject: '', Body: '', IsEnabled: true, Recipients: '' })
+  const [savingTpl, setSavingTpl] = useState(false)
+  const [previewTpl, setPreviewTpl] = useState<EmailTemplate | null>(null)
+
+  // refs สำหรับแทรกตัวแปรลงช่องที่กำลังเลือก (Subject / Body)
+  const subjectRef = useRef<HTMLInputElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const lastFocused = useRef<'Subject' | 'Body'>('Body')
+
+  /** แทรก {{tag}} ลงช่องที่ focus ล่าสุด ณ ตำแหน่ง cursor */
+  function insertVar(key: string) {
+    const tag = `{{${key}}}`
+    const field = lastFocused.current
+    const el = field === 'Subject' ? subjectRef.current : bodyRef.current
+    if (!el) {
+      setTplForm(f => ({ ...f, [field]: f[field] + tag }))
+      return
+    }
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    const cur = tplForm[field]
+    const next = cur.slice(0, start) + tag + cur.slice(end)
+    setTplForm(f => ({ ...f, [field]: next }))
+    // คืน focus + ตั้ง cursor หลัง tag ที่แทรก
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = start + tag.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  // บัญชีกลางสำหรับส่งอีเมล (Send As) — เก็บใน HD_Options Category='EmailConfig'
+  const [senderRow, setSenderRow] = useState<{ id: number; Title: string } | null>(null)
+  const [senderInput, setSenderInput] = useState('')
+  const [savingSender, setSavingSender] = useState(false)
+
+  useEffect(() => {
+    spGet<EmailTemplate>('HD_EmailTemplates', undefined,
+      'Id,Title,EventKey,Subject,Body,IsEnabled,Recipients')
+      .then(setEmailTemplates).catch(() => {}).finally(() => setEmailLoading(false))
+    spGet<{ id: number; Title: string; Category: string }>('HD_Options', "Category eq 'EmailConfig'", 'Id,Title,Category')
+      .then(rows => {
+        if (rows[0]) { setSenderRow(rows[0]); setSenderInput(rows[0].Title || '') }
+      }).catch(() => {})
+  }, [])
+
+  // สร้าง template ที่ยังไม่มีใน HD_EmailTemplates (เช่น task_assigned ที่ขาด)
+  const [creatingKey, setCreatingKey] = useState<string | null>(null)
+  async function createTpl(eventKey: string) {
+    setCreatingKey(eventKey)
+    try {
+      const title = TPL_LABELS[eventKey] ?? eventKey
+      const res = await spCreate('HD_EmailTemplates', {
+        Title: title,
+        EventKey: eventKey,
+        Subject: '',
+        Body: '',
+        IsEnabled: false,
+        Recipients: '',
+      })
+      const row: EmailTemplate = { id: res.id, Title: title, EventKey: eventKey, Subject: '', Body: '', IsEnabled: false, Recipients: '' }
+      setEmailTemplates(prev => [...prev, row])
+      clearEmailTemplateCache()
+      addToast('success', `สร้าง Template "${title}" แล้ว — กดแก้ไขเพื่อตั้งค่า`)
+      openEditTpl(row)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    finally { setCreatingKey(null) }
+  }
+
+  async function saveSender() {
+    setSavingSender(true)
+    try {
+      const value = senderInput.trim()
+      if (senderRow) {
+        await spUpdate('HD_Options', senderRow.id, { Title: value })
+        setSenderRow({ ...senderRow, Title: value })
+      } else {
+        const res = await spCreate('HD_Options', { Title: value, Category: 'EmailConfig', SortOrder: 0 })
+        setSenderRow({ id: res.id, Title: value })
+      }
+      clearEmailTemplateCache()
+      addToast('success', 'บันทึกบัญชีผู้ส่งแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    finally { setSavingSender(false) }
+  }
+
+  function openEditTpl(tpl: EmailTemplate) {
+    setEditingTpl(tpl)
+    setTplForm({ Subject: tpl.Subject || '', Body: tpl.Body || '', IsEnabled: tpl.IsEnabled, Recipients: tpl.Recipients || '' })
+  }
+
+  async function saveTpl(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingTpl) return
+    setSavingTpl(true)
+    try {
+      await spUpdate('HD_EmailTemplates', editingTpl.id, {
+        Subject: tplForm.Subject,
+        Body: tplForm.Body,
+        IsEnabled: tplForm.IsEnabled,
+        Recipients: tplForm.Recipients,
+      })
+      clearEmailTemplateCache()
+      setEmailTemplates(prev => prev.map(t => t.id === editingTpl.id
+        ? { ...t, ...tplForm } : t))
+      setEditingTpl(null)
+      addToast('success', 'บันทึก Template แล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingTpl(false) }
+  }
+
+  async function toggleTpl(tpl: EmailTemplate) {
+    await spUpdate('HD_EmailTemplates', tpl.id, { IsEnabled: !tpl.IsEnabled })
+    clearEmailTemplateCache()
+    setEmailTemplates(prev => prev.map(t => t.id === tpl.id ? { ...t, IsEnabled: !t.IsEnabled } : t))
+  }
+
+  const SAMPLE_VARS: Record<string, string> = {
+    ticket_number: 'HD-2026-0042',
+    ticket_title: 'ไม่สามารถเข้าใช้งาน VPN ได้',
+    customer_name: 'คุณสมชาย ใจดี',
+    agent_name: 'Darm Munginsa',
+    status: 'In Progress',
+    link: window.location.origin,
+    requester_name: 'คุณสมชาย ใจดี',
+    leave_type: 'ลาพักร้อน',
+    leave_date: '10 มิ.ย. 2569',
+    leave_status: 'อนุมัติ',
+    approver_name: 'ผู้จัดการ',
+    comment_text: 'เราได้รับเรื่องของคุณแล้วและกำลังดำเนินการ',
+    task_title: 'ติดตั้ง Windows 11',
+  }
+
+  function renderPreview(text: string): string {
+    return text.replace(/\{\{(\w+)\}\}/g, (_, k) => SAMPLE_VARS[k] ?? `{{${k}}}`)
+  }
+
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
@@ -444,7 +665,167 @@ export default function Admin() {
             <Button size="sm" onClick={saveVideo} disabled={savingVideo}>{savingVideo ? '...' : 'บันทึก'}</Button>
           </div>
         </Card>
+        {/* Email Templates */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Mail size={18} className="text-primary-600" />
+            <h2 className="text-sm font-semibold">Email Templates (HD_EmailTemplates)</h2>
+          </div>
+
+          {/* บัญชีกลางสำหรับส่งอีเมล (Send As) */}
+          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">บัญชีผู้ส่ง (Send As)</label>
+            <div className="flex items-center gap-2 mt-1.5">
+              <input value={senderInput} onChange={e => setSenderInput(e.target.value)}
+                type="email" placeholder="support@itservices.co.th (เว้นว่าง = ใช้ค่า default นี้)"
+                className={`${inputClass} flex-1`} />
+              <Button type="button" onClick={saveSender} disabled={savingSender} className="flex-shrink-0">
+                {savingSender ? 'กำลังบันทึก...' : 'บันทึก'}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              อีเมลแจ้งเตือนทั้งหมดจะส่งในนามบัญชีนี้ — ผู้ใช้ที่ login ต้องได้รับสิทธิ์ <strong>Send As</strong> บน mailbox นี้ใน Microsoft 365 ก่อน มิฉะนั้นจะส่งไม่สำเร็จ
+            </p>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            ตัวแปรที่ใช้ได้จะแสดงเฉพาะของแต่ละ Template เมื่อกดแก้ไข (✏️)
+          </p>
+          {emailLoading
+            ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+            : emailTemplates.map(tpl => (
+              <div key={tpl.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{tpl.Title}</p>
+                    <code className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{tpl.EventKey}</code>
+                  </div>
+                  {tpl.Subject
+                    ? <p className="text-xs text-gray-500 mt-0.5 truncate">{tpl.Subject}</p>
+                    : <p className="text-xs text-orange-400 mt-0.5">⚠️ ยังไม่ได้ตั้งค่า Subject</p>}
+                  {tpl.Recipients && <p className="text-xs text-gray-400 mt-0.5">ส่งถึง: {tpl.Recipients}</p>}
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Badge className={tpl.IsEnabled
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}>
+                    {tpl.IsEnabled ? 'เปิด' : 'ปิด'}
+                  </Badge>
+                  <button onClick={() => setPreviewTpl(tpl)} title="Preview"
+                    className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+                    <Eye size={14} />
+                  </button>
+                  <button onClick={() => openEditTpl(tpl)} title="แก้ไข"
+                    className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => toggleTpl(tpl)} title="เปิด/ปิด"
+                    className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+                    {tpl.IsEnabled
+                      ? <ToggleRight size={16} className="text-primary-600" />
+                      : <ToggleLeft size={16} className="text-gray-400" />}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+          {/* Template ที่ยังไม่มี — กดสร้างได้เลย */}
+          {!emailLoading && Object.keys(TPL_LABELS)
+            .filter(k => !emailTemplates.some(t => t.EventKey === k))
+            .map(k => (
+              <div key={k} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 bg-orange-50/40 dark:bg-orange-900/10">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-gray-500">{TPL_LABELS[k]}</p>
+                    <code className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{k}</code>
+                  </div>
+                  <p className="text-xs text-orange-500 mt-0.5">⚠️ ยังไม่มี Template นี้ในระบบ</p>
+                </div>
+                <Button type="button" size="sm" disabled={creatingKey === k}
+                  onClick={() => createTpl(k)} className="flex-shrink-0">
+                  <Plus size={14} /> {creatingKey === k ? 'กำลังสร้าง...' : 'สร้าง'}
+                </Button>
+              </div>
+            ))}
+        </Card>
+
       </div>
+
+      {/* Edit Template Modal */}
+      <Modal open={!!editingTpl} onClose={() => setEditingTpl(null)}
+        title={`แก้ไข Template: ${editingTpl?.Title ?? ''}`} size="lg">
+        <form onSubmit={saveTpl} className="space-y-4">
+
+          {/* Variables reference */}
+          {editingTpl && TPL_VARS[editingTpl.EventKey] && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+              <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-2">ตัวแปรที่ใช้ได้ใน Template นี้ — คลิกที่ช่อง Subject หรือ Body ก่อน แล้วคลิกตัวแปรเพื่อแทรก</p>
+              <div className="flex flex-wrap gap-1.5">
+                {TPL_VARS[editingTpl.EventKey].map(v => (
+                  <button key={v.key} type="button"
+                    title={v.desc}
+                    onClick={() => insertVar(v.key)}
+                    className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded px-2 py-0.5 text-xs text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">
+                    <code>{`{{${v.key}}}`}</code>
+                    <span className="text-gray-400 text-[10px]">— {v.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className={labelClass}>Subject *</label>
+            <input ref={subjectRef} required value={tplForm.Subject}
+              onChange={e => setTplForm(f => ({ ...f, Subject: e.target.value }))}
+              onFocus={() => { lastFocused.current = 'Subject' }}
+              className={inputClass} placeholder="เช่น [iT Services] Ticket {{ticket_number}} — {{ticket_title}}" />
+          </div>
+          <div>
+            <label className={labelClass}>ส่งถึง (Recipients)</label>
+            <input value={tplForm.Recipients} onChange={e => setTplForm(f => ({ ...f, Recipients: e.target.value }))}
+              className={inputClass} placeholder="customer, agent, approver, requester (คั่นด้วย ,)" />
+            <p className="text-xs text-gray-400 mt-1">ใช้สำหรับอ้างอิงเท่านั้น — code จะส่งอีเมลที่ถูกต้องตาม event</p>
+          </div>
+          <div>
+            <label className={labelClass}>Body (HTML)</label>
+            <textarea ref={bodyRef} required value={tplForm.Body}
+              onChange={e => setTplForm(f => ({ ...f, Body: e.target.value }))}
+              onFocus={() => { lastFocused.current = 'Body' }}
+              onKeyDown={e => e.key === 'Enter' && e.stopPropagation()}
+              rows={10} className={`${inputClass} font-mono text-xs resize-y`}
+              placeholder={'<p>สวัสดีคุณ <strong>{{customer_name}}</strong>,</p>\n<p>Ticket <strong>{{ticket_number}}</strong> ...</p>'} />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={tplForm.IsEnabled}
+              onChange={e => setTplForm(f => ({ ...f, IsEnabled: e.target.checked }))}
+              className="w-4 h-4 accent-primary-600" />
+            เปิดใช้งาน Template นี้
+          </label>
+          <Button type="submit" disabled={savingTpl} className="w-full justify-center">
+            {savingTpl ? 'กำลังบันทึก...' : 'บันทึก Template'}
+          </Button>
+        </form>
+      </Modal>
+
+      {/* Preview Modal */}
+      <Modal open={!!previewTpl} onClose={() => setPreviewTpl(null)}
+        title={`Preview: ${previewTpl?.Title ?? ''}`} size="lg">
+        {previewTpl && (
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Subject</p>
+              <p className="text-sm bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                {renderPreview(previewTpl.Subject || '(ว่าง)')}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Body (rendered)</p>
+              <div className="text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 max-h-80 overflow-y-auto"
+                dangerouslySetInnerHTML={{ __html: renderPreview(previewTpl.Body || '<em>(ว่าง)</em>') }} />
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Add Holiday Modal */}
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="เพิ่มวันหยุด" size="sm">

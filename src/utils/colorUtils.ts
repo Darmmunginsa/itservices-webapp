@@ -5,6 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// คำจำกัดความสถานะ Ticket — แสดงเป็น tooltip ใน dropdown และ badge
+export const TICKET_STATUS_DESC: Record<string, { th: string; desc: string }> = {
+  'Open':        { th: 'Open',        desc: 'Ticket ถูกสร้างแล้ว รอ Agent รับงาน' },
+  'In Progress': { th: 'In Progress', desc: 'Agent รับงานแล้วและกำลังดำเนินการแก้ไข' },
+  'Pending':     { th: 'Pending',     desc: 'รอปัจจัยภายนอก เช่น รอลูกค้าตอบ / รอ Vendor / รอ Approve' },
+  'Resolved':    { th: 'Resolved',    desc: 'แก้ไขแล้ว รอลูกค้ายืนยันก่อนปิด' },
+  'Closed':      { th: 'Closed',      desc: 'ปิดงานสมบูรณ์ ลูกค้ายืนยันหรือผ่านเวลากำหนดแล้ว' },
+}
+
 export function getPriorityColor(priority: string): string {
   switch (priority) {
     case 'Critical': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'

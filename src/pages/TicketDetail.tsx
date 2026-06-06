@@ -11,10 +11,11 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { sendMail } from '../services/graph'
+import { sendTemplateEmail } from '../services/emailService'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
-import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
+import { getStatusColor, getPriorityColor, TICKET_STATUS_DESC } from '../utils/colorUtils'
 import { formatDate, timeAgo } from '../utils/dateUtils'
 
 // Deterministic avatar color from name (YouTube-style colored circles)
@@ -51,7 +52,7 @@ export default function TicketDetail() {
   function load() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
     Promise.all([
-      spGet<Ticket>('HD_Tickets', `Id eq ${id}`),
+      spGet<Ticket>('HD_Tickets', `Id eq ${id}`, '*,Author/Title,Author/EMail', undefined, 500, 'Author'),
       // TicketID is a Number field — no quotes in the filter
       spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title', 'CommentDate asc', 500, 'Author'),
     ]).then(([t, c]) => {
@@ -137,6 +138,22 @@ export default function TicketDetail() {
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
+      // Email: แจ้งภายใน (agent + ผู้แจ้ง) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
+      if (ticket) {
+        const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
+        const internal = [...new Set([ticket.AssignedEmail, submitter].filter(Boolean) as string[])]
+          .filter(e => e.toLowerCase() !== user.email.toLowerCase())
+        if (internal.length) {
+          sendTemplateEmail('comment_added', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title: ticket.Title,
+            customer_name: ticket.CustomerName,
+            assigned_name: user.displayName,
+            comment_text: comment.slice(0, 200).replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, internal.slice(0, 1), internal.slice(1))
+        }
+      }
       addToast('success', 'บันทึก Comment แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSending(false) }
   }
@@ -181,6 +198,23 @@ export default function TicketDetail() {
         Status: newStatus,
         ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
       } : prev)
+      // Email: แจ้งภายใน (agent + ผู้แจ้ง) — ยกเว้นคนที่กดเอง เพื่อลด noise (ไม่ส่งหาลูกค้า)
+      {
+        const actorEmail = user?.email?.toLowerCase() ?? ''
+        const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
+        const internal = [...new Set([ticket.AssignedEmail, submitter].filter(Boolean) as string[])]
+          .filter(e => e.toLowerCase() !== actorEmail)
+        if (internal.length) {
+          sendTemplateEmail('ticket_status_changed', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title: ticket.Title,
+            ticket_status: newStatus,
+            customer_name: ticket.CustomerName,
+            assigned_name: ticket.AssignedToName || '-',
+            link: window.location.origin,
+          }, internal.slice(0, 1), internal.slice(1))
+        }
+      }
       addToast('success', 'อัปเดตสถานะแล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
@@ -284,7 +318,15 @@ export default function TicketDetail() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex-1">{ticket.Title}</h2>
             <div className="flex gap-2 flex-shrink-0">
               <Badge className={getPriorityColor(ticket.Priority)}>{ticket.Priority}</Badge>
-              <Badge className={getStatusColor(ticket.Status)}>{ticket.Status}</Badge>
+              <span className="relative group/badge inline-flex">
+                <Badge className={getStatusColor(ticket.Status)}>{ticket.Status}</Badge>
+                {TICKET_STATUS_DESC[ticket.Status] && (
+                  <span className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover/badge:block w-60 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg px-3 py-2 shadow-xl pointer-events-none whitespace-normal">
+                    <span className="font-semibold block mb-0.5">{ticket.Status}</span>
+                    <span className="text-gray-300">{TICKET_STATUS_DESC[ticket.Status].desc}</span>
+                  </span>
+                )}
+              </span>
             </div>
           </div>
 
@@ -427,12 +469,21 @@ export default function TicketDetail() {
             {/* Status + Acknowledge */}
             <div className="space-y-3 mb-4">
               <div className="flex flex-wrap gap-2 items-center">
-                <select value={newStatus} onChange={e => setNewStatus(e.target.value as TicketStatus)}
-                  className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                  {(['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'] as TicketStatus[]).map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                <div className="relative group/status">
+                  <select value={newStatus} onChange={e => setNewStatus(e.target.value as TicketStatus)}
+                    className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 pr-8">
+                    {(['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'] as TicketStatus[]).map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  {/* Tooltip คำจำกัดความของสถานะที่เลือกอยู่ */}
+                  {TICKET_STATUS_DESC[newStatus] && (
+                    <div className="absolute left-0 top-full mt-1.5 z-50 hidden group-hover/status:block w-64 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg px-3 py-2 shadow-xl pointer-events-none">
+                      <p className="font-semibold mb-0.5">{newStatus}</p>
+                      <p className="text-gray-300">{TICKET_STATUS_DESC[newStatus].desc}</p>
+                    </div>
+                  )}
+                </div>
                 <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>อัปเดตสถานะ</Button>
                 {!ticket.IsAcknowledged && (
                   <Button size="sm" variant="outline" onClick={acknowledge}>
