@@ -283,6 +283,16 @@ export default function ProjectDetail() {
       } else {
         await spCreate('PM_Tasks', { ...payload, ProjectID: Number(id), IsCompleted: false, IsAcknowledged: false })
         addToast('success', 'เพิ่ม Task แล้ว')
+        // Email: แจ้ง agent + ผู้สร้าง (เหมือน webapp Submit)
+        if (taskForm.assignedEmail) {
+          sendTemplateEmail('task_assigned', {
+            task_title: taskForm.title,
+            assigned_name: agent?.Title ?? taskForm.assignedEmail,
+            due_date: dueDate ?? '-',
+            task_note: (taskForm.taskNote || '-').replace(/\n/g, '<br>'),
+            link: window.location.origin,
+          }, [...new Set([taskForm.assignedEmail, user?.email].filter(Boolean) as string[])])
+        }
       }
       setShowTaskModal(false)
       load()
