@@ -280,12 +280,14 @@ export default function ProjectDetail() {
   function openEditTask(task: Task) {
     setEditingTask(task)
     setTaskForm({
+      ...EMPTY_TASK,
       title: task.Title,
       assignedEmail: task.AssignedEmail ?? '',
       dueDate: task.DueDate ? task.DueDate.slice(0, 10) : '',
       daysCount: '',
       taskNote: task.TaskNote ?? '',
     })
+    resetTaskExtras()
     setShowTaskModal(true)
   }
 
