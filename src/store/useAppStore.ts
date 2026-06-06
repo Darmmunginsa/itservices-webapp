@@ -184,8 +184,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setAccentColor: (color) => {
     const email = get().user?.email
-    const key = email ? `accent_${email}` : 'accent'
-    localStorage.setItem(key, color)
+    if (email) localStorage.setItem(`accent_${email}`, color)
+    localStorage.setItem('accent', color)   // key กลาง — ให้ apply ทันทีตอนโหลดก่อน login
     applyAccent(color)
     set({ accentColor: color })
   },
