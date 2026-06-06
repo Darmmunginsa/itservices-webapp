@@ -740,7 +740,6 @@ export default function ProjectDetail() {
                     const ak = `note-${note.id}`
                     const isOpen = expandedKey === ak
                     const canEdit = user?.role === 'Admin' || note.NoteBy === user?.displayName
-                    const firstLine = (note.NoteText || '').split('\n')[0]
                     return (
                       <div key={note.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
                         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
