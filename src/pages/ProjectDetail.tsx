@@ -720,6 +720,29 @@ export default function ProjectDetail() {
 
   const pinnedSet = new Set(focusItems.map(f => `${f.FocusType}|${f.Title}`))
 
+  // Pin/unpin ตัวโครงการเอง (FocusType=Project)
+  const projectPinned = focusItems.find(f => f.FocusType === 'Project' && String(f.RefID) === String(project?.id))
+  async function togglePinProject() {
+    if (!user || !project) return
+    try {
+      if (projectPinned) {
+        await spDelete('HD_Focus', projectPinned.id)
+        setFocusItems(prev => prev.filter(f => f.id !== projectPinned.id))
+        addToast('success', 'เอาโครงการออกจาก Focus แล้ว')
+      } else {
+        const res = await spCreate('HD_Focus', {
+          Title: project.Title, RefID: String(project.id), FocusType: 'Project',
+          FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status,
+        })
+        setFocusItems(prev => [...prev, {
+          id: res.id, Title: project.Title, RefID: String(project.id),
+          FocusType: 'Project', FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status,
+        }])
+        addToast('success', 'Pin โครงการไว้ใน Focus แล้ว')
+      }
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
   const sortedTasks = [...tasks].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
     return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) - (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
@@ -751,6 +774,10 @@ export default function ProjectDetail() {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
+              <button onClick={togglePinProject} title={projectPinned ? 'เอาออกจาก Focus' : 'Pin โครงการไว้ที่ Focus'}
+                className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${projectPinned ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
+                <Pin size={14} className={projectPinned ? 'fill-current' : ''} />
+              </button>
               {canEditProject && (
                 <button onClick={openEditProject} title="แก้ไขโครงการ"
                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
