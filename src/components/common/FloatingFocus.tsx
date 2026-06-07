@@ -144,7 +144,7 @@ export function FloatingFocus() {
             {items.map(f => {
               const color = getDueDateColor(f.DueDate)
               const to = f.FocusType === 'Ticket' ? `/tickets/${f.RefID}`
-                : f.FocusType === 'Note' ? '/tools'
+                : f.FocusType === 'Note' ? `/tools?note=${f.RefID}`
                 : `/projects/${f.RefID}`
               const isActive = location.pathname === to
               return (

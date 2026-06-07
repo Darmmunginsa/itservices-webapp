@@ -307,7 +307,7 @@ export default function Home() {
                       <span className="text-gray-300 dark:text-gray-600 flex-shrink-0 cursor-grab" title="ลากเพื่อเรียงลำดับ">⠿</span>
                       <span className="text-base flex-shrink-0">{getDueDateEmoji(color) || '📌'}</span>
                       <Link
-                        to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : f.FocusType === 'Note' ? '/tools' : `/projects/${f.RefID}`}
+                        to={f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : f.FocusType === 'Note' ? `/tools?note=${f.RefID}` : `/projects/${f.RefID}`}
                         className="flex-1 min-w-0"
                       >
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{f.Title}</p>

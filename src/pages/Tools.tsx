@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Pencil, Trash2, Search, Notebook, Pin } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
@@ -77,6 +78,19 @@ export default function Tools() {
   }
 
   useEffect(() => { load(); loadFocus() }, [user])
+
+  // เปิด note อัตโนมัติเมื่อมาจากลิงก์ Focus (/tools?note=<id>)
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const noteId = searchParams.get('note')
+    if (!noteId || notes.length === 0) return
+    const target = notes.find(n => String(n.id) === noteId)
+    if (target) {
+      setViewing(target)
+      searchParams.delete('note')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }, [notes, searchParams, setSearchParams])
 
   // set ของ note id ที่ pin แล้ว (RefID เก็บเป็น string)
   const pinnedSet = new Set(focusNotes.map(f => String(f.RefID)))
