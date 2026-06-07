@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, Search, Notebook } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Notebook, Pin } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { OptionSelect } from '../components/common/OptionSelect'
@@ -8,6 +8,7 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate } from '../utils/dateUtils'
+import type { FocusItem } from '../types/common'
 
 interface ToolNote {
   id: number
@@ -46,6 +47,8 @@ export default function Tools() {
   const [saving, setSaving] = useState(false)
 
   const [viewing, setViewing] = useState<ToolNote | null>(null)
+  const [focusNotes, setFocusNotes] = useState<FocusItem[]>([])
+  const [pinBusy, setPinBusy] = useState<number | null>(null)
 
   async function load() {
     if (!user) return
@@ -65,7 +68,47 @@ export default function Tools() {
     }
   }
 
-  useEffect(() => { load() }, [user])
+  async function loadFocus() {
+    if (!user) return
+    try {
+      const f = await spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}' and FocusType eq 'Note'`)
+      setFocusNotes(f)
+    } catch { /* ignore */ }
+  }
+
+  useEffect(() => { load(); loadFocus() }, [user])
+
+  // set ของ note id ที่ pin แล้ว (RefID เก็บเป็น string)
+  const pinnedSet = new Set(focusNotes.map(f => String(f.RefID)))
+
+  async function togglePin(note: ToolNote, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!user) return
+    setPinBusy(note.id)
+    try {
+      const existing = focusNotes.find(f => String(f.RefID) === String(note.id))
+      if (existing) {
+        await spDelete('HD_Focus', existing.id)
+        setFocusNotes(prev => prev.filter(f => f.id !== existing.id))
+        addToast('success', 'เอาออกจาก Focus แล้ว')
+      } else {
+        const res = await spCreate('HD_Focus', {
+          Title: note.Title,
+          RefID: String(note.id),
+          FocusType: 'Note',
+          FocusedBy: user.displayName,
+          FocusedEmail: user.email,
+          Status: 'Note',
+        })
+        setFocusNotes(prev => [...prev, {
+          id: res.id, Title: note.Title, RefID: String(note.id),
+          FocusType: 'Note', FocusedBy: user.displayName, FocusedEmail: user.email, Status: 'Note',
+        }])
+        addToast('success', 'Pin ไว้ที่ Focus แล้ว')
+      }
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    finally { setPinBusy(null) }
+  }
 
   function openCreate() {
     setEditing(null)
@@ -197,13 +240,17 @@ export default function Tools() {
                   <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 line-clamp-1 flex-1">
                     {note.Title}
                   </h3>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
+                  <div className="flex gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                    <button onClick={e => togglePin(note, e)} disabled={pinBusy === note.id} title={pinnedSet.has(String(note.id)) ? 'เอาออกจาก Focus' : 'Pin ไว้ที่ Focus'}
+                      className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(String(note.id)) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600 opacity-0 group-hover:opacity-100'}`}>
+                      <Pin size={13} className={pinnedSet.has(String(note.id)) ? 'fill-current' : ''} />
+                    </button>
                     <button onClick={() => openEdit(note)}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors opacity-0 group-hover:opacity-100">
                       <Pencil size={13} />
                     </button>
                     <button onClick={() => remove(note)}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors">
+                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
                       <Trash2 size={13} />
                     </button>
                   </div>

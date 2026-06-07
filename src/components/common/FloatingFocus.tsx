@@ -8,7 +8,7 @@ import { getStatusColor } from '../../utils/colorUtils'
 import { formatDate, getDueDateColor, getDueDateEmoji } from '../../utils/dateUtils'
 
 const TYPE_ICON: Record<string, string> = {
-  Ticket: '🎫', Task: '✅', Project: '📁',
+  Ticket: '🎫', Task: '✅', Project: '📁', Note: '📝',
 }
 
 interface Pos { x: number; y: number }
@@ -143,7 +143,9 @@ export function FloatingFocus() {
           <div className="max-h-80 overflow-y-auto">
             {items.map(f => {
               const color = getDueDateColor(f.DueDate)
-              const to = f.FocusType === 'Ticket' ? `/tickets/${f.RefID}` : `/projects/${f.RefID}`
+              const to = f.FocusType === 'Ticket' ? `/tickets/${f.RefID}`
+                : f.FocusType === 'Note' ? '/tools'
+                : `/projects/${f.RefID}`
               const isActive = location.pathname === to
               return (
                 <Link key={f.id} to={to} onClick={() => setOpen(false)}

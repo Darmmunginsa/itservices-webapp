@@ -65,7 +65,7 @@ export interface FocusItem {
   id: number
   Title: string
   RefID: string
-  FocusType: 'Ticket' | 'Task' | 'Project'
+  FocusType: 'Ticket' | 'Task' | 'Project' | 'Note'
   FocusedBy: string
   FocusedEmail: string
   DueDate?: string
