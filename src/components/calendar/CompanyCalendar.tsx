@@ -32,6 +32,8 @@ function leaveTypeMatch(stored: string, quotaTitle: string): boolean {
 type ModalMode = 'leave' | 'holiday'
 
 const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '' }
+// ค่าพิเศษ: ผู้ใช้ที่ไม่ต้องขออนุมัติ (เช่น เจ้าของบริษัท) — ลาแล้วอนุมัติอัตโนมัติ
+export const SELF_APPROVE = '__SELF__'
 const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
 
 export function CompanyCalendar() {
@@ -133,6 +135,7 @@ export function CompanyCalendar() {
     const myProfile = agents.find(a => (a.EmailText ?? '').toLowerCase() === user.email.toLowerCase())
     const approverEmail = myProfile?.ApproverEmail
     if (!approverEmail) { addToast('error', 'ยังไม่ได้กำหนดผู้อนุมัติของคุณ กรุณาติดต่อ Admin'); return }
+    const selfApprove = approverEmail === SELF_APPROVE
     const b = balance.find(x => x.type === leaveForm.leaveType)
     if (b && b.remaining <= 0 && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วันแล้ว\nต้องการส่งคำขอต่อหรือไม่?`)) return
     setSaving(true)
@@ -145,20 +148,25 @@ export function CompanyCalendar() {
         LeaveType:      leaveForm.leaveType,
         RequestedBy:    user.displayName,
         RequestedEmail: user.email,
-        ApproverEmail:  approverEmail,
-        ApproverName:   approver?.Title ?? '',
-        Status:         'Pending',
+        // self-approve: ไม่มีผู้อนุมัติ → อนุมัติอัตโนมัติ
+        ApproverEmail:  selfApprove ? user.email : approverEmail,
+        ApproverName:   selfApprove ? 'อนุมัติอัตโนมัติ' : (approver?.Title ?? ''),
+        Status:         selfApprove ? 'Approved' : 'Pending',
         Note:           leaveForm.reason,
       })
-      addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
-      // ส่ง email แจ้งผู้อนุมัติ
-      sendTemplateEmail('leave_requested', {
-        requester_name: user.displayName,
-        leave_type:     leaveForm.leaveType,
-        leave_date:     dateStr,
-        approver_name:  approver?.Title ?? '',
-        link:           window.location.origin,
-      }, [approverEmail])
+      if (selfApprove) {
+        addToast('success', `บันทึกการลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว (ไม่ต้องขออนุมัติ)`)
+      } else {
+        addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
+        // ส่ง email แจ้งผู้อนุมัติ
+        sendTemplateEmail('leave_requested', {
+          requester_name: user.displayName,
+          leave_type:     leaveForm.leaveType,
+          leave_date:     dateStr,
+          approver_name:  approver?.Title ?? '',
+          link:           window.location.origin,
+        }, [approverEmail])
+      }
       // refresh balance
       if (user.email) {
         const yr = new Date().getFullYear()
@@ -196,7 +204,8 @@ export function CompanyCalendar() {
 
   // ผู้อนุมัติของผู้ใช้ปัจจุบัน (Admin กำหนดใน HD_AgentProfiles.ApproverEmail)
   const myProfile = agents.find(a => (a.EmailText ?? '').toLowerCase() === (user?.email ?? '').toLowerCase())
-  const myApprover = myProfile?.ApproverEmail
+  const mySelfApprove = myProfile?.ApproverEmail === SELF_APPROVE
+  const myApprover = myProfile?.ApproverEmail && !mySelfApprove
     ? agents.find(a => a.EmailText === myProfile.ApproverEmail)
     : undefined
 
@@ -373,7 +382,11 @@ export function CompanyCalendar() {
             </div>
             <div>
               <label className={labelCx}>ผู้อนุมัติ (กำหนดโดย Admin)</label>
-              {myApprover
+              {mySelfApprove
+                ? <div className="px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
+                    ✓ ไม่ต้องขออนุมัติ — บันทึกแล้วอนุมัติอัตโนมัติ
+                  </div>
+                : myApprover
                 ? <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300">
                     {myApprover.Title} <span className="text-gray-400">({myApprover.Role})</span>
                   </div>
@@ -381,8 +394,8 @@ export function CompanyCalendar() {
                     ⚠️ ยังไม่ได้กำหนดผู้อนุมัติ — กรุณาติดต่อ Admin
                   </div>}
             </div>
-            <Button type="submit" disabled={saving || !myApprover} className="w-full justify-center">
-              {saving ? 'กำลังส่ง...' : 'ส่งคำขอลา'}
+            <Button type="submit" disabled={saving || (!myApprover && !mySelfApprove)} className="w-full justify-center">
+              {saving ? 'กำลังส่ง...' : mySelfApprove ? 'บันทึกการลา' : 'ส่งคำขอลา'}
             </Button>
           </form>
         )}

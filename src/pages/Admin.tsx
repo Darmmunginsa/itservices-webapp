@@ -619,6 +619,7 @@ export default function Admin() {
                   onChange={e => setApprover(a.id, e.target.value)}
                   className={`${inputClass} max-w-[55%]`}>
                   <option value="">-- ยังไม่กำหนด --</option>
+                  <option value="__SELF__">ไม่ต้องอนุมัติ (เช่น เจ้าของบริษัท)</option>
                   {agentsList.filter(x => x.EmailText && x.EmailText !== a.EmailText).map(x => (
                     <option key={x.id} value={x.EmailText}>{x.Title} ({x.Role})</option>
                   ))}
