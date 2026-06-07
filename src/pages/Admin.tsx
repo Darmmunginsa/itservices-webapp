@@ -52,6 +52,7 @@ export default function Admin() {
 
   // Leave quota state (per-employee)
   const [agentsList, setAgentsList] = useState<AgentProfile[]>([])
+  const [savingApprover, setSavingApprover] = useState<number | null>(null)
   const [quotaEmail, setQuotaEmail] = useState('')      // พนักงานที่เลือก
   const [quotas, setQuotas] = useState<LeaveQuota[]>([]) // โควต้าของพนักงานที่เลือก
   const [quotaLoading, setQuotaLoading] = useState(false)
@@ -61,7 +62,7 @@ export default function Admin() {
   const LEAVE_TYPES = ['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']
 
   function loadAgentsList() {
-    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role', 'Title asc', 500)
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role,ApproverEmail', 'Title asc', 500)
       .then(setAgentsList).catch(() => {})
   }
 
@@ -420,6 +421,17 @@ export default function Admin() {
     finally { setCreatingKey(null) }
   }
 
+  // กำหนดผู้อนุมัติการลาให้พนักงาน (Admin)
+  async function setApprover(agentId: number, approverEmail: string) {
+    setSavingApprover(agentId)
+    try {
+      await spUpdate('HD_AgentProfiles', agentId, { ApproverEmail: approverEmail || '' })
+      setAgentsList(prev => prev.map(a => a.id === agentId ? { ...a, ApproverEmail: approverEmail } : a))
+      addToast('success', 'บันทึกผู้อนุมัติแล้ว')
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+    finally { setSavingApprover(null) }
+  }
+
   async function saveSender() {
     setSavingSender(true)
     try {
@@ -585,6 +597,35 @@ export default function Admin() {
             }
           </div>
           <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
+        </Card>
+
+        {/* Leave Approver Management (per-employee) */}
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Plane size={18} className="text-primary-600" />
+            <h2 className="text-sm font-semibold">ผู้อนุมัติการลารายบุคคล (HD_AgentProfiles)</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">กำหนดผู้อนุมัติของพนักงานแต่ละคน — พนักงานจะส่งคำขอลาไปหาผู้อนุมัติที่กำหนดนี้โดยอัตโนมัติ (เลือกเองไม่ได้)</p>
+          <div className="space-y-1.5 max-h-96 overflow-y-auto">
+            {agentsList.map(a => (
+              <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{a.Title}</p>
+                  <p className="text-xs text-gray-400 truncate">{a.EmailText}</p>
+                </div>
+                <select
+                  value={a.ApproverEmail ?? ''}
+                  disabled={savingApprover === a.id}
+                  onChange={e => setApprover(a.id, e.target.value)}
+                  className={`${inputClass} max-w-[55%]`}>
+                  <option value="">-- ยังไม่กำหนด --</option>
+                  {agentsList.filter(x => x.EmailText && x.EmailText !== a.EmailText).map(x => (
+                    <option key={x.id} value={x.EmailText}>{x.Title} ({x.Role})</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
         </Card>
 
         {/* Leave Quota Management (per-employee) */}

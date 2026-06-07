@@ -19,6 +19,7 @@ export interface AgentProfile {
   MaxTicketLoad?: number
   IsAvailable: boolean
   ThemeJSON?: string         // การตั้งค่าธีมส่วนตัว (JSON) — sync ข้ามเครื่อง
+  ApproverEmail?: string     // ผู้อนุมัติการลา (Admin กำหนด)
 }
 
 export interface Announcement {

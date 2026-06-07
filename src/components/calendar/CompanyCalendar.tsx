@@ -31,7 +31,7 @@ function leaveTypeMatch(stored: string, quotaTitle: string): boolean {
 
 type ModalMode = 'leave' | 'holiday'
 
-const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', approverEmail: '' }
+const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '' }
 const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
 
 export function CompanyCalendar() {
@@ -129,12 +129,15 @@ export function CompanyCalendar() {
   async function submitLeave(e: React.FormEvent) {
     e.preventDefault()
     if (!user || !selectedDay) return
-    if (!leaveForm.approverEmail) { addToast('error', 'กรุณาเลือกผู้อนุมัติ'); return }
+    // ผู้อนุมัติถูกกำหนดโดย Admin (ApproverEmail ใน profile ของผู้ใช้)
+    const myProfile = agents.find(a => (a.EmailText ?? '').toLowerCase() === user.email.toLowerCase())
+    const approverEmail = myProfile?.ApproverEmail
+    if (!approverEmail) { addToast('error', 'ยังไม่ได้กำหนดผู้อนุมัติของคุณ กรุณาติดต่อ Admin'); return }
     const b = balance.find(x => x.type === leaveForm.leaveType)
     if (b && b.remaining <= 0 && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วันแล้ว\nต้องการส่งคำขอต่อหรือไม่?`)) return
     setSaving(true)
     try {
-      const approver  = agents.find(a => a.EmailText === leaveForm.approverEmail)
+      const approver  = agents.find(a => a.EmailText === approverEmail)
       const dateStr   = format(selectedDay, 'yyyy-MM-dd')
       await spCreate('HD_LeaveRequests', {
         Title:          leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
@@ -142,22 +145,20 @@ export function CompanyCalendar() {
         LeaveType:      leaveForm.leaveType,
         RequestedBy:    user.displayName,
         RequestedEmail: user.email,
-        ApproverEmail:  leaveForm.approverEmail,
+        ApproverEmail:  approverEmail,
         ApproverName:   approver?.Title ?? '',
         Status:         'Pending',
         Note:           leaveForm.reason,
       })
       addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
       // ส่ง email แจ้งผู้อนุมัติ
-      if (leaveForm.approverEmail) {
-        sendTemplateEmail('leave_requested', {
-          requester_name: user.displayName,
-          leave_type:     leaveForm.leaveType,
-          leave_date:     dateStr,
-          approver_name:  approver?.Title ?? '',
-          link:           window.location.origin,
-        }, [leaveForm.approverEmail])
-      }
+      sendTemplateEmail('leave_requested', {
+        requester_name: user.displayName,
+        leave_type:     leaveForm.leaveType,
+        leave_date:     dateStr,
+        approver_name:  approver?.Title ?? '',
+        link:           window.location.origin,
+      }, [approverEmail])
       // refresh balance
       if (user.email) {
         const yr = new Date().getFullYear()
@@ -193,8 +194,11 @@ export function CompanyCalendar() {
     finally  { setSaving(false) }
   }
 
-  const approvers    = agents.filter(a => ['Boss', 'Admin', 'Supervisor'].includes(a.Role))
-  const approverList = approvers.length > 0 ? approvers : agents
+  // ผู้อนุมัติของผู้ใช้ปัจจุบัน (Admin กำหนดใน HD_AgentProfiles.ApproverEmail)
+  const myProfile = agents.find(a => (a.EmailText ?? '').toLowerCase() === (user?.email ?? '').toLowerCase())
+  const myApprover = myProfile?.ApproverEmail
+    ? agents.find(a => a.EmailText === myProfile.ApproverEmail)
+    : undefined
 
   const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelCx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
@@ -368,17 +372,16 @@ export function CompanyCalendar() {
                 className={inputCx} rows={2} placeholder="ระบุเหตุผล..." />
             </div>
             <div>
-              <label className={labelCx}>ผู้อนุมัติ *</label>
-              <select required value={leaveForm.approverEmail}
-                onChange={e => setLeaveForm(f => ({ ...f, approverEmail: e.target.value }))}
-                className={inputCx}>
-                <option value="">-- เลือกผู้อนุมัติ --</option>
-                {approverList.map(a => (
-                  <option key={a.id} value={a.EmailText}>{a.Title} ({a.Role})</option>
-                ))}
-              </select>
+              <label className={labelCx}>ผู้อนุมัติ (กำหนดโดย Admin)</label>
+              {myApprover
+                ? <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300">
+                    {myApprover.Title} <span className="text-gray-400">({myApprover.Role})</span>
+                  </div>
+                : <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700">
+                    ⚠️ ยังไม่ได้กำหนดผู้อนุมัติ — กรุณาติดต่อ Admin
+                  </div>}
             </div>
-            <Button type="submit" disabled={saving} className="w-full justify-center">
+            <Button type="submit" disabled={saving || !myApprover} className="w-full justify-center">
               {saving ? 'กำลังส่ง...' : 'ส่งคำขอลา'}
             </Button>
           </form>
