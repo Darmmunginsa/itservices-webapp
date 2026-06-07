@@ -75,7 +75,6 @@ export default function Projects() {
         EndDate: computedEndDate() ?? null,
         Status: form.status,
         CreatedByEmail: user.email,
-        Description: form.description || undefined,
         Comment: form.comment || undefined,
       })
       addToast('success', 'สร้างโครงการเรียบร้อย')
@@ -260,12 +259,8 @@ export default function Projects() {
             <p className="text-xs text-primary-600">📅 End date: {computedEndDate()}</p>
           )}
           <div>
-            <label className={labelClass}>รายละเอียด</label>
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} className={inputClass} rows={3} placeholder="รายละเอียดโครงการ..." />
-          </div>
-          <div>
-            <label className={labelClass}>Comment / หมายเหตุ</label>
-            <textarea value={form.comment} onChange={e => set('comment', e.target.value)} className={inputClass} rows={2} placeholder="บันทึกเพิ่มเติม..." />
+            <label className={labelClass}>รายละเอียด / หมายเหตุ</label>
+            <textarea value={form.comment} onChange={e => set('comment', e.target.value)} className={inputClass} rows={3} placeholder="รายละเอียดโครงการ / บันทึกเพิ่มเติม..." />
           </div>
           <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? 'กำลังสร้าง...' : 'สร้างโครงการ'}</Button>
         </form>
