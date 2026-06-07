@@ -15,6 +15,15 @@ import { formatDate, isWarrantyExpiringSoon, daysUntil } from '../utils/dateUtil
 
 const SSL_WORKER_URL = import.meta.env.VITE_SSL_WORKER_URL ?? ''
 
+// สถานะ monitor จาก Uptime Kuma (bridge ผ่าน SharePoint list HD_MonitorStatus)
+interface MonitorStatusRow { id: number; MonitorId: number; Status: string; LastCheck?: string; Uptime24?: number }
+// ดึง monitor id จาก MonitorUrl เช่น http://monitor.../dashboard/3 → 3
+function monitorIdFromUrl(url?: string): number | null {
+  if (!url) return null
+  const m = url.match(/\/dashboard\/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
 const CATEGORIES = ['Computer', 'Server', 'VM', 'Network', 'Certificate', 'Software', 'Other'] as const
 const STATUSES   = ['Active', 'Inactive', 'Maintenance', 'Retired'] as const
 const OWNER_TYPES = ['Company', 'Department', 'User']
@@ -203,6 +212,7 @@ export default function Assets() {
   const [showRetired, setShowRetired] = useState(false)
   const [writingOff, setWritingOff] = useState<number | null>(null)
   const [assetProjects, setAssetProjects] = useState<Record<number, { id: number; title: string }[]>>({})
+  const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
 
   async function checkSSL(url: string, assetId: number | 'new', onDone?: (iso: string) => void, onNote?: (note: string) => void) {
     if (!SSL_WORKER_URL) { addToast('error', 'ยังไม่ได้ตั้งค่า VITE_SSL_WORKER_URL'); return }
@@ -255,6 +265,16 @@ export default function Assets() {
   }, [])
 
   useEffect(() => { load() }, [showRetired])
+
+  // โหลดสถานะ monitor (HD_MonitorStatus) — อัปเดตจาก poller ฝั่งเครื่อง monitor
+  useEffect(() => {
+    spGet<MonitorStatusRow>('HD_MonitorStatus', undefined, 'Id,MonitorId,Status,LastCheck,Uptime24', undefined, 500)
+      .then(rows => {
+        const m: Record<number, MonitorStatusRow> = {}
+        for (const r of rows) if (r.MonitorId != null) m[r.MonitorId] = r
+        setMonitorStatus(m)
+      }).catch(() => {})
+  }, [])
 
   const set = (key: keyof AssetForm, val: string) => setForm(f => ({ ...f, [key]: val }))
   const setEdit = (key: keyof AssetForm, val: string) => setEditForm(f => ({ ...f, [key]: val }))
@@ -364,6 +384,7 @@ export default function Assets() {
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center text-xs font-medium text-gray-500 gap-2">
             <span className="flex-1 min-w-0">ชื่อ / รหัส</span>
+            <span className="hidden sm:block w-20 flex-shrink-0">Monitor</span>
             <span className="hidden sm:block w-36 flex-shrink-0">หมวดหมู่</span>
             <span className="w-20 flex-shrink-0">สถานะ</span>
             <span className="hidden md:block w-40 flex-shrink-0">ผู้ใช้งาน</span>
@@ -386,6 +407,22 @@ export default function Assets() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
                           {a.AssetCode && <p className="text-xs text-gray-400 font-mono">{a.AssetCode}</p>}
+                        </div>
+                        <div className="hidden sm:block w-20 flex-shrink-0">
+                          {(() => {
+                            const mid = monitorIdFromUrl(a.MonitorUrl)
+                            const st = mid != null ? monitorStatus[mid] : undefined
+                            if (!st) return <span className="text-xs text-gray-300">—</span>
+                            const up = st.Status === 'up' || st.Status === '1'
+                            const pending = st.Status === 'pending'
+                            return (
+                              <span className={`inline-flex items-center gap-1 text-xs font-medium ${up ? 'text-green-600' : pending ? 'text-amber-500' : 'text-red-600'}`}
+                                title={st.LastCheck ? `เช็คล่าสุด ${formatDate(st.LastCheck)}${st.Uptime24 != null ? ` · uptime 24h ${st.Uptime24}%` : ''}` : ''}>
+                                <span className={`w-2 h-2 rounded-full ${up ? 'bg-green-500' : pending ? 'bg-amber-400' : 'bg-red-500'}`} />
+                                {up ? 'UP' : pending ? '...' : 'DOWN'}
+                              </span>
+                            )
+                          })()}
                         </div>
                         <div className="hidden sm:block w-36 flex-shrink-0"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 truncate max-w-full">{a.Category}</Badge></div>
                         <div className="w-20 flex-shrink-0"><Badge className={getStatusColor(a.Status)}>{a.Status}</Badge></div>
