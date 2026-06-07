@@ -26,6 +26,14 @@ const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
 const PROJECT_STATUSES = ['Planning', 'Active', 'On Hold', 'Completed', 'Cancelled']
 
+// สถานะ monitor (Uptime Kuma bridge ผ่าน HD_MonitorStatus)
+interface MonitorStatusRow { id: number; MonitorId: number; Status: string; LastCheck?: string; Uptime24?: number }
+function monitorIdFromUrl(url?: string): number | null {
+  if (!url) return null
+  const m = url.match(/\/dashboard\/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
 const HOURS = Array.from({ length: 29 }, (_, i) => {
   const h = String(Math.floor(i / 2) + 7).padStart(2, '0')
   const m = i % 2 === 0 ? '00' : '30'
@@ -73,6 +81,7 @@ export default function ProjectDetail() {
   const [showAssetPicker, setShowAssetPicker] = useState(false)
   const [assetSearch, setAssetSearch] = useState('')
   const [viewAsset, setViewAsset] = useState<Asset | null>(null)
+  const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
 
   // Attachment panel toggle key: 'task-42' | 'note-7' | 'incident-3'
   const [attachKey, setAttachKey] = useState<string | null>(null)
@@ -165,6 +174,12 @@ export default function ProjectDetail() {
       .then(setAllAssets).catch(() => {})
     spGet<Contract>('HD_Contracts', undefined, 'Id,Title,CustomerEmail,Company', 'Title asc', 500)
       .then(setContracts).catch(() => {})
+    spGet<MonitorStatusRow>('HD_MonitorStatus', undefined, 'Id,MonitorId,Status,LastCheck,Uptime24', undefined, 500)
+      .then(rows => {
+        const m: Record<number, MonitorStatusRow> = {}
+        for (const r of rows) if (r.MonitorId != null) m[r.MonitorId] = r
+        setMonitorStatus(m)
+      }).catch(() => {})
     if (user?.email) {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
         .then(setFocusItems).catch(() => {})
@@ -1055,6 +1070,28 @@ export default function ProjectDetail() {
                   <a href={viewAsset.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all">{viewAsset.PortalURL}</a>
                 </div>
               )}
+              {(() => {
+                const mid = monitorIdFromUrl(viewAsset.MonitorUrl)
+                const st = mid != null ? monitorStatus[mid] : undefined
+                if (!viewAsset.MonitorUrl) return null
+                const up = st?.Status === 'up' || st?.Status === '1'
+                const pending = st?.Status === 'pending'
+                return (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400">📊 Monitor</p>
+                    <div className="flex items-center gap-2">
+                      {st ? (
+                        <span className={`inline-flex items-center gap-1 text-sm font-medium ${up ? 'text-green-600' : pending ? 'text-amber-500' : 'text-red-600'}`}>
+                          <span className={`w-2 h-2 rounded-full ${up ? 'bg-green-500' : pending ? 'bg-amber-400' : 'bg-red-500'}`} />
+                          {up ? 'UP' : pending ? 'รอข้อมูล' : 'DOWN'}
+                          {st.Uptime24 != null && <span className="text-xs text-gray-400">· {st.Uptime24}% (24h)</span>}
+                        </span>
+                      ) : <span className="text-sm text-gray-400">— ยังไม่มีข้อมูล</span>}
+                      <a href={viewAsset.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:underline">ดูใน Uptime Kuma</a>
+                    </div>
+                  </div>
+                )
+              })()}
               {viewAsset.AccessMethod && <div className="col-span-2"><p className="text-xs text-gray-400">Access / URL</p><p className="break-all">{viewAsset.AccessMethod}</p></div>}
               {liveNote && <div className="col-span-2"><p className="text-xs text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap text-xs">{liveNote}</p></div>}
             </div>
