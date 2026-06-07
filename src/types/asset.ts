@@ -29,6 +29,7 @@ export interface Asset {
   ExpiryDate?: string
   LicenseType?: string
   PortalURL?: string
+  MonitorUrl?: string   // ลิงก์หน้า monitor ใน Uptime Kuma (อ้างอิงเฉยๆ)
   // General
   Note?: string
   Created: string

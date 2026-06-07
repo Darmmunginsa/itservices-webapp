@@ -41,7 +41,7 @@ const EMPTY_FORM = {
   OwnerType: 'Company', AssignedTo: '', AssignedEmail: '',
   PurchaseDate: '', Price: '', WarrantyDate: '',
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
-  PortalURL: '',
+  PortalURL: '', MonitorUrl: '',
   Note: '',
 }
 
@@ -63,6 +63,7 @@ function assetToForm(a: Asset): AssetForm {
     AppName: a.AppName || '', AccessMethod: a.AccessMethod || '',
     ExpiryDate: a.ExpiryDate?.slice(0, 10) || '',
     LicenseType: a.LicenseType || '', PortalURL: a.PortalURL || '',
+    MonitorUrl: a.MonitorUrl || '',
     Note: a.Note || '',
   }
 }
@@ -81,6 +82,7 @@ function formToPayload(form: AssetForm) {
     AppName: form.AppName || undefined, AccessMethod: form.AccessMethod || undefined,
     ExpiryDate: form.ExpiryDate || undefined, LicenseType: form.LicenseType || undefined,
     PortalURL: form.PortalURL || undefined,
+    MonitorUrl: form.MonitorUrl || undefined,
     Note: form.Note || undefined,
   }
 }
@@ -111,6 +113,8 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
       {!isSoftware && (<>
         <div><label className={labelClass}>IP Address</label>
           <textarea value={f.IPAddress} onChange={e => upd('IPAddress', e.target.value)} onKeyDown={e => e.key === 'Enter' && e.stopPropagation()} rows={2} className={`${inputClass} resize-none`} placeholder={"IP Private: 192.168.x.x\nIP Public: 203.x.x.x"} /></div>
+        <div><label className={labelClass}>📊 Monitor URL <span className="text-gray-400 font-normal">(Uptime Kuma)</span></label>
+          <input value={f.MonitorUrl} onChange={e => upd('MonitorUrl', e.target.value)} className={inputClass} placeholder="http://monitor.itservices.co.th/dashboard/3" /></div>
         {hasPortal && (
           <div><label className={labelClass}>🌐 Portal URL</label>
             <input value={f.PortalURL} onChange={e => upd('PortalURL', e.target.value)} className={inputClass} placeholder="https://portal.example.com" /></div>
@@ -417,6 +421,12 @@ export default function Assets() {
                               <div>
                                 <p className="text-gray-400">🌐 Portal</p>
                                 <a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a>
+                              </div>
+                            )}
+                            {a.MonitorUrl && (
+                              <div>
+                                <p className="text-gray-400">📊 Monitor</p>
+                                <a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a>
                               </div>
                             )}
                             {a.AccessMethod && (
