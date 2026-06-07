@@ -132,10 +132,14 @@ export default function Reports() {
     .slice(0, 8)
 
   // ── Customer breakdown ──────────────────────────────────────────────────────
+  // อีเมลภายในบริษัท (โดเมนนี้) จะถูกรวมเป็นกลุ่มเดียว "ภายใน (Internal)"
+  const INTERNAL_DOMAIN = '@itservices.co.th'
   const custMap = new Map<string, { name: string; email: string; tickets: Ticket[] }>()
   for (const t of tickets) {
-    const email = t.CustomerEmail || '(ไม่ระบุ)'
-    const name  = t.CustomerName  || email
+    const rawEmail = t.CustomerEmail || '(ไม่ระบุ)'
+    const isInternal = rawEmail.toLowerCase().includes(INTERNAL_DOMAIN)
+    const email = isInternal ? '__internal__' : rawEmail
+    const name  = isInternal ? 'ภายใน (Internal)' : (t.CustomerName || rawEmail)
     if (!custMap.has(email)) custMap.set(email, { name, email, tickets: [] })
     custMap.get(email)!.tickets.push(t)
   }
@@ -340,7 +344,7 @@ export default function Reports() {
                   <tr key={c.email} className="border-b border-gray-50 dark:border-gray-800/60 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <td className="py-2.5 pr-4">
                       <p className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[150px]">{c.name}</p>
-                      <p className="text-gray-400 truncate max-w-[150px]">{c.email}</p>
+                      {c.email !== '__internal__' && <p className="text-gray-400 truncate max-w-[150px]">{c.email}</p>}
                     </td>
                     <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{c.total}</td>
                     <td className="text-center py-2.5 px-2 text-blue-600">{c.open || '-'}</td>
