@@ -352,6 +352,7 @@ export default function Assets() {
       a.Title.toLowerCase().includes(search.toLowerCase()) ||
       a.AssetCode?.toLowerCase().includes(search.toLowerCase()) ||
       a.IPAddress?.includes(search) ||
+      a.SerialNumber?.toLowerCase().includes(search.toLowerCase()) ||
       a.AssignedTo?.toLowerCase().includes(search.toLowerCase())) &&
     (!categoryFilter || a.Category === categoryFilter) &&
     (!statusFilter || a.Status === statusFilter)
@@ -374,7 +375,7 @@ export default function Assets() {
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative w-full sm:w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input placeholder="ค้นหา Asset, IP, ผู้ใช้..." value={search} onChange={e => setSearch(e.target.value)}
+            <input placeholder="ค้นหา Asset, IP, Serial, ผู้ใช้..." value={search} onChange={e => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
