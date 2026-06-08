@@ -28,6 +28,7 @@ import type { ProjectIncident } from '../types/project'
 import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 import { sendTemplateEmail } from '../services/emailService'
+import { GlobalSearch } from '../components/common/GlobalSearch'
 
 interface Stats {
   openTickets: number
@@ -178,6 +179,9 @@ export default function Home() {
       <Header title={`สวัสดี, ${user?.displayName ?? '...'}`} />
 
       <div className="p-4 md:p-6 space-y-6">
+        {/* Global Search */}
+        <GlobalSearch />
+
         {/* Warranty Alert */}
         {warningAssets.length > 0 && (
           <div className="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl px-4 py-3">
