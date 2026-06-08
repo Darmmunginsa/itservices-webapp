@@ -38,13 +38,14 @@ export function GlobalSearch() {
       const sub = (f: string) => `substringof('${term}',${f})`
       const results: Hit[] = []
       try {
-        const [tk, pj, ts, inc, as, nt] = await Promise.all([
+        const [tk, pj, ts, inc, as, nt, pt] = await Promise.all([
           spGet<any>('HD_Tickets', `${sub('Title')} or ${sub('TicketNumber')}`, 'Id,Title,TicketNumber,Status', undefined, 8).catch(() => []),
           spGet<any>('PM_Projects', sub('Title'), 'Id,Title,Status', undefined, 8).catch(() => []),
           spGet<any>('PM_Tasks', sub('Title'), 'Id,Title,ProjectID', undefined, 8).catch(() => []),
           spGet<any>('PM_Incidents', sub('Title'), 'Id,Title,ProjectID,Severity', undefined, 8).catch(() => []),
           spGet<any>('IT_Assets', `${sub('Title')} or ${sub('AssetCode')} or ${sub('IPAddress')} or ${sub('SerialNumber')}`, 'Id,Title,AssetCode,Category,IPAddress,SerialNumber', undefined, 8).catch(() => []),
           spGet<any>('IT_Tools', sub('Title'), 'Id,Title,Category', undefined, 8).catch(() => []),
+          spGet<any>('IT_AssetParts', `${sub('SerialNumber')} or ${sub('Title')}`, 'Id,Title,AssetID,SerialNumber', undefined, 8).catch(() => []),
         ])
         if (myId !== reqId.current) return  // มี request ใหม่กว่าแล้ว ทิ้งผลเก่า
         for (const t of tk) results.push({ type: 'Ticket', icon: '🎫', title: t.Title, subtitle: t.TicketNumber || `Ticket #${t.id}`, link: `/tickets/${t.id}` })
@@ -60,6 +61,7 @@ export function GlobalSearch() {
           results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: sub2, link: `/assets` })
         }
         for (const n of nt) results.push({ type: 'Note', icon: '📝', title: n.Title, subtitle: n.Category || 'Tools & Notes', link: `/tools?note=${n.id}` })
+        for (const pp of pt) results.push({ type: 'Part', icon: '🔩', title: pp.Title, subtitle: `S/N: ${pp.SerialNumber || '-'} · อุปกรณ์ #${pp.AssetID}`, link: `/assets` })
         setHits(results)
       } finally {
         if (myId === reqId.current) setLoading(false)

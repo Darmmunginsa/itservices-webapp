@@ -7,6 +7,7 @@ import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
+import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Asset } from '../types/asset'
@@ -526,6 +527,7 @@ export default function Assets() {
                                 </div>
                               </div>
                             )}
+                            <AssetPartsSection assetId={a.id} canEdit={canAdmin} />
                           </div>
                           {canAdmin && (
                             <div className="flex gap-2">
