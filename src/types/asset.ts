@@ -30,6 +30,7 @@ export interface Asset {
   LicenseType?: string
   PortalURL?: string
   MonitorUrl?: string   // ลิงก์หน้า monitor ใน Uptime Kuma (อ้างอิงเฉยๆ)
+  VendorID?: number     // ผูกกับ Vendor Contract (IT_Vendors)
   // General
   Note?: string
   Created: string

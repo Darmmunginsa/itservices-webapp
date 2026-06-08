@@ -28,6 +28,7 @@ import TicketDetail from './pages/TicketDetail'
 import AgentDashboard from './pages/AgentDashboard'
 import Reports from './pages/Reports'
 import Assets from './pages/Assets'
+import Vendors from './pages/Vendors'
 import Tracking from './pages/Tracking'
 import Skills from './pages/Skills'
 import Contracts from './pages/Contracts'
@@ -155,6 +156,7 @@ function AppContent() {
             <Route path="/dashboard" element={<AgentDashboard />} />
             <Route path="/reports" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Reports /> : <Navigate to="/" />} />
             <Route path="/assets" element={<Assets />} />
+            <Route path="/vendors" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Vendors /> : <Navigate to="/" />} />
             <Route path="/tracking" element={<Tracking />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/contracts" element={user.role === 'Admin' ? <Contracts /> : <Navigate to="/" />} />

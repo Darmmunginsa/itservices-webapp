@@ -51,7 +51,7 @@ const EMPTY_FORM = {
   OwnerType: 'Company', AssignedTo: '', AssignedEmail: '',
   PurchaseDate: '', Price: '', WarrantyDate: '',
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
-  PortalURL: '', MonitorUrl: '',
+  PortalURL: '', MonitorUrl: '', VendorID: '',
   Note: '',
 }
 
@@ -74,6 +74,7 @@ function assetToForm(a: Asset): AssetForm {
     ExpiryDate: a.ExpiryDate?.slice(0, 10) || '',
     LicenseType: a.LicenseType || '', PortalURL: a.PortalURL || '',
     MonitorUrl: a.MonitorUrl || '',
+    VendorID: a.VendorID != null ? String(a.VendorID) : '',
     Note: a.Note || '',
   }
 }
@@ -93,17 +94,19 @@ function formToPayload(form: AssetForm) {
     ExpiryDate: form.ExpiryDate || undefined, LicenseType: form.LicenseType || undefined,
     PortalURL: form.PortalURL || undefined,
     MonitorUrl: form.MonitorUrl || undefined,
+    VendorID: form.VendorID ? Number(form.VendorID) : undefined,
     Note: form.Note || undefined,
   }
 }
 
 // ─── AssetFormFields — OUTSIDE Assets component to prevent focus-loss bug ─────
-function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
+function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors }: {
   f: AssetForm
   upd: (k: keyof AssetForm, v: string) => void
   isSoftware: boolean
   onCheckSSL?: (url: string) => void
   sslChecking: number | 'new' | null
+  vendors: { id: number; Title: string }[]
 }) {
   const isCert = f.Category === 'Certificate'
   const hasPortal = PORTAL_CATEGORIES.has(f.Category)
@@ -119,6 +122,11 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking }: {
         <OptionSelect category="AssetStatus" defaults={[...STATUSES]} value={f.Status} onChange={v => upd('Status', v)} className={inputClass} /></div>
       <div><label className={labelClass}>ประเภทผู้ถือครอง</label>
         <OptionSelect category="AssetOwnerType" defaults={[...OWNER_TYPES]} value={f.OwnerType} onChange={v => upd('OwnerType', v)} className={inputClass} /></div>
+      <div className="col-span-2"><label className={labelClass}>🏢 Vendor Contract (ผู้ดูแล/รับผิดชอบ)</label>
+        <select value={f.VendorID} onChange={e => upd('VendorID', e.target.value)} className={inputClass}>
+          <option value="">-- ไม่ผูก Vendor --</option>
+          {vendors.map(v => <option key={v.id} value={v.id}>{v.Title}</option>)}
+        </select></div>
 
       {!isSoftware && (<>
         <div><label className={labelClass}>IP Address</label>
@@ -214,6 +222,7 @@ export default function Assets() {
   const [writingOff, setWritingOff] = useState<number | null>(null)
   const [assetProjects, setAssetProjects] = useState<Record<number, { id: number; title: string }[]>>({})
   const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
+  const [vendors, setVendors] = useState<{ id: number; Title: string; Phone?: string; Email?: string; PortalURL?: string; ContactName?: string }[]>([])
 
   async function checkSSL(url: string, assetId: number | 'new', onDone?: (iso: string) => void, onNote?: (note: string) => void) {
     if (!SSL_WORKER_URL) { addToast('error', 'ยังไม่ได้ตั้งค่า VITE_SSL_WORKER_URL'); return }
@@ -275,6 +284,9 @@ export default function Assets() {
         for (const r of rows) if (r.MonitorId != null) m[r.MonitorId] = r
         setMonitorStatus(m)
       }).catch(() => {})
+    spGet<{ id: number; Title: string; Phone?: string; Email?: string; PortalURL?: string; ContactName?: string }>(
+      'IT_Vendors', undefined, 'Id,Title,Phone,Email,PortalURL,ContactName', 'Title asc', 500)
+      .then(setVendors).catch(() => {})
   }, [])
 
   const set = (key: keyof AssetForm, val: string) => setForm(f => ({ ...f, [key]: val }))
@@ -467,6 +479,22 @@ export default function Assets() {
                                 <a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a>
                               </div>
                             )}
+                            {a.VendorID != null && (() => {
+                              const ven = vendors.find(v => v.id === a.VendorID)
+                              if (!ven) return null
+                              return (
+                                <div className="col-span-2">
+                                  <p className="text-gray-400">🏢 Vendor (ผู้ดูแล)</p>
+                                  <p className="font-medium text-gray-700 dark:text-gray-200">{ven.Title}{ven.ContactName ? ` · ${ven.ContactName}` : ''}</p>
+                                  <p className="flex flex-wrap gap-x-3 text-xs">
+                                    {ven.Phone && <a href={`tel:${ven.Phone}`} className="text-primary-600 hover:underline">📞 {ven.Phone}</a>}
+                                    {ven.Email && <a href={`mailto:${ven.Email}`} className="text-primary-600 hover:underline truncate">✉️ {ven.Email}</a>}
+                                    {ven.PortalURL && <a href={ven.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">🌐 Portal</a>}
+                                    <Link to="/vendors" className="text-gray-400 hover:underline">ดูสัญญา →</Link>
+                                  </p>
+                                </div>
+                              )
+                            })()}
                             {a.AccessMethod && (
                               <div>
                                 <p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p>
@@ -561,7 +589,7 @@ export default function Assets() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่ม IT Asset" size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}
-            sslChecking={sslChecking}
+            sslChecking={sslChecking} vendors={vendors}
             onCheckSSL={url => checkSSL(url, 'new', iso => set('ExpiryDate', iso), note => set('Note', note))} />
           <div className="col-span-2">
             <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? 'กำลังบันทึก...' : 'บันทึก Asset'}</Button>
@@ -573,7 +601,7 @@ export default function Assets() {
       <Modal open={!!editingAsset} onClose={() => setEditingAsset(null)} title={`แก้ไข: ${editingAsset?.Title ?? ''}`} size="lg">
         <form onSubmit={updateAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={editForm} upd={setEdit} isSoftware={SOFTWARE_LIKE.has(editForm.Category as never)}
-            sslChecking={sslChecking}
+            sslChecking={sslChecking} vendors={vendors}
             onCheckSSL={url => checkSSL(url, editingAsset?.id ?? 'new', iso => setEdit('ExpiryDate', iso), note => setEdit('Note', note))} />
           <div className="col-span-2">
             <Button type="submit" disabled={updating} className="w-full justify-center">{updating ? 'กำลังอัปเดต...' : 'บันทึกการแก้ไข'}</Button>

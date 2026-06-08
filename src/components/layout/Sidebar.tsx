@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
-  Monitor, BookOpen, FileText, Pin,
+  Monitor, BookOpen, FileText, Pin, Briefcase,
   ChevronRight, Bug, Settings, Notebook, X, PieChart
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
@@ -15,6 +15,7 @@ const navItems = [
   { to: '/dashboard',   icon: BarChart2,     label: 'Agent Dashboard',     roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/reports',     icon: PieChart,      label: 'รายงาน (Reports)',    roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/assets',      icon: Monitor,       label: 'IT Assets',           roles: ['Agent','Supervisor','Boss','Admin'] },
+  { to: '/vendors',     icon: Briefcase,     label: 'Vendor Contracts',    roles: ['Agent','Supervisor','Boss','Admin'] },
   { to: '/tracking',    icon: Pin,           label: 'My Tracking',         roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',               roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/tools',       icon: Notebook,      label: 'Tools & Notes',       roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
