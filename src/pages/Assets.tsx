@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Search, Plus, AlertTriangle, ChevronDown, ChevronUp, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive } from 'lucide-react'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { Header } from '../components/layout/Header'
@@ -276,6 +276,18 @@ export default function Assets() {
 
   useEffect(() => { load() }, [showRetired])
 
+  // เปิด/ขยาย asset อัตโนมัติเมื่อมาจาก Global Search (/assets?id=<id>)
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const idParam = searchParams.get('id')
+    if (!idParam || assets.length === 0) return
+    const target = Number(idParam)
+    if (assets.some(a => a.id === target)) {
+      setExpandedId(target)
+      setTimeout(() => document.getElementById(`asset-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+    }
+  }, [assets, searchParams])
+
   // โหลดสถานะ monitor (HD_MonitorStatus) — อัปเดตจาก poller ฝั่งเครื่อง monitor
   useEffect(() => {
     spGet<MonitorStatusRow>('HD_MonitorStatus', undefined, 'Id,MonitorId,Status,LastCheck,Uptime24', undefined, 500)
@@ -415,7 +427,7 @@ export default function Assets() {
                   const days = warrantyDate ? daysUntil(warrantyDate) : null
                   const isExpanded = expandedId === a.id
                   return (
-                    <div key={a.id} className={`border-b border-gray-100 dark:border-gray-800 last:border-0 ${expiring ? 'bg-orange-50/50 dark:bg-orange-900/5' : ''}`}>
+                    <div key={a.id} id={`asset-${a.id}`} className={`border-b border-gray-100 dark:border-gray-800 last:border-0 ${expiring ? 'bg-orange-50/50 dark:bg-orange-900/5' : ''}`}>
                       <div className="flex items-center gap-2 p-3 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                         onClick={() => setExpandedId(isExpanded ? null : a.id)}>
                         <div className="flex-1 min-w-0">

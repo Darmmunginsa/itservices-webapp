@@ -59,10 +59,10 @@ export function GlobalSearch() {
           if (a.IPAddress && a.IPAddress.toLowerCase().includes(lc)) extra.push(`IP: ${a.IPAddress.replace(/\n/g, ' ')}`)
           if (a.SerialNumber && a.SerialNumber.toLowerCase().includes(lc)) extra.push(`S/N: ${a.SerialNumber}`)
           const sub2 = [a.AssetCode || a.Category, ...extra].filter(Boolean).join(' · ')
-          results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: sub2, link: `/assets` })
+          results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: sub2, link: `/assets?id=${a.id}` })
         }
         for (const n of nt) results.push({ type: 'Note', icon: '📝', title: n.Title, subtitle: n.Category || 'Tools & Notes', link: `/tools?note=${n.id}` })
-        for (const pp of pt) results.push({ type: 'Part', icon: '🔩', title: pp.Title, subtitle: `S/N: ${pp.SerialNumber || '-'} · อุปกรณ์ #${pp.AssetID}`, link: `/assets` })
+        for (const pp of pt) results.push({ type: 'Part', icon: '🔩', title: pp.Title, subtitle: `S/N: ${pp.SerialNumber || '-'} · อุปกรณ์ #${pp.AssetID}`, link: `/assets?id=${pp.AssetID}` })
         setHits(results)
       } finally {
         if (myId === reqId.current) setLoading(false)
