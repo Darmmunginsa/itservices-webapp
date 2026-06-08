@@ -19,7 +19,7 @@ const navItems = [
   { to: '/tracking',    icon: Pin,           label: 'My Tracking',         roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',               roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   { to: '/tools',       icon: Notebook,      label: 'Tools & Notes',       roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/contracts',   icon: FileText,      label: 'ลูกค้า (Contracts)',  roles: ['Admin'] },
+  { to: '/contracts',   icon: FileText,      label: 'ลูกค้า (Contacts)',   roles: ['Admin'] },
   { to: '/admin',       icon: Settings,      label: 'Admin',               roles: ['Boss','Admin'] },
   { to: '/debug',       icon: Bug,           label: 'Diagnostic',          roles: ['Boss','Admin'] },
 ]

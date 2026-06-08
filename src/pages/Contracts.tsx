@@ -76,7 +76,7 @@ export default function Contracts() {
 
   return (
     <div>
-      <Header title="ลูกค้า / Contracts" />
+      <Header title="ลูกค้า / Contacts" />
       <div className="p-4 md:p-6 space-y-4">
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative w-full sm:w-48">
