@@ -43,7 +43,7 @@ export function GlobalSearch() {
           spGet<any>('PM_Projects', sub('Title'), 'Id,Title,Status', undefined, 8).catch(() => []),
           spGet<any>('PM_Tasks', sub('Title'), 'Id,Title,ProjectID', undefined, 8).catch(() => []),
           spGet<any>('PM_Incidents', sub('Title'), 'Id,Title,ProjectID,Severity', undefined, 8).catch(() => []),
-          spGet<any>('IT_Assets', `${sub('Title')} or ${sub('AssetCode')}`, 'Id,Title,AssetCode,Category', undefined, 8).catch(() => []),
+          spGet<any>('IT_Assets', `${sub('Title')} or ${sub('AssetCode')} or ${sub('IPAddress')} or ${sub('SerialNumber')}`, 'Id,Title,AssetCode,Category,IPAddress,SerialNumber', undefined, 8).catch(() => []),
           spGet<any>('IT_Tools', sub('Title'), 'Id,Title,Category', undefined, 8).catch(() => []),
         ])
         if (myId !== reqId.current) return  // มี request ใหม่กว่าแล้ว ทิ้งผลเก่า
@@ -51,7 +51,14 @@ export function GlobalSearch() {
         for (const p of pj) results.push({ type: 'Project', icon: '📁', title: p.Title, subtitle: p.Status, link: `/projects/${p.id}` })
         for (const k of ts) results.push({ type: 'Task', icon: '✅', title: k.Title, subtitle: 'ในโครงการ', link: `/projects/${k.ProjectID}` })
         for (const i of inc) results.push({ type: 'Incident', icon: '🚨', title: i.Title, subtitle: i.Severity, link: `/projects/${i.ProjectID}` })
-        for (const a of as) results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: a.AssetCode || a.Category, link: `/assets` })
+        for (const a of as) {
+          const lc = term.toLowerCase()
+          const extra: string[] = []
+          if (a.IPAddress && a.IPAddress.toLowerCase().includes(lc)) extra.push(`IP: ${a.IPAddress.replace(/\n/g, ' ')}`)
+          if (a.SerialNumber && a.SerialNumber.toLowerCase().includes(lc)) extra.push(`S/N: ${a.SerialNumber}`)
+          const sub2 = [a.AssetCode || a.Category, ...extra].filter(Boolean).join(' · ')
+          results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: sub2, link: `/assets` })
+        }
         for (const n of nt) results.push({ type: 'Note', icon: '📝', title: n.Title, subtitle: n.Category || 'Tools & Notes', link: `/tools?note=${n.id}` })
         setHits(results)
       } finally {
