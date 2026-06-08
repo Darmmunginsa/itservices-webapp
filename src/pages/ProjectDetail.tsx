@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -14,6 +14,7 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
+import { CommentSection } from '../components/common/CommentSection'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
 import type { Contract } from '../types/ticket'
@@ -62,6 +63,7 @@ function resolveUrl(raw: unknown): string {
 
 export default function ProjectDetail() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { user, addToast } = useAppStore()
   const [project, setProject] = useState<Project | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -71,7 +73,7 @@ export default function ProjectDetail() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets' | 'comments'>('tasks')
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
 
@@ -185,6 +187,9 @@ export default function ProjectDetail() {
         .then(setFocusItems).catch(() => {})
     }
   }, [id, user?.email])
+
+  // เปิดแท็บ comments อัตโนมัติเมื่อมาจากลิงก์แจ้งเตือน (?tab=comments)
+  useEffect(() => { if (searchParams.get('tab') === 'comments') setTab('comments') }, [searchParams])
 
   // ── Asset linking ───────────────────────────────────────────────────────────
   async function linkAsset(asset: Asset) {
@@ -850,10 +855,10 @@ export default function ProjectDetail() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'notes', 'incidents', 'links', 'assets'] as const).map(t => (
+          {(['tasks', 'notes', 'incidents', 'links', 'assets', 'comments'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : `อุปกรณ์ (${linkedAssets.length})`}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : t === 'assets' ? `อุปกรณ์ (${linkedAssets.length})` : 'Comments'}
             </button>
           ))}
         </div>
@@ -966,6 +971,18 @@ export default function ProjectDetail() {
         )}
 
         {/* ── Assets (linked IT_Assets) ── */}
+        {tab === 'comments' && project && (
+          <CommentSection
+            listName="PM_Comments"
+            parentField="ProjectID"
+            parentId={project.id}
+            titleLabel={project.Title}
+            linkPath={`/projects/${id}?tab=comments`}
+            mentionCandidates={agents.map(a => ({ name: a.Title, email: a.EmailText })).filter(c => c.email)}
+            notifyEmails={[...new Set([project.CreatedByEmail, ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
+          />
+        )}
+
         {tab === 'assets' && (
           <div className="space-y-3">
             {isAgent && (
