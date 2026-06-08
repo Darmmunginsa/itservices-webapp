@@ -43,7 +43,8 @@ export function GlobalSearch() {
           spGet<any>('PM_Projects', sub('Title'), 'Id,Title,Status', undefined, 8).catch(() => []),
           spGet<any>('PM_Tasks', sub('Title'), 'Id,Title,ProjectID', undefined, 8).catch(() => []),
           spGet<any>('PM_Incidents', sub('Title'), 'Id,Title,ProjectID,Severity', undefined, 8).catch(() => []),
-          spGet<any>('IT_Assets', `${sub('Title')} or ${sub('AssetCode')} or ${sub('IPAddress')} or ${sub('SerialNumber')}`, 'Id,Title,AssetCode,Category,IPAddress,SerialNumber', undefined, 8).catch(() => []),
+          // หมายเหตุ: ไม่ใส่ IPAddress ใน filter เพราะเป็น multi-line (substringof ใช้ไม่ได้ → query พังทั้งก้อน)
+          spGet<any>('IT_Assets', `${sub('Title')} or ${sub('AssetCode')} or ${sub('SerialNumber')}`, 'Id,Title,AssetCode,Category,IPAddress,SerialNumber', undefined, 8).catch(() => []),
           spGet<any>('IT_Tools', sub('Title'), 'Id,Title,Category', undefined, 8).catch(() => []),
           spGet<any>('IT_AssetParts', `${sub('SerialNumber')} or ${sub('Title')}`, 'Id,Title,AssetID,SerialNumber', undefined, 8).catch(() => []),
         ])
