@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Plus, AlertTriangle, ChevronDown, ChevronUp, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive } from 'lucide-react'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -212,7 +212,7 @@ export default function Assets() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState<AssetForm>({ ...EMPTY_FORM })
   const [creating, setCreating] = useState(false)
-  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [editForm, setEditForm] = useState<AssetForm>({ ...EMPTY_FORM })
   const [updating, setUpdating] = useState(false)
@@ -282,10 +282,8 @@ export default function Assets() {
     const idParam = searchParams.get('id')
     if (!idParam || assets.length === 0) return
     const target = Number(idParam)
-    if (assets.some(a => a.id === target)) {
-      setExpandedId(target)
-      setTimeout(() => document.getElementById(`asset-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
-    }
+    const found = assets.find(a => a.id === target)
+    if (found) setViewAsset(found)
   }, [assets, searchParams])
 
   // โหลดสถานะ monitor (HD_MonitorStatus) — อัปเดตจาก poller ฝั่งเครื่อง monitor
@@ -372,6 +370,18 @@ export default function Assets() {
 
   const canAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
 
+  // จัดกลุ่มเป็นคอลัมน์ Kanban ตาม Category (เรียงตาม CATEGORIES ก่อน แล้วต่อด้วยหมวดอื่นที่พบ)
+  const assetColumns = (() => {
+    const map = new Map<string, Asset[]>()
+    for (const a of filtered) {
+      const c = a.Category || 'Other'
+      if (!map.has(c)) map.set(c, [])
+      map.get(c)!.push(a)
+    }
+    const ordered = [...CATEGORIES.filter(c => map.has(c)), ...[...map.keys()].filter(c => !CATEGORIES.includes(c as never))]
+    return ordered.map(category => ({ category, items: map.get(category) ?? [] }))
+  })()
+
   return (
     <div>
       <Header title="IT Assets" />
@@ -407,196 +417,157 @@ export default function Assets() {
           </button>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center text-xs font-medium text-gray-500 gap-2">
-            <span className="flex-1 min-w-0">ชื่อ / รหัส</span>
-            <span className="hidden sm:block w-20 flex-shrink-0">Monitor</span>
-            <span className="hidden sm:block w-36 flex-shrink-0">หมวดหมู่</span>
-            <span className="w-20 flex-shrink-0">สถานะ</span>
-            <span className="hidden md:block w-40 flex-shrink-0">ผู้ใช้งาน</span>
-            <span className="hidden md:block w-36 flex-shrink-0">ประกัน / หมดอายุ</span>
-            <span className="w-4 flex-shrink-0" />
+        {loading ? (
+          <div className="flex gap-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-72 flex-shrink-0 space-y-3"><SkeletonRow /><SkeletonRow /></div>)}</div>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-12">ไม่มี Asset</p>
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
+            {assetColumns.map(col => (
+              <div key={col.category} className="flex-shrink-0 w-72">
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <Monitor size={14} className="text-primary-600 flex-shrink-0" />
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{col.category}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{col.items.length}</span>
+                </div>
+                <div className="space-y-3 min-h-[100px]">
+                  {col.items.length === 0
+                    ? <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-xs text-gray-400">ไม่มีอุปกรณ์</div>
+                    : col.items.map(a => {
+                        const warrantyDate = a.WarrantyDate || a.ExpiryDate
+                        const expiring = isWarrantyExpiringSoon(warrantyDate)
+                        const days = warrantyDate ? daysUntil(warrantyDate) : null
+                        const mid = monitorIdFromUrl(a.MonitorUrl)
+                        const st = mid != null ? monitorStatus[mid] : undefined
+                        const up = st?.Status === 'up' || st?.Status === '1'
+                        return (
+                          <button key={a.id} onClick={() => setViewAsset(a)}
+                            className={`w-full text-left block bg-white dark:bg-gray-900 border rounded-xl p-3.5 hover:border-primary-300 dark:hover:border-primary-700 transition-all hover:shadow-md group ${expiring ? 'border-orange-300 dark:border-orange-800' : 'border-gray-200 dark:border-gray-800'}`}>
+                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 flex-1 group-hover:text-primary-600 transition-colors">{a.Title}</h3>
+                              {st && <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1 ${up ? 'bg-green-500' : st.Status === 'pending' ? 'bg-amber-400' : 'bg-red-500'}`} title={up ? 'UP' : st.Status === 'pending' ? 'รอข้อมูล' : 'DOWN'} />}
+                            </div>
+                            {a.AssetCode && <p className="text-xs text-gray-400 font-mono mb-2">{a.AssetCode}</p>}
+                            <div className="flex items-center justify-between gap-2">
+                              <Badge className={getStatusColor(a.Status)}>{a.Status}</Badge>
+                              {a.AssignedTo && <span className="text-xs text-gray-400 truncate">{a.AssignedTo}</span>}
+                            </div>
+                            {warrantyDate && (
+                              <div className={`flex items-center gap-1 text-xs mt-2 ${expiring ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+                                {expiring && <AlertTriangle size={11} className="flex-shrink-0" />}
+                                <span>ประกัน {formatDate(warrantyDate)}</span>
+                                {days !== null && days < 0 && <span className="text-red-600">(หมดแล้ว)</span>}
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })
+                  }
+                </div>
+              </div>
+            ))}
           </div>
-          {loading
-            ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-            : filtered.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Asset</p>
-              : filtered.map(a => {
-                  const warrantyDate = a.WarrantyDate || a.ExpiryDate
-                  const expiring = isWarrantyExpiringSoon(warrantyDate)
-                  const days = warrantyDate ? daysUntil(warrantyDate) : null
-                  const isExpanded = expandedId === a.id
-                  return (
-                    <div key={a.id} id={`asset-${a.id}`} className={`border-b border-gray-100 dark:border-gray-800 last:border-0 ${expiring ? 'bg-orange-50/50 dark:bg-orange-900/5' : ''}`}>
-                      <div className="flex items-center gap-2 p-3 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                        onClick={() => setExpandedId(isExpanded ? null : a.id)}>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
-                          {a.AssetCode && <p className="text-xs text-gray-400 font-mono">{a.AssetCode}</p>}
-                        </div>
-                        <div className="hidden sm:block w-20 flex-shrink-0">
-                          {(() => {
-                            const mid = monitorIdFromUrl(a.MonitorUrl)
-                            const st = mid != null ? monitorStatus[mid] : undefined
-                            if (!st) return <span className="text-xs text-gray-300">—</span>
-                            const up = st.Status === 'up' || st.Status === '1'
-                            const pending = st.Status === 'pending'
-                            return (
-                              <span className={`inline-flex items-center gap-1 text-xs font-medium ${up ? 'text-green-600' : pending ? 'text-amber-500' : 'text-red-600'}`}
-                                title={st.LastCheck ? `เช็คล่าสุด ${formatDate(st.LastCheck)}${st.Uptime24 != null ? ` · uptime 24h ${st.Uptime24}%` : ''}` : ''}>
-                                <span className={`w-2 h-2 rounded-full ${up ? 'bg-green-500' : pending ? 'bg-amber-400' : 'bg-red-500'}`} />
-                                {up ? 'UP' : pending ? '...' : 'DOWN'}
-                              </span>
-                            )
-                          })()}
-                        </div>
-                        <div className="hidden sm:block w-36 flex-shrink-0"><Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 truncate max-w-full">{a.Category}</Badge></div>
-                        <div className="w-20 flex-shrink-0"><Badge className={getStatusColor(a.Status)}>{a.Status}</Badge></div>
-                        <div className="hidden md:block w-40 flex-shrink-0 text-xs text-gray-500 truncate">{a.AssignedTo || '-'}</div>
-                        <div className="hidden md:block w-36 flex-shrink-0">
-                          {warrantyDate ? (
-                            <div className={`flex items-center gap-1 text-xs whitespace-nowrap ${expiring ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
-                              {expiring && <AlertTriangle size={11} className="flex-shrink-0" />}
-                              {formatDate(warrantyDate)}
-                              {days !== null && days >= 0 && <span>({days}d)</span>}
-                              {days !== null && days < 0 && <span className="text-red-600">(หมดแล้ว)</span>}
-                            </div>
-                          ) : <span className="text-xs text-gray-400">-</span>}
-                        </div>
-                        <div className="w-4 flex-shrink-0 flex justify-end">
-                          {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 pt-3">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-4">
-                            {a.IPAddress && <div><p className="text-gray-400">IP Address</p><p className="font-mono whitespace-pre-line">{a.IPAddress}</p></div>}
-                            {a.SerialNumber && <div><p className="text-gray-400">Serial No.</p><p>{a.SerialNumber}</p></div>}
-                            {a.OS && <div><p className="text-gray-400">OS</p><p>{a.OS}</p></div>}
-                            {a.Vendor && <div><p className="text-gray-400">Vendor</p><p>{a.Vendor}</p></div>}
-                            {a.PurchaseDate && <div><p className="text-gray-400">วันที่ซื้อ</p><p>{formatDate(a.PurchaseDate)}</p></div>}
-                            {a.Price != null && <div><p className="text-gray-400">ราคา</p><p>{a.Price.toLocaleString()} บาท</p></div>}
-                            {a.Spec && <div className="col-span-2"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
-                            {a.AppName && <div><p className="text-gray-400">App</p><p>{a.AppName}</p></div>}
-                            {a.LicenseType && <div><p className="text-gray-400">License</p><p>{a.LicenseType}</p></div>}
-                            {a.PortalURL && (
-                              <div>
-                                <p className="text-gray-400">🌐 Portal</p>
-                                <a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a>
-                              </div>
-                            )}
-                            {a.MonitorUrl && (
-                              <div>
-                                <p className="text-gray-400">📊 Monitor</p>
-                                <a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a>
-                              </div>
-                            )}
-                            {a.VendorID != null && (() => {
-                              const ven = vendors.find(v => v.id === a.VendorID)
-                              if (!ven) return null
-                              return (
-                                <div className="col-span-2">
-                                  <p className="text-gray-400">🏢 Vendor (ผู้ดูแล)</p>
-                                  <p className="font-medium text-gray-700 dark:text-gray-200">{ven.Title}{ven.ContactName ? ` · ${ven.ContactName}` : ''}</p>
-                                  <p className="flex flex-wrap gap-x-3 text-xs">
-                                    {ven.Phone && <a href={`tel:${ven.Phone}`} className="text-primary-600 hover:underline">📞 {ven.Phone}</a>}
-                                    {ven.Email && <a href={`mailto:${ven.Email}`} className="text-primary-600 hover:underline truncate">✉️ {ven.Email}</a>}
-                                    {ven.PortalURL && <a href={ven.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">🌐 Portal</a>}
-                                    <Link to="/vendors" className="text-gray-400 hover:underline">ดูสัญญา →</Link>
-                                  </p>
-                                </div>
-                              )
-                            })()}
-                            {a.AccessMethod && (
-                              <div>
-                                <p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p>
-                                <p className="truncate">{a.AccessMethod}</p>
-                                {a.Category === 'Certificate' && (() => {
-                                  const ssl = sslResults[a.id]
-                                  const badge = sslBadge(ssl?.daysRemaining ?? null)
-                                  return ssl ? (
-                                    badge && (
-                                      <span className={`inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
-                                        <badge.icon size={11} /> {badge.label}
-                                      </span>
-                                    )
-                                  ) : (
-                                    <button type="button" onClick={e => { e.stopPropagation(); checkSSL(a.AccessMethod!, a.id) }}
-                                      disabled={sslChecking === a.id}
-                                      className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                                      <RefreshCw size={10} className={sslChecking === a.id ? 'animate-spin' : ''} />
-                                      {sslChecking === a.id ? 'กำลังตรวจ...' : 'ตรวจสอบ SSL'}
-                                    </button>
-                                  )
-                                })()}
-                              </div>
-                            )}
-                            {a.AssignedEmail && <div><p className="text-gray-400">Email ผู้ใช้</p><p className="truncate">{a.AssignedEmail}</p></div>}
-                            {a.Note && (
-                              <div className="col-span-2 md:col-span-4">
-                                <p className="text-gray-400">หมายเหตุ</p>
-                                <p className="whitespace-pre-wrap">{
-                                  // ถ้าเป็น SSL note → inject "เหลือ: X วัน" แบบ real-time จาก ExpiryDate
-                                  a.Note.includes('🔒 SSL Certificate') && a.ExpiryDate
-                                    ? (() => {
-                                        const d = daysUntil(a.ExpiryDate)
-                                        const liveNote = a.Note.replace(/เหลือ:.*วัน\n?/, '')  // ลบบรรทัดเก่า (ถ้ามี)
-                                        const insertAfter = 'หมดอายุ:'
-                                        const idx = liveNote.indexOf(insertAfter)
-                                        if (idx === -1) return liveNote
-                                        const end = liveNote.indexOf('\n', idx)
-                                        const pos = end === -1 ? liveNote.length : end
-                                        const color = d !== null && d < 0 ? '❌' : d !== null && d <= 30 ? '⚠️' : '✅'
-                                        return liveNote.slice(0, pos) + `\nเหลือ: ${d !== null ? d : '-'} วัน ${color}` + liveNote.slice(pos)
-                                      })()
-                                    : a.Note
-                                }</p>
-                              </div>
-                            )}
-                            {a.Username && canAdmin && <div><p className="text-gray-400">Username</p><p className="font-mono">{a.Username}</p></div>}
-                            {assetProjects[a.id]?.length > 0 && (
-                              <div className="col-span-2 md:col-span-4">
-                                <p className="text-gray-400 mb-1">📁 ใช้ในโครงการ</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {assetProjects[a.id].map(p => (
-                                    <Link key={p.id} to={`/projects/${p.id}`}
-                                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 hover:underline">
-                                      {p.title}
-                                    </Link>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            <AssetPartsSection assetId={a.id} canEdit={canAdmin} />
-                          </div>
-                          {canAdmin && (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); openEdit(a) }}>
-                                <Edit2 size={12} /> แก้ไข
-                              </Button>
-                              {a.Status !== 'Retired' && (
-                                <button onClick={e => { e.stopPropagation(); writeOffAsset(a.id, a.Title) }}
-                                  disabled={writingOff === a.id}
-                                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/10 disabled:opacity-50 transition-colors">
-                                  <Archive size={12} /> {writingOff === a.id ? '...' : 'Write Off'}
-                                </button>
-                              )}
-                              <button onClick={e => { e.stopPropagation(); deleteAsset(a.id, a.Title) }}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                                <Trash2 size={12} /> ลบ
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-          }
-        </div>
+        )}
         <p className="text-xs text-gray-400">{filtered.length} รายการ</p>
       </div>
+
+      {/* Asset Detail Modal */}
+      <Modal open={!!viewAsset} onClose={() => setViewAsset(null)} title={viewAsset?.Title ?? ''} size="lg">
+        {viewAsset && (() => {
+          const a = viewAsset
+          return (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{a.Category}</Badge>
+                <Badge className={getStatusColor(a.Status)}>{a.Status}</Badge>
+                {a.AssetCode && <span className="text-xs text-gray-400 font-mono">{a.AssetCode}</span>}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs mb-4">
+                {a.IPAddress && <div><p className="text-gray-400">IP Address</p><p className="font-mono whitespace-pre-line">{a.IPAddress}</p></div>}
+                {a.SerialNumber && <div><p className="text-gray-400">Serial No.</p><p>{a.SerialNumber}</p></div>}
+                {a.OS && <div><p className="text-gray-400">OS</p><p>{a.OS}</p></div>}
+                {a.Vendor && <div><p className="text-gray-400">Vendor (ยี่ห้อ)</p><p>{a.Vendor}</p></div>}
+                {a.AssignedTo && <div><p className="text-gray-400">ผู้ใช้งาน</p><p>{a.AssignedTo}</p></div>}
+                {a.AssignedEmail && <div><p className="text-gray-400">Email ผู้ใช้</p><p className="truncate">{a.AssignedEmail}</p></div>}
+                {a.PurchaseDate && <div><p className="text-gray-400">วันที่ซื้อ</p><p>{formatDate(a.PurchaseDate)}</p></div>}
+                {a.Price != null && <div><p className="text-gray-400">ราคา</p><p>{a.Price.toLocaleString()} บาท</p></div>}
+                {(a.WarrantyDate || a.ExpiryDate) && (() => {
+                  const wd = a.WarrantyDate || a.ExpiryDate!
+                  const d = daysUntil(wd)
+                  const exp = isWarrantyExpiringSoon(wd)
+                  return <div><p className="text-gray-400">{a.Category === 'Certificate' ? 'วันหมดอายุ SSL' : 'วันหมดประกัน'}</p>
+                    <p className={exp ? 'text-orange-600 font-medium' : ''}>{formatDate(wd)}{d !== null && (d < 0 ? ' (หมดแล้ว)' : ` (เหลือ ${d} วัน)`)}</p></div>
+                })()}
+                {a.AppName && <div><p className="text-gray-400">App</p><p>{a.AppName}</p></div>}
+                {a.LicenseType && <div><p className="text-gray-400">License</p><p>{a.LicenseType}</p></div>}
+                {a.Username && canAdmin && <div><p className="text-gray-400">Username</p><p className="font-mono">{a.Username}</p></div>}
+                {a.Spec && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
+                {a.PortalURL && <div><p className="text-gray-400">🌐 Portal</p><a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a></div>}
+                {a.MonitorUrl && <div><p className="text-gray-400">📊 Monitor</p><a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a></div>}
+                {a.AccessMethod && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p><p className="break-all">{a.AccessMethod}</p></div>}
+              </div>
+
+              {a.VendorID != null && (() => {
+                const ven = vendors.find(v => v.id === a.VendorID)
+                if (!ven) return null
+                return (
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4 text-xs">
+                    <p className="text-gray-400 mb-1">🏢 Vendor (ผู้ดูแล/รับผิดชอบ)</p>
+                    <p className="font-medium text-gray-700 dark:text-gray-200">{ven.Title}{ven.ContactName ? ` · ${ven.ContactName}` : ''}</p>
+                    <p className="flex flex-wrap gap-x-3 mt-1">
+                      {ven.Phone && <a href={`tel:${ven.Phone}`} className="text-primary-600 hover:underline">📞 {ven.Phone}</a>}
+                      {ven.Email && <a href={`mailto:${ven.Email}`} className="text-primary-600 hover:underline truncate">✉️ {ven.Email}</a>}
+                      {ven.PortalURL && <a href={ven.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">🌐 Portal</a>}
+                      <Link to="/vendors" className="text-gray-400 hover:underline">ดูสัญญา →</Link>
+                    </p>
+                  </div>
+                )
+              })()}
+
+              {a.Note && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-gray-400 mb-1">หมายเหตุ</p>
+                  <p className="text-xs whitespace-pre-wrap">{a.Note}</p>
+                </div>
+              )}
+
+              {assetProjects[a.id]?.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-400 mb-1">📁 ใช้ในโครงการ</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {assetProjects[a.id].map(p => (
+                      <Link key={p.id} to={`/projects/${p.id}`} onClick={() => setViewAsset(null)}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-600 hover:underline">
+                        {p.title}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-3 mb-4">
+                <AssetPartsSection assetId={a.id} canEdit={canAdmin} />
+              </div>
+
+              {canAdmin && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { openEdit(a); setViewAsset(null) }}><Edit2 size={12} /> แก้ไข</Button>
+                  {a.Status !== 'Retired' && (
+                    <button onClick={() => { writeOffAsset(a.id, a.Title); setViewAsset(null) }} disabled={writingOff === a.id}
+                      className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/10 disabled:opacity-50 transition-colors">
+                      <Archive size={12} /> Write Off
+                    </button>
+                  )}
+                  <button onClick={() => { deleteAsset(a.id, a.Title); setViewAsset(null) }}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                    <Trash2 size={12} /> ลบ
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+      </Modal>
 
       {/* Create Modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่ม IT Asset" size="lg">
