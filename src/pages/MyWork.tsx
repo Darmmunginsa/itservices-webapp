@@ -19,7 +19,7 @@ const DONE_TICKET_STATUSES = new Set(['Resolved', 'Closed'])
 
 export default function MyWork() {
   const { user, addToast } = useAppStore()
-  const t = useT()
+  const tr = useT()
   const [tab, setTab] = useState<TabType>('tickets')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -165,7 +165,7 @@ export default function MyWork() {
           <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
           {t.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(t.DueDate)}</span>}
           {!t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '') && (
-            <button onClick={() => acknowledgeTicket(t)} className="ml-auto p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600" title={t('common.acknowledge')}><CheckCircle2 size={15} /></button>
+            <button onClick={() => acknowledgeTicket(t)} className="ml-auto p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600" title={tr('common.acknowledge')}><CheckCircle2 size={15} /></button>
           )}
         </div>
       </div>
@@ -186,7 +186,7 @@ export default function MyWork() {
         {task.TaskNote && <p className="text-xs text-gray-500 italic line-clamp-2">{task.TaskNote}</p>}
         <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
           {task.DueDate && <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{formatDate(task.DueDate)}</span>}
-          {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> {t('common.acknowledge')}</span>}
+          {task.IsAcknowledged && <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={11} /> {tr('common.acknowledge')}</span>}
         </div>
       </div>
     )
@@ -253,7 +253,7 @@ export default function MyWork() {
 
   return (
     <div>
-      <Header title={t('mywork.header')} />
+      <Header title={tr('mywork.header')} />
       <div className="p-4 md:p-6">
 
         {/* Tabs */}
@@ -280,7 +280,7 @@ export default function MyWork() {
           <div className="relative w-full sm:w-48">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
-              placeholder={t('common.search')}
+              placeholder={tr('common.search')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full"
@@ -290,14 +290,14 @@ export default function MyWork() {
           {tab === 'tickets' && (
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
               className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-              <option value="">{t('common.allStatus')}</option>
+              <option value="">{tr('common.allStatus')}</option>
               {['Open', 'In Progress', 'Pending', 'Resolved', 'Closed'].map(s => <option key={s}>{s}</option>)}
             </select>
           )}
           {tab === 'incidents' && (
             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
               className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-              <option value="">{t('common.allStatus')}</option>
+              <option value="">{tr('common.allStatus')}</option>
               {['Open', 'In Progress', 'Resolved'].map(s => <option key={s}>{s}</option>)}
             </select>
           )}
@@ -328,7 +328,7 @@ export default function MyWork() {
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredTickets.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">{t('mywork.noTickets')}</p>
+              ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noTickets')}</p>
               : <Columns cols={TICKET_COLS.filter(c => showAllTickets || !DONE_TICKET_STATUSES.has(c.key))} items={filteredTickets} keyOf={t => t.Status} render={t => ticketCard(t)} />
         )}
 
@@ -337,7 +337,7 @@ export default function MyWork() {
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredTasks.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">{t('mywork.noTasks')}</p>
+              ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noTasks')}</p>
               : <Columns cols={TASK_COLS} items={filteredTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => taskCard(t)} />
         )}
 
@@ -346,7 +346,7 @@ export default function MyWork() {
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredIncidents.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">{t('mywork.noIncidents')}</p>
+              ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noIncidents')}</p>
               : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
         )}
       </div>
