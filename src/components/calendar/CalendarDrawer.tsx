@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Calendar, ChevronDown } from 'lucide-react'
 import { OutlookCalendar } from './OutlookCalendar'
 import { CompanyCalendar } from './CompanyCalendar'
+import { useT } from '../../i18n/useT'
 
 interface Props {
   open: boolean
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function CalendarDrawer({ open, onClose }: Props) {
+  const tr = useT()
   const [calTab, setCalTab] = useState<'outlook' | 'company'>('outlook')
 
   return (
@@ -38,7 +40,7 @@ export function CalendarDrawer({ open, onClose }: Props) {
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
             <div className="flex items-center gap-2">
               <Calendar size={15} className="text-primary-600" />
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">ปฏิทิน</span>
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{tr('cal.calendar')}</span>
             </div>
             <ChevronDown size={16} className="text-gray-400" />
           </div>
@@ -63,7 +65,7 @@ export function CalendarDrawer({ open, onClose }: Props) {
                   : 'text-gray-500'
               }`}
             >
-              🏢 บริษัท
+              {tr('cal.company')}
             </button>
           </div>
 

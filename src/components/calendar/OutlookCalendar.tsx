@@ -17,6 +17,7 @@ import type { OutlookEvent } from '../../services/graph'
 import type { Project } from '../../types/project'
 import type { AgentProfile } from '../../types/common'
 import type { Contract } from '../../types/ticket'
+import { useT } from '../../i18n/useT'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -72,6 +73,7 @@ function EventCard({ ev }: { ev: OutlookEvent }) {
 
 /** Day view: events for a single date */
 function DayView({ date, events }: { date: Date; events: OutlookEvent[] }) {
+  const tr = useT()
   const dayEvents = events.filter(ev =>
     isSameDay(parseGraphDate(ev.start.dateTime, ev.start.timeZone), date)
   )
@@ -81,7 +83,7 @@ function DayView({ date, events }: { date: Date; events: OutlookEvent[] }) {
         {format(date, 'EEEE d MMMM yyyy', { locale: th })}
       </p>
       {dayEvents.length === 0
-        ? <p className="text-sm text-gray-400 text-center py-6">ไม่มีกิจกรรม</p>
+        ? <p className="text-sm text-gray-400 text-center py-6">{tr('cal.noEvents')}</p>
         : dayEvents.map(ev => <EventCard key={ev.id} ev={ev} />)
       }
     </div>
@@ -90,6 +92,7 @@ function DayView({ date, events }: { date: Date; events: OutlookEvent[] }) {
 
 /** Week view: grouped by day Mon–Sun */
 function WeekView({ weekStart, events }: { weekStart: Date; events: OutlookEvent[] }) {
+  const tr = useT()
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   return (
     <div className="space-y-3">
@@ -109,7 +112,7 @@ function WeekView({ weekStart, events }: { weekStart: Date; events: OutlookEvent
               </span>
               <span className="text-xs font-medium">{format(day, 'EEEE', { locale: th })}</span>
               {dayEvents.length > 0 && (
-                <span className="ml-auto text-xs text-gray-400">{dayEvents.length} รายการ</span>
+                <span className="ml-auto text-xs text-gray-400">{dayEvents.length} {tr('assets.items')}</span>
               )}
             </div>
             {dayEvents.length === 0
@@ -133,6 +136,7 @@ function MonthView({
   events: OutlookEvent[]
   onDayClick: (d: Date) => void
 }) {
+  const tr = useT()
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 })
   const gridEnd = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 1 })
   const days: Date[] = []
@@ -142,7 +146,7 @@ function MonthView({
     cur = addDays(cur, 1)
   }
 
-  const DOW = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+  const DOW = [tr('cal.dowMon'), tr('cal.dowTue'), tr('cal.dowWed'), tr('cal.dowThu'), tr('cal.dowFri'), tr('cal.dowSat'), tr('cal.dowSun')]
 
   return (
     <div>
@@ -213,6 +217,7 @@ const EMPTY_TASK = {
 export function OutlookCalendar() {
   const { events, loading, fetchRange } = useOutlook()
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [view, setView] = useState<ViewMode>('month')
   const [cursor, setCursor] = useState(new Date())
 
@@ -353,7 +358,7 @@ export function OutlookCalendar() {
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            {v === 'day' ? 'วัน' : v === 'week' ? 'สัปดาห์' : 'เดือน'}
+            {v === 'day' ? tr('cal.day') : v === 'week' ? tr('cal.week') : tr('cal.month')}
           </button>
         ))}
       </div>
@@ -378,7 +383,7 @@ export function OutlookCalendar() {
             onClick={goToday}
             className="text-[10px] px-2 py-0.5 rounded-full border border-primary-300 dark:border-primary-700 text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors font-medium"
           >
-            วันนี้
+            {tr('cal.today')}
           </button>
         </div>
         <button
@@ -407,7 +412,7 @@ export function OutlookCalendar() {
       )}
 
       {/* Task Modal */}
-      <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title="✅ Task ใหม่" size="sm">
+      <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)} title={tr('cal.newTask')} size="sm">
         <form onSubmit={submitTask} className="space-y-4">
 
           {/* Personal / Project toggle */}
@@ -420,7 +425,7 @@ export function OutlookCalendar() {
                     ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100'
                     : 'text-gray-500'
                 }`}>
-                {t === 'personal' ? '👤 ส่วนตัว' : '📁 ใน Project'}
+                {t === 'personal' ? tr('cal.personal') : tr('cal.inProject')}
               </button>
             ))}
           </div>
@@ -429,10 +434,10 @@ export function OutlookCalendar() {
           {taskForm.taskType === 'project' && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">โครงการ</span>
+                <span className="text-xs text-gray-400">{tr('cal.project')}</span>
                 <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                   <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)} className="w-3 h-3 accent-primary-600" />
-                  เฉพาะ Active
+                  {tr('cal.onlyActive')}
                 </label>
               </div>
               <div className="flex items-center gap-2">
@@ -443,7 +448,7 @@ export function OutlookCalendar() {
                   onChange={e => setTaskForm(f => ({ ...f, projectId: e.target.value }))}
                   className="flex-1 border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 text-sm text-gray-700 dark:text-gray-300 py-1"
                 >
-                  <option value="">-- เลือกโครงการ --</option>
+                  <option value="">{tr('cal.selectProject')}</option>
                   {(activeProjectsOnly ? projects.filter(p => p.Status === 'Active') : projects).map(p => (
                     <option key={p.id} value={String(p.id)}>
                       {p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}
@@ -461,7 +466,7 @@ export function OutlookCalendar() {
             value={taskForm.title}
             onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
             className="w-full px-0 py-1 text-base font-medium border-0 border-b-2 border-gray-200 dark:border-gray-700 bg-transparent focus:outline-none focus:border-primary-500 placeholder-gray-300 dark:placeholder-gray-600"
-            placeholder="เพิ่มชื่องาน"
+            placeholder={tr('cal.taskNamePlaceholder')}
           />
 
           {/* Date + Time */}
@@ -502,7 +507,7 @@ export function OutlookCalendar() {
               value={taskForm.note}
               onChange={e => setTaskForm(f => ({ ...f, note: e.target.value }))}
               rows={3}
-              placeholder="เพิ่มหมายเหตุ..."
+              placeholder={tr('cal.notePlaceholder')}
               className="flex-1 border-0 bg-transparent focus:outline-none text-sm text-gray-700 dark:text-gray-300 placeholder-gray-300 dark:placeholder-gray-600 resize-none"
             />
           </div>
@@ -512,20 +517,20 @@ export function OutlookCalendar() {
             <input type="checkbox" checked={taskForm.isOnlineMeeting}
               onChange={e => setTaskForm(f => ({ ...f, isOnlineMeeting: e.target.checked }))}
               className="rounded accent-primary-600" />
-            <span className="text-base">💻</span> เพิ่มการประชุมออนไลน์ (Teams)
+            <span className="text-base">💻</span> {tr('cal.addTeams')}
           </label>
 
           {/* Attendees — shown only after checking Teams */}
           {taskForm.isOnlineMeeting && (
             <div className="space-y-2">
-              <SearchMultiSelect label="ผู้เข้าร่วม Internal" options={internalOptions} selected={internalEmails}
+              <SearchMultiSelect label={tr('dtm.attendeesInternal')} options={internalOptions} selected={internalEmails}
                 onToggle={v => setInternalEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
-              <SearchMultiSelect label="ผู้เข้าร่วม ลูกค้า" options={customerOptions} selected={customerEmails}
+              <SearchMultiSelect label={tr('dtm.attendeesCustomer')} options={customerOptions} selected={customerEmails}
                 onToggle={v => setCustomerEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
               <input
                 value={taskForm.externalAttendees}
                 onChange={e => setTaskForm(f => ({ ...f, externalAttendees: e.target.value }))}
-                placeholder="Email ภายนอก (คั่นด้วย , )"
+                placeholder={tr('dtm.externalPlaceholder')}
                 className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               />
             </div>
@@ -534,10 +539,10 @@ export function OutlookCalendar() {
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
             <Button type="button" variant="outline" size="sm" onClick={() => setShowTaskModal(false)}>
-              ยกเลิก
+              {tr('common.cancel')}
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? tr('common.saving') : tr('common.save')}
             </Button>
           </div>
         </form>
