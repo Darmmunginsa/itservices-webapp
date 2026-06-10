@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Send, X, ThumbsUp, MessageSquare, ChevronDown } from 'lucide-react'
-import { spGet, spCreate, spUpdate } from '../../services/sharepoint'
+import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide-react'
+import { spGet, spCreate, spUpdate, spUploadAttachment, spAttachmentUrl } from '../../services/sharepoint'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
 import { SmartText } from './SmartText'
@@ -23,6 +23,7 @@ export interface CommentRow {
   LikedBy?: string
   ParentID?: number
   Author?: { Title: string }
+  AttachmentFiles?: { FileName: string; ServerRelativeUrl: string }[]
 }
 
 interface Props {
@@ -44,6 +45,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
   const [comment, setComment] = useState('')
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
   const [sending, setSending] = useState(false)
+  const [commentFiles, setCommentFiles] = useState<File[]>([])
   const [replyTo, setReplyTo] = useState<{ id: number; author: string } | null>(null)
   const [openThreads, setOpenThreads] = useState<Record<number, boolean>>({})
   const [likeBusy, setLikeBusy] = useState<number | null>(null)
@@ -56,7 +58,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
 
   function load() {
     spGet<CommentRow>(listName, `${parentField} eq ${parentId}`,
-      'Id,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title', 'CommentDate asc', 500, 'Author')
+      'Id,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title,AttachmentFiles/FileName,AttachmentFiles/ServerRelativeUrl', 'CommentDate asc', 500, 'Author,AttachmentFiles')
       .then(setComments).catch(() => {})
   }
   useEffect(() => { if (parentId) load() }, [parentId])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -92,7 +94,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
     if (!user || !comment.trim()) return
     setSending(true)
     try {
-      await spCreate(listName, {
+      const created = await spCreate(listName, {
         [parentField]: parentId,
         Title: comment.slice(0, 100),
         CommentText: comment,
@@ -100,6 +102,12 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         CommentDate: new Date().toISOString(),
         ParentID: replyTo?.id ?? 0,
       })
+      // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
+      if (commentFiles.length && created?.id) {
+        for (const f of commentFiles) {
+          try { await spUploadAttachment(listName, created.id, f) } catch { /* ignore */ }
+        }
+      }
       const snippet = comment.slice(0, 200)
       const mentioned = mentionCandidates.filter(c =>
         comment.includes(`@${c.name}`) && c.email.toLowerCase() !== user.email.toLowerCase())
@@ -121,6 +129,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         })
       }
       setComment('')
+      setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
@@ -169,6 +178,22 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             )}
           </div>
           <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {c.AttachmentFiles.map(f => {
+                const url = spAttachmentUrl(f.ServerRelativeUrl)
+                const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.FileName)
+                return isImg ? (
+                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer" title={f.FileName}>
+                    <img src={url} alt={f.FileName} className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity" />
+                  </a>
+                ) : (
+                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary-600 hover:underline px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {f.FileName}</a>
+                )
+              })}
+            </div>
+          )}
           <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
             <button type="button" disabled={likeBusy === c.id} onClick={() => toggleLike(c)}
               className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors disabled:opacity-50 ${liked ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
@@ -260,10 +285,26 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
                 className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">{tr('common.cancel')}</button>
             )}
+            <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+              <ImagePlus size={14} /> {tr('ticket.attachImage')}
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+            </label>
             <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
               <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
             </Button>
           </div>
+          {commentFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {commentFiles.map((f, i) => (
+                <div key={i} className="relative">
+                  <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                  <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
+                    className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </form>
     </div>
