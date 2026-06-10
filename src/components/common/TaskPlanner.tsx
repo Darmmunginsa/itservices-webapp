@@ -53,7 +53,7 @@ export function TaskPlanner() {
       {/* ปุ่มเปิด — มุมล่างซ้าย (เลี่ยงชน calendar/manage ที่อยู่ขวา) */}
       {!open && (
         <button onClick={() => setOpen(true)}
-          className="fixed bottom-20 left-3 md:bottom-4 md:left-4 z-40 flex items-center gap-2 bg-gray-800 dark:bg-gray-700 text-white rounded-full px-3.5 py-2 shadow-lg hover:bg-gray-900 transition-colors text-sm font-medium">
+          className="fixed bottom-32 left-3 md:bottom-[4.75rem] md:left-4 z-40 flex items-center gap-2 bg-gray-800 dark:bg-gray-700 text-white rounded-full px-3.5 py-2 shadow-lg hover:bg-gray-900 transition-colors text-sm font-medium">
           <ListChecks size={15} /> Task Planner{pending > 0 && <span className="bg-primary-500 text-white text-[10px] rounded-full px-1.5 min-w-[16px] text-center">{pending}</span>}
         </button>
       )}

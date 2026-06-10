@@ -209,7 +209,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         })}
       </div>
 
-      <form onSubmit={sendComment} className="flex gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
+      <form onSubmit={sendComment} className="flex gap-3 pt-4 pr-16 md:pr-20 border-t border-gray-100 dark:border-gray-800">
         <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
           style={{ backgroundColor: avatarColor(user?.displayName ?? 'U') }} title={user?.displayName}>
           {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
