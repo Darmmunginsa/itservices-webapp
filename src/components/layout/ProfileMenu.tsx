@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Moon, Sun, LogOut } from 'lucide-react'
+import { Moon, Sun, LogOut, Languages } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import type { AccentColor } from '../../store/useAppStore'
 import { useAuth } from '../../hooks/useAuth'
+import { useT } from '../../i18n/useT'
 
 const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
   { value: 'blue',   bg: '#0F4C81', label: 'Blue'   },
@@ -13,8 +14,9 @@ const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
 ]
 
 export function ProfileMenu() {
-  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor, customAccent, customBg, setCustomAccent, setCustomBg, cardBg, cardOpacity, setCardStyle } = useAppStore()
+  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor, customAccent, customBg, setCustomAccent, setCustomBg, cardBg, cardOpacity, setCardStyle, lang, setLang } = useAppStore()
   const { logout } = useAuth()
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -53,7 +55,7 @@ export function ProfileMenu() {
           {/* Theme controls */}
           <div className="px-4 py-3 space-y-3">
             <div>
-              <p className="text-[10px] text-gray-400 mb-1.5">สีธีม</p>
+              <p className="text-[10px] text-gray-400 mb-1.5">{t('profile.accent')}</p>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {ACCENT_OPTIONS.map(opt => (
                   <button key={opt.value} title={opt.label}
@@ -70,7 +72,7 @@ export function ProfileMenu() {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-400">พื้นหลัง</span>
+              <span className="text-[10px] text-gray-400">{t('profile.background')}</span>
               <label title="เลือกสีพื้นหลัง" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
                 style={{ background: customBg ?? '#f8fafc' }}>
                 <input type="color" value={customBg ?? '#f8fafc'} onChange={e => setCustomBg(e.target.value)}
@@ -84,7 +86,7 @@ export function ProfileMenu() {
 
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400">การ์ด</span>
+                <span className="text-[10px] text-gray-400">{t('profile.card')}</span>
                 <label title="สีพื้นหลังการ์ด" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
                   style={{ background: cardBg ?? '#ffffff' }}>
                   <input type="color" value={cardBg ?? '#ffffff'} onChange={e => setCardStyle(e.target.value, cardOpacity)}
@@ -106,17 +108,31 @@ export function ProfileMenu() {
             </div>
           </div>
 
+          {/* Language */}
+          <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-2.5 flex items-center gap-2">
+            <Languages size={15} className="text-gray-400" />
+            <span className="text-xs text-gray-500 flex-1">{t('profile.language')}</span>
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+              {(['th', 'en'] as const).map(l => (
+                <button key={l} onClick={() => setLang(l)}
+                  className={`px-2.5 py-1 font-medium transition-colors ${lang === l ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Actions */}
           <div className="border-t border-gray-100 dark:border-gray-800 p-1.5">
             <button onClick={toggleDarkMode}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">
               {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-              {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+              {isDarkMode ? 'Light Mode' : t('profile.darkMode')}
             </button>
             <button onClick={logout}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10">
               <LogOut size={16} />
-              ออกจากระบบ
+              {t('profile.logout')}
             </button>
           </div>
         </div>

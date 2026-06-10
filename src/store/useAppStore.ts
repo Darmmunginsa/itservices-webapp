@@ -13,6 +13,8 @@ interface Toast {
 
 interface AppState {
   user: UserProfile | null
+  lang: 'th' | 'en'
+  setLang: (l: 'th' | 'en') => void
   isDarkMode: boolean
   accentColor: AccentColor
   customAccent: string | null
@@ -130,6 +132,8 @@ function syncTheme(get: () => AppState) {
 
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
+  lang: (localStorage.getItem('lang') as 'th' | 'en') || 'th',
+  setLang: (l) => { localStorage.setItem('lang', l); set({ lang: l }) },
   isDarkMode: localStorage.getItem('darkMode') === 'true',
   mobileNavOpen: false,
   accentColor: (() => {

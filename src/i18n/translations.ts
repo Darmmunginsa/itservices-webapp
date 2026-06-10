@@ -1,0 +1,66 @@
+// i18n แบบเบา — เพิ่ม key ทีละส่วนได้ ถ้า key ไหนไม่มีคำแปล จะ fallback เป็นไทย → key
+export type Lang = 'th' | 'en'
+
+type Dict = Record<string, string>
+
+export const TRANSLATIONS: Record<Lang, Dict> = {
+  th: {
+    // ── Sidebar groups ──
+    'group.main': 'หลัก',
+    'group.work': 'งาน & รายงาน',
+    'group.resources': 'ทรัพยากร',
+    'group.system': 'ระบบ',
+    // ── Sidebar items ──
+    'nav.home': 'หน้าหลัก',
+    'nav.submit': 'แจ้งงาน',
+    'nav.myWork': 'งานของฉัน',
+    'nav.tracking': 'My Tracking',
+    'nav.projects': 'โครงการ',
+    'nav.dashboard': 'Agent Dashboard',
+    'nav.reports': 'รายงาน (Reports)',
+    'nav.assets': 'IT Assets',
+    'nav.vendors': 'Vendor Contracts',
+    'nav.tools': 'Tools & Notes',
+    'nav.skills': 'ทักษะ',
+    'nav.contacts': 'ลูกค้า (Contacts)',
+    'nav.admin': 'Admin',
+    'nav.diagnostic': 'Diagnostic',
+    'nav.pinnedProjects': 'โครงการ',
+    // ── Profile menu ──
+    'profile.accent': 'สีธีม',
+    'profile.background': 'พื้นหลัง',
+    'profile.card': 'การ์ด',
+    'profile.darkMode': 'Dark Mode',
+    'profile.language': 'ภาษา',
+    'profile.logout': 'ออกจากระบบ',
+    'profile.reset': 'รีเซ็ต',
+  },
+  en: {
+    'group.main': 'Main',
+    'group.work': 'Work & Reports',
+    'group.resources': 'Resources',
+    'group.system': 'System',
+    'nav.home': 'Home',
+    'nav.submit': 'Submit',
+    'nav.myWork': 'My Work',
+    'nav.tracking': 'My Tracking',
+    'nav.projects': 'Projects',
+    'nav.dashboard': 'Agent Dashboard',
+    'nav.reports': 'Reports',
+    'nav.assets': 'IT Assets',
+    'nav.vendors': 'Vendor Contracts',
+    'nav.tools': 'Tools & Notes',
+    'nav.skills': 'Skills',
+    'nav.contacts': 'Customers (Contacts)',
+    'nav.admin': 'Admin',
+    'nav.diagnostic': 'Diagnostic',
+    'nav.pinnedProjects': 'Projects',
+    'profile.accent': 'Accent',
+    'profile.background': 'Background',
+    'profile.card': 'Card',
+    'profile.darkMode': 'Dark Mode',
+    'profile.language': 'Language',
+    'profile.logout': 'Log out',
+    'profile.reset': 'Reset',
+  },
+}
