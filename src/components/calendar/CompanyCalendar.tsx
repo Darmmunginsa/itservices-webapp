@@ -10,8 +10,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { Modal } from '../common/Modal'
 import { Button } from '../common/Button'
 import { OptionSelect } from '../common/OptionSelect'
-
-const WEEKDAYS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา']
+import { useT } from '../../i18n/useT'
 
 // mapping ภาษาอังกฤษ ↔ ไทย (รองรับข้อมูลเก่าที่กรอกเป็นอังกฤษ)
 const LEAVE_TYPE_ALIASES: Record<string, string[]> = {
@@ -38,6 +37,7 @@ const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday
 
 export function CompanyCalendar() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [holidays, setHolidays]   = useState<Holiday[]>([])
   const [leaves, setLeaves]       = useState<LeaveRequest[]>([])
@@ -218,8 +218,8 @@ export function CompanyCalendar() {
 
   /* modal tabs visible to all users */
   const modalTabs: { key: ModalMode; label: string }[] = [
-    { key: 'leave', label: '📅 ขอลา' },
-    ...(isAdmin ? [{ key: 'holiday' as ModalMode, label: '🏖 วันหยุด' }] : []),
+    { key: 'leave', label: tr('cc.requestLeave') },
+    ...(isAdmin ? [{ key: 'holiday' as ModalMode, label: tr('cc.holiday') }] : []),
   ]
 
   return (
@@ -235,19 +235,19 @@ export function CompanyCalendar() {
 
         {/* Legend */}
         <div className="flex flex-wrap gap-3 px-4 py-2 text-xs border-b border-gray-100 dark:border-gray-700">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> วันหยุดราชการ</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> วันหยุดบริษัท</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> วันลา (Approved)</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> วันนี้</span>
-          <span className="hidden sm:inline ml-auto text-gray-400 italic">กดที่วันเพื่อจัดการ</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> {tr('cc.govHoliday')}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> {tr('cc.companyHoliday')}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> {tr('cc.leaveApproved')}</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {tr('cc.today')}</span>
+          <span className="hidden sm:inline ml-auto text-gray-400 italic">{tr('cc.tapDay')}</span>
         </div>
 
         {/* Grid */}
         <table className="w-full text-xs table-fixed">
           <thead>
             <tr>
-              {WEEKDAYS.map(w => (
-                <th key={w} className="py-2 text-center text-gray-400 font-medium">{w}</th>
+              {[tr('cal.dowMon'), tr('cal.dowTue'), tr('cal.dowWed'), tr('cal.dowThu'), tr('cal.dowFri'), tr('cal.dowSat'), tr('cal.dowSun')].map((w, wi) => (
+                <th key={wi} className="py-2 text-center text-gray-400 font-medium">{w}</th>
               ))}
             </tr>
           </thead>
@@ -325,7 +325,7 @@ export function CompanyCalendar() {
         {modalMode === 'leave' && (
           <form onSubmit={submitLeave} className="space-y-3">
             <div>
-              <label className={labelCx}>ประเภทการลา</label>
+              <label className={labelCx}>{tr('cc.leaveType')}</label>
               <OptionSelect category="LeaveType" defaults={['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']} value={leaveForm.leaveType} onChange={v => setLeaveForm(f => ({ ...f, leaveType: v }))} className={inputCx} />
               {(() => {
                 const b = balance.find(x => leaveTypeMatch(leaveForm.leaveType, x.type) || leaveTypeMatch(x.type, leaveForm.leaveType))
@@ -333,8 +333,8 @@ export function CompanyCalendar() {
                 const color = b.remaining <= 0 ? 'text-red-600' : b.remaining <= 2 ? 'text-amber-600' : 'text-green-600'
                 return (
                   <p className={`text-xs mt-1 font-medium ${color}`}>
-                    คงเหลือปี {curYear}: {b.remaining}/{b.quota} วัน
-                    {b.pending > 0 && <span className="text-gray-400 font-normal"> (รออนุมัติ {b.pending})</span>}
+                    {tr('cc.remainingPre')} {curYear}: {b.remaining}/{b.quota} {tr('cc.daysUnit')}
+                    {b.pending > 0 && <span className="text-gray-400 font-normal"> ({tr('cc.pendingPre')} {b.pending})</span>}
                   </p>
                 )
               })()}
@@ -345,18 +345,18 @@ export function CompanyCalendar() {
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                 <button type="button" onClick={() => setShowBalance(s => !s)}
                   className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <span>📊 ตรวจสอบวันลาคงเหลือ (ปี {curYear})</span>
+                  <span>{tr('cc.checkRemaining')} {curYear})</span>
                   <span className="text-gray-400">{showBalance ? '▲' : '▼'}</span>
                 </button>
                 {showBalance && (
                   <table className="w-full text-xs border-t border-gray-100 dark:border-gray-700">
                     <thead>
                       <tr className="text-gray-400 bg-gray-50 dark:bg-gray-800/50">
-                        <th className="text-left font-medium px-3 py-1.5">ประเภท</th>
-                        <th className="font-medium px-1 py-1.5">โควต้า</th>
-                        <th className="font-medium px-1 py-1.5">ใช้ไป</th>
-                        <th className="font-medium px-1 py-1.5">รอ</th>
-                        <th className="font-medium px-3 py-1.5">คงเหลือ</th>
+                        <th className="text-left font-medium px-3 py-1.5">{tr('cc.colType')}</th>
+                        <th className="font-medium px-1 py-1.5">{tr('cc.colQuota')}</th>
+                        <th className="font-medium px-1 py-1.5">{tr('cc.colUsed')}</th>
+                        <th className="font-medium px-1 py-1.5">{tr('cc.colPending')}</th>
+                        <th className="font-medium px-3 py-1.5">{tr('cc.colRemaining')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -375,27 +375,27 @@ export function CompanyCalendar() {
               </div>
             )}
             <div>
-              <label className={labelCx}>เหตุผล</label>
+              <label className={labelCx}>{tr('cc.reason')}</label>
               <textarea value={leaveForm.reason}
                 onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))}
-                className={inputCx} rows={2} placeholder="ระบุเหตุผล..." />
+                className={inputCx} rows={2} placeholder={tr('cc.reasonPlaceholder')} />
             </div>
             <div>
-              <label className={labelCx}>ผู้อนุมัติ (กำหนดโดย Admin)</label>
+              <label className={labelCx}>{tr('cc.approver')}</label>
               {mySelfApprove
                 ? <div className="px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-sm text-green-700">
-                    ✓ ไม่ต้องขออนุมัติ — บันทึกแล้วอนุมัติอัตโนมัติ
+                    {tr('cc.noApprovalNeeded')}
                   </div>
                 : myApprover
                 ? <div className="px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 text-sm text-gray-700 dark:text-gray-300">
                     {myApprover.Title} <span className="text-gray-400">({myApprover.Role})</span>
                   </div>
                 : <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-700">
-                    ⚠️ ยังไม่ได้กำหนดผู้อนุมัติ — กรุณาติดต่อ Admin
+                    {tr('cc.noApproverSet')}
                   </div>}
             </div>
             <Button type="submit" disabled={saving || (!myApprover && !mySelfApprove)} className="w-full justify-center">
-              {saving ? 'กำลังส่ง...' : mySelfApprove ? 'บันทึกการลา' : 'ส่งคำขอลา'}
+              {saving ? tr('cc.sending') : mySelfApprove ? tr('cc.saveLeave') : tr('cc.submitLeave')}
             </Button>
           </form>
         )}
@@ -404,13 +404,13 @@ export function CompanyCalendar() {
         {modalMode === 'holiday' && isAdmin && (
           <form onSubmit={submitHoliday} className="space-y-3">
             <div>
-              <label className={labelCx}>ชื่อวันหยุด *</label>
+              <label className={labelCx}>{tr('cc.holidayName')} *</label>
               <input required value={holidayForm.title}
                 onChange={e => setHolidayForm(f => ({ ...f, title: e.target.value }))}
-                className={inputCx} placeholder="เช่น วันปีใหม่, วันหยุดชดเชย..." />
+                className={inputCx} placeholder={tr('cc.holidayNamePlaceholder')} />
             </div>
             <div>
-              <label className={labelCx}>ประเภท</label>
+              <label className={labelCx}>{tr('cc.type')}</label>
               <div className="flex gap-2">
                 {(['ราชการ', 'บริษัท'] as Holiday['HolidayType'][]).map(t => (
                   <button key={t} type="button"
@@ -426,7 +426,7 @@ export function CompanyCalendar() {
               </div>
             </div>
             <Button type="submit" disabled={saving} className="w-full justify-center">
-              {saving ? 'กำลังบันทึก...' : 'เพิ่มวันหยุด'}
+              {saving ? tr('common.saving') : tr('cc.addHoliday')}
             </Button>
           </form>
         )}

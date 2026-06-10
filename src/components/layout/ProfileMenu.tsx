@@ -34,7 +34,7 @@ export function ProfileMenu() {
       <button
         onClick={() => setOpen(o => !o)}
         className="w-8 h-8 rounded-full bg-primary-600 text-white flex items-center justify-center text-xs font-bold hover:ring-2 hover:ring-primary-300 transition-all"
-        title="โปรไฟล์ & ตั้งค่า"
+        title={t('pm.profileSettings')}
       >
         {user?.displayName?.charAt(0).toUpperCase() ?? '?'}
       </button>
@@ -63,7 +63,7 @@ export function ProfileMenu() {
                     className="w-5 h-5 rounded-full transition-transform hover:scale-110 focus:outline-none"
                     style={{ backgroundColor: opt.bg, boxShadow: (!customAccent && accentColor === opt.value) ? `0 0 0 2px white, 0 0 0 3px ${opt.bg}` : undefined }} />
                 ))}
-                <label title="เลือกสีเอง" className="relative w-5 h-5 rounded-full cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+                <label title={t('pm.pickColor')} className="relative w-5 h-5 rounded-full cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
                   style={{ background: customAccent ?? 'conic-gradient(red,orange,yellow,lime,cyan,blue,magenta,red)' }}>
                   <input type="color" value={customAccent ?? '#0F4C81'} onChange={e => setCustomAccent(e.target.value)}
                     className="absolute inset-0 opacity-0 cursor-pointer" />
@@ -73,32 +73,32 @@ export function ProfileMenu() {
 
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-gray-400">{t('profile.background')}</span>
-              <label title="เลือกสีพื้นหลัง" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+              <label title={t('pm.pickBg')} className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
                 style={{ background: customBg ?? '#f8fafc' }}>
                 <input type="color" value={customBg ?? '#f8fafc'} onChange={e => setCustomBg(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer" />
               </label>
               {(customAccent || customBg) && (
                 <button onClick={() => { setCustomAccent(null); setCustomBg(null) }}
-                  className="text-[10px] text-gray-400 hover:text-red-500 underline">รีเซ็ต</button>
+                  className="text-[10px] text-gray-400 hover:text-red-500 underline">{t('pm.reset')}</button>
               )}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-gray-400">{t('profile.card')}</span>
-                <label title="สีพื้นหลังการ์ด" className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
+                <label title={t('pm.cardBg')} className="relative w-5 h-5 rounded cursor-pointer overflow-hidden border border-gray-300 dark:border-gray-600"
                   style={{ background: cardBg ?? '#ffffff' }}>
                   <input type="color" value={cardBg ?? '#ffffff'} onChange={e => setCardStyle(e.target.value, cardOpacity)}
                     className="absolute inset-0 opacity-0 cursor-pointer" />
                 </label>
                 {cardBg && (
-                  <button onClick={() => setCardStyle(null, 100)} className="text-[10px] text-gray-400 hover:text-red-500 underline">รีเซ็ต</button>
+                  <button onClick={() => setCardStyle(null, 100)} className="text-[10px] text-gray-400 hover:text-red-500 underline">{t('pm.reset')}</button>
                 )}
               </div>
               {cardBg && (
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400 w-9">ทึบ</span>
+                  <span className="text-[10px] text-gray-400 w-9">{t('pm.opaque')}</span>
                   <input type="range" min={20} max={100} value={cardOpacity}
                     onChange={e => setCardStyle(cardBg, Number(e.target.value))}
                     className="flex-1 accent-primary-600 h-1" />
