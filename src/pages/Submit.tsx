@@ -7,6 +7,7 @@ import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSele
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { createNotification } from '../services/notificationService'
+import { useT } from '../i18n/useT'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import type { AgentProfile } from '../types/common'
@@ -40,6 +41,7 @@ const EMPTY_FORM = {
 
 export default function Submit() {
   const { user, addToast } = useAppStore()
+  const t = useT()
   const [type, setType] = useState<SubmitType>('Ticket')
   const [loading, setLoading] = useState(false)
   const [addCalendar, setAddCalendar] = useState(false)
@@ -290,23 +292,23 @@ export default function Submit() {
   function CalendarSection() {
     return (
       <div className="space-y-3 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
-        <p className="text-xs font-medium text-primary-600">📅 ตั้งค่านัดหมาย Outlook Calendar</p>
+        <p className="text-xs font-medium text-primary-600">{t('submit.calTitle')}</p>
 
         {/* Date + time */}
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-3 sm:col-span-1">
-            <label className={lx}>วันที่ *</label>
+            <label className={lx}>{t('submit.date')} *</label>
             <input required={addCalendar} type="date" value={form.calendarDate}
               onChange={e => set('calendarDate', e.target.value)} className={cx} />
           </div>
           <div>
-            <label className={lx}>เริ่ม</label>
+            <label className={lx}>{t('submit.start')}</label>
             <select value={form.startHour} onChange={e => set('startHour', e.target.value)} className={cx}>
               {HOURS.map(h => <option key={h}>{h}</option>)}
             </select>
           </div>
           <div>
-            <label className={lx}>สิ้นสุด</label>
+            <label className={lx}>{t('submit.end')}</label>
             <select value={form.endHour} onChange={e => set('endHour', e.target.value)} className={cx}>
               {HOURS.map(h => <option key={h}>{h}</option>)}
             </select>
@@ -317,12 +319,12 @@ export default function Submit() {
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input type="checkbox" checked={isOnlineMeeting} onChange={e => setIsOnlineMeeting(e.target.checked)}
             className="rounded accent-primary-600" />
-          <span className="text-sm text-gray-600 dark:text-gray-400">🎥 เพิ่มการประชุมออนไลน์ (Teams)</span>
+          <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.teams')}</span>
         </label>
 
         {/* Internal attendees */}
         <div>
-          <label className={lx}>ผู้เข้าร่วม Internal (เลือกได้หลายคน)</label>
+          <label className={lx}>{t('submit.internalAttendees')}</label>
           <SearchMultiSelect
             label="Internal"
             options={agentOptions}
@@ -338,7 +340,7 @@ export default function Submit() {
 
         {/* Customer attendees */}
         <div>
-          <label className={lx}>ผู้เข้าร่วม ลูกค้า (เลือกได้หลายคน)</label>
+          <label className={lx}>{t('submit.customerAttendees')}</label>
           <SearchMultiSelect
             label="ลูกค้า"
             options={contractEmailOptions}
@@ -354,7 +356,7 @@ export default function Submit() {
 
         {/* External emails */}
         <div>
-          <label className={lx}>Email ภายนอก (คั่นด้วย ,)</label>
+          <label className={lx}>{t('submit.externalEmail')}</label>
           <input value={form.externalAttendees} onChange={e => set('externalAttendees', e.target.value)}
             className={cx} placeholder="ext@company.com, partner@co.th" />
         </div>
@@ -370,12 +372,12 @@ export default function Submit() {
 
   return (
     <div>
-      <Header title="แจ้งงาน / Submit" />
+      <Header title={t('submit.header')} />
       <div className="p-4 md:p-6 max-w-2xl">
         <Card>
           {/* Type Tabs */}
           <div className="mb-6">
-            <label className={lx}>ประเภท</label>
+            <label className={lx}>{t('submit.type')}</label>
             <div className="flex gap-2">
               {(['Ticket', 'Task', 'Incident'] as SubmitType[]).map(t => (
                 <button key={t} type="button"
@@ -395,16 +397,16 @@ export default function Submit() {
 
             {/* Title + Description (shared) */}
             <div>
-              <label className={lx}>หัวข้อ *</label>
+              <label className={lx}>{t('submit.title')} *</label>
               <input required value={form.title} onChange={e => set('title', e.target.value)}
                 className={cx} placeholder={type === 'Incident' ? 'อธิบายปัญหา / ชื่อ Incident...' : 'ระบุหัวข้อ...'} />
             </div>
             {/* Task ใช้ช่อง "Task Note" แทน — ซ่อนช่องนี้เพื่อไม่ให้ซ้ำซ้อน */}
             {type !== 'Task' && (
               <div>
-                <label className={lx}>รายละเอียด</label>
+                <label className={lx}>{t('submit.description')}</label>
                 <textarea value={form.description} onChange={e => set('description', e.target.value)}
-                  className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม..." />
+                  className={cx} rows={3} placeholder={t('submit.descPlaceholder')} />
               </div>
             )}
 
@@ -417,9 +419,9 @@ export default function Submit() {
                     <OptionSelect category="TicketPriority" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.priority} onChange={v => set('priority', v)} className={cx} />
                   </div>
                   <div>
-                    <label className={lx}>หมวดหมู่</label>
+                    <label className={lx}>{t('submit.category')}</label>
                     <select value={form.category} onChange={e => set('category', e.target.value)} className={cx}>
-                      <option value="">-- เลือกหมวดหมู่ --</option>
+                      <option value="">{t('submit.selectCategory')}</option>
                       {(categories.length > 0 ? categories.map(c => c.Title) : DEFAULT_CATEGORIES)
                         .map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -427,13 +429,13 @@ export default function Submit() {
                 </div>
 
                 <div>
-                  <label className={lx}>แผนก (Department)</label>
+                  <label className={lx}>{t('submit.department')}</label>
                   <OptionSelect category="Department" defaults={[...DEPARTMENTS]} value={form.department} onChange={v => set('department', v)} className={cx} />
                 </div>
 
                 {isAgent && (
                   <div>
-                    <label className={lx}>ลูกค้า / ผู้แจ้ง</label>
+                    <label className={lx}>{t('submit.customer')}</label>
                     <SearchSelect
                       options={contractOptions}
                       value={form.customerName}
@@ -446,12 +448,12 @@ export default function Submit() {
                 )}
 
                 <div>
-                  <label className={lx}>Assign ให้ Agent</label>
+                  <label className={lx}>{t('submit.assignAgent')}</label>
                   <SearchSelect
                     options={agentOptions}
                     value={form.assignedEmail}
                     onChange={selectAgent}
-                    placeholder="ค้นหาชื่อ Agent..."
+                    placeholder={t('submit.searchAgent')}
                     emptyLabel="-- ยังไม่ Assign --"
                   />
                 </div>
@@ -463,8 +465,8 @@ export default function Submit() {
                       disabled={!!form.daysCount} className={cx} />
                   </div>
                   <div>
-                    <label className={lx}>หรือกำหนดจากวันนี้ (วัน)</label>
-                    <input type="number" min="1" placeholder="เช่น 3 = 3 วัน"
+                    <label className={lx}>{t('submit.daysFromNow')}</label>
+                    <input type="number" min="1" placeholder={t('submit.daysExample')}
                       value={form.daysCount} onChange={e => set('daysCount', e.target.value)} className={cx} />
                   </div>
                 </div>
@@ -476,12 +478,12 @@ export default function Submit() {
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
                       className="rounded accent-primary-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Ticket นี้</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.trackTicket')}</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={addCalendar} onChange={e => setAddCalendar(e.target.checked)}
                       className="rounded accent-primary-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">📅 เพิ่มใน Outlook Calendar</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.addCalendar')}</span>
                   </label>
                 </div>
                 {addCalendar && <CalendarSection />}
@@ -493,29 +495,29 @@ export default function Submit() {
               <>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className={lx} style={{marginBottom:0}}>โครงการ *</label>
+                    <label className={lx} style={{marginBottom:0}}>{t('submit.project')} *</label>
                     <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                       <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)}
                         className="w-3 h-3 accent-primary-600" />
-                      เฉพาะ Active
+                      {t('submit.onlyActive')}
                     </label>
                   </div>
                   <select required value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
-                    <option value="">-- เลือกโครงการ --</option>
+                    <option value="">{t('submit.selectProject')}</option>
                     {filteredProjects.length > 0
                       ? filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)
-                      : <option disabled>กำลังโหลด...</option>}
+                      : <option disabled>{t('common.loading')}</option>}
                   </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lx}>Assign ให้</label>
+                    <label className={lx}>{t('submit.assignTo')}</label>
                     <SearchSelect
                       options={agentOptions}
                       value={form.assignedEmail}
                       onChange={selectAgent}
-                      placeholder="ค้นหาชื่อ Agent..."
+                      placeholder={t('submit.searchAgent')}
                       emptyLabel="-- ยังไม่ Assign --"
                     />
                   </div>
@@ -527,8 +529,8 @@ export default function Submit() {
                 </div>
 
                 <div>
-                  <label className={lx}>กำหนดจากวันนี้ (วัน) — แทน Due Date</label>
-                  <input type="number" min="1" placeholder="เช่น 7 = 1 สัปดาห์"
+                  <label className={lx}>{t('submit.dueFromNow')}</label>
+                  <input type="number" min="1" placeholder={t('submit.weekExample')}
                     value={form.daysCount} onChange={e => set('daysCount', e.target.value)} className={cx} />
                 </div>
                 {form.daysCount && Number(form.daysCount) > 0 && (
@@ -538,19 +540,19 @@ export default function Submit() {
                 <div>
                   <label className={lx}>Task Note</label>
                   <textarea value={form.taskNote} onChange={e => set('taskNote', e.target.value)}
-                    className={cx} rows={3} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
+                    className={cx} rows={3} placeholder={t('submit.taskNotePlaceholder')} />
                 </div>
 
                 <div className="space-y-2 pt-1">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
                       className="rounded accent-primary-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Task นี้</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.trackTask')}</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={addCalendar} onChange={e => setAddCalendar(e.target.checked)}
                       className="rounded accent-primary-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">📅 เพิ่มใน Outlook Calendar</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.addCalendar')}</span>
                   </label>
                 </div>
                 {addCalendar && <CalendarSection />}
@@ -562,19 +564,19 @@ export default function Submit() {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lx}>ความรุนแรง (Severity)</label>
+                    <label className={lx}>{t('submit.severity')}</label>
                     <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.incidentSeverity} onChange={v => set('incidentSeverity', v)} className={cx} />
                   </div>
                   <div>
-                    <label className={lx}>สถานะ</label>
+                    <label className={lx}>{t('submit.status')}</label>
                     <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={form.incidentStatus} onChange={v => set('incidentStatus', v)} className={cx} />
                   </div>
                 </div>
 
                 <div>
-                  <label className={lx}>หมวดหมู่</label>
+                  <label className={lx}>{t('submit.category')}</label>
                   <select value={form.category} onChange={e => set('category', e.target.value)} className={cx}>
-                    <option value="">-- เลือกหมวดหมู่ (ไม่บังคับ) --</option>
+                    <option value="">{t('submit.categoryOptional')}</option>
                     {(categories.length > 0 ? categories.map(c => c.Title) : DEFAULT_CATEGORIES)
                       .map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -582,32 +584,32 @@ export default function Submit() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={lx}>วันที่เกิด Incident</label>
+                    <label className={lx}>{t('submit.incidentDate')}</label>
                     <input type="date" value={form.incidentDate} onChange={e => set('incidentDate', e.target.value)} className={cx} />
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className={lx} style={{marginBottom:0}}>โครงการที่เกี่ยวข้อง</label>
+                      <label className={lx} style={{marginBottom:0}}>{t('submit.relatedProject')}</label>
                       <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                         <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)}
                           className="w-3 h-3 accent-primary-600" />
-                        เฉพาะ Active
+                        {t('submit.onlyActive')}
                       </label>
                     </div>
                     <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
-                      <option value="">-- ไม่ระบุ --</option>
+                      <option value="">{t('submit.notSpecified')}</option>
                       {filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className={lx}>Assign ให้ Agent</label>
+                  <label className={lx}>{t('submit.assignAgent')}</label>
                   <SearchSelect
                     options={agentOptions}
                     value={form.assignedEmail}
                     onChange={selectAgent}
-                    placeholder="ค้นหาชื่อ Agent..."
+                    placeholder={t('submit.searchAgent')}
                     emptyLabel="-- ยังไม่ Assign --"
                   />
                 </div>
@@ -615,7 +617,7 @@ export default function Submit() {
             )}
 
             <Button type="submit" disabled={loading} className="w-full justify-center mt-2">
-              {loading ? 'กำลังส่ง...' : type === 'Incident' ? 'บันทึก Incident' : 'ส่งคำขอ'}
+              {loading ? t('submit.sending') : type === 'Incident' ? t('submit.saveIncident') : t('submit.submitReq')}
             </Button>
           </form>
         </Card>
