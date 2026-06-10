@@ -504,7 +504,27 @@ export default function Assets() {
                 {a.Spec && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
                 {a.PortalURL && <div><p className="text-gray-400">🌐 Portal</p><a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a></div>}
                 {a.MonitorUrl && <div><p className="text-gray-400">📊 Monitor</p><a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a></div>}
-                {a.AccessMethod && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p><p className="break-all">{a.AccessMethod}</p></div>}
+                {a.AccessMethod && (
+                  <div className="col-span-2 md:col-span-3">
+                    <p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p>
+                    <p className="break-all">{a.AccessMethod}</p>
+                    {a.Category === 'Certificate' && (() => {
+                      const ssl = sslResults[a.id]
+                      const badge = sslBadge(ssl?.daysRemaining ?? null)
+                      return ssl ? (badge && (
+                        <span className={`inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
+                          <badge.icon size={11} /> {badge.label}
+                        </span>
+                      )) : (
+                        <button type="button" onClick={() => checkSSL(a.AccessMethod!, a.id)} disabled={sslChecking === a.id}
+                          className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                          <RefreshCw size={10} className={sslChecking === a.id ? 'animate-spin' : ''} />
+                          {sslChecking === a.id ? 'กำลังตรวจ...' : 'ตรวจสอบ SSL'}
+                        </button>
+                      )
+                    })()}
+                  </div>
+                )}
               </div>
 
               {a.VendorID != null && (() => {
