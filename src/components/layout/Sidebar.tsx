@@ -81,7 +81,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {NAV_GROUPS.map(group => {
           const items = group.items.filter(n => n.roles.includes(role))
           if (items.length === 0) return null
-          const isCol = collapsed[group.title]
+          const isCol = collapsed[group.titleKey]
           return (
             <div key={group.titleKey} className="mb-1">
               <button onClick={() => toggleGroup(group.titleKey)}
