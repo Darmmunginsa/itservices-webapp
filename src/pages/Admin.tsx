@@ -13,6 +13,7 @@ import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import type { Holiday, Announcement, AgentProfile, LeaveQuota } from '../types/common'
 import { formatDate } from '../utils/dateUtils'
+import { useT } from '../i18n/useT'
 
 const HOLIDAY_TYPES: Holiday['HolidayType'][] = ['ราชการ', 'บริษัท']
 const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
@@ -21,6 +22,7 @@ const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
 
 export default function Admin() {
   const { addToast } = useAppStore()
+  const tr = useT()
 
   // Holidays state
   const [holidays, setHolidays] = useState<Holiday[]>([])
@@ -504,16 +506,16 @@ export default function Admin() {
 
   return (
     <div>
-      <Header title="Admin — จัดการข้อมูล" />
+      <Header title={tr('admin.title')} />
       <div className="p-4 md:p-6 space-y-6 max-w-3xl">
 
         {/* Announcements Management */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Megaphone size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">ข้อความวิ่ง (HD_Announcements)</h2>
+            <h2 className="text-sm font-semibold">{tr('admin.announcements')}</h2>
             <div className="ml-auto">
-              <Button size="sm" onClick={openNewAnn}><Plus size={14} /> เพิ่มประกาศ</Button>
+              <Button size="sm" onClick={openNewAnn}><Plus size={14} /> {tr('admin.addAnnouncement')}</Button>
             </div>
           </div>
 
@@ -521,7 +523,7 @@ export default function Admin() {
             {annLoading
               ? Array.from({ length: 3 }).map((_, i) => <SkeletonRow key={i} />)
               : announcements.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มีประกาศ</p>
+                ? <p className="text-center text-sm text-gray-400 py-10">{tr('admin.noAnnouncement')}</p>
                 : announcements.map(ann => (
                     <div key={ann.id} className="flex items-start gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <div className="flex-1 min-w-0">
@@ -533,7 +535,7 @@ export default function Admin() {
                         <Badge className={ann.IsActive
                           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                           : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'}>
-                          {ann.IsActive ? 'แสดง' : 'ซ่อน'}
+                          {ann.IsActive ? tr('admin.show') : tr('admin.hide')}
                         </Badge>
                         <button onClick={() => toggleAnn(ann)}
                           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
@@ -552,23 +554,23 @@ export default function Admin() {
                   ))
             }
           </div>
-          <p className="text-xs text-gray-400 mt-2">{announcements.length} ประกาศ</p>
+          <p className="text-xs text-gray-400 mt-2">{announcements.length} {tr('admin.announcementsUnit')}</p>
         </Card>
 
         {/* Holiday Management */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <CalendarDays size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">วันหยุดบริษัท / ราชการ</h2>
+            <h2 className="text-sm font-semibold">{tr('admin.holidays')}</h2>
             <div className="ml-auto flex items-center gap-2">
               {years.length > 0 && (
                 <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}
                   className="px-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                  <option value="">ทุกปี</option>
+                  <option value="">{tr('admin.allYears')}</option>
                   {years.map(y => <option key={y}>{y}</option>)}
                 </select>
               )}
-              <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={14} /> เพิ่มวันหยุด</Button>
+              <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={14} /> {tr('admin.addHoliday')}</Button>
             </div>
           </div>
 
@@ -576,7 +578,7 @@ export default function Admin() {
             {loading
               ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
               : filtered.length === 0
-                ? <p className="text-center text-sm text-gray-400 py-10">ไม่มีวันหยุด</p>
+                ? <p className="text-center text-sm text-gray-400 py-10">{tr('admin.noHoliday')}</p>
                 : filtered.map(h => (
                     <div key={h.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <div className="flex-1">
@@ -596,16 +598,16 @@ export default function Admin() {
                   ))
             }
           </div>
-          <p className="text-xs text-gray-400 mt-2">{filtered.length} วัน</p>
+          <p className="text-xs text-gray-400 mt-2">{filtered.length} {tr('admin.daysUnit')}</p>
         </Card>
 
         {/* Leave Approver Management (per-employee) */}
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Plane size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">ผู้อนุมัติการลารายบุคคล (HD_AgentProfiles)</h2>
+            <h2 className="text-sm font-semibold">{tr('admin.approvers')}</h2>
           </div>
-          <p className="text-xs text-gray-400 mb-3">กำหนดผู้อนุมัติของพนักงานแต่ละคน — พนักงานจะส่งคำขอลาไปหาผู้อนุมัติที่กำหนดนี้โดยอัตโนมัติ (เลือกเองไม่ได้)</p>
+          <p className="text-xs text-gray-400 mb-3">{tr('admin.approversDesc')}</p>
           <div className="space-y-1.5 max-h-96 overflow-y-auto">
             {agentsList.map(a => (
               <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -618,8 +620,8 @@ export default function Admin() {
                   disabled={savingApprover === a.id}
                   onChange={e => setApprover(a.id, e.target.value)}
                   className={`${inputClass} max-w-[55%]`}>
-                  <option value="">-- ยังไม่กำหนด --</option>
-                  <option value="__SELF__">ไม่ต้องอนุมัติ (เช่น เจ้าของบริษัท)</option>
+                  <option value="">{tr('admin.notSet')}</option>
+                  <option value="__SELF__">{tr('admin.selfApprove')}</option>
                   {agentsList.filter(x => x.EmailText && x.EmailText !== a.EmailText).map(x => (
                     <option key={x.id} value={x.EmailText}>{x.Title} ({x.Role})</option>
                   ))}
@@ -633,15 +635,15 @@ export default function Admin() {
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Plane size={18} className="text-primary-600" />
-            <h2 className="text-sm font-semibold">โควต้าวันลารายบุคคล (HD_LeaveQuota)</h2>
+            <h2 className="text-sm font-semibold">{tr('admin.quotas')}</h2>
           </div>
-          <p className="text-xs text-gray-400 mb-3">เลือกพนักงานแล้วกำหนดจำนวนวันลาที่ใช้ได้ต่อปีในแต่ละประเภท — พนักงานจะกดตรวจสอบวันคงเหลือของตัวเองในฟอร์มขอลาได้</p>
+          <p className="text-xs text-gray-400 mb-3">{tr('admin.quotasDesc')}</p>
 
           {/* Employee selector */}
           <div className="mb-3">
-            <label className={labelClass}>พนักงาน</label>
+            <label className={labelClass}>{tr('admin.employee')}</label>
             <select value={quotaEmail} onChange={e => setQuotaEmail(e.target.value)} className={inputClass}>
-              <option value="">-- เลือกพนักงาน --</option>
+              <option value="">{tr('admin.selectEmployee')}</option>
               {agentsList.map(a => <option key={a.id} value={a.EmailText}>{a.Title} ({a.Role})</option>)}
             </select>
           </div>
@@ -650,26 +652,26 @@ export default function Admin() {
             <>
               {/* Add row */}
               <form onSubmit={addQuota} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 mb-3 space-y-2 border border-gray-200 dark:border-gray-700">
-                <p className="text-xs font-medium text-gray-500 mb-1">เพิ่มโควต้าประเภทใหม่</p>
+                <p className="text-xs font-medium text-gray-500 mb-1">{tr('admin.addQuotaType')}</p>
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className={labelClass}>ประเภทการลา</label>
+                    <label className={labelClass}>{tr('admin.leaveType')}</label>
                     <select value={qForm.title} onChange={e => setQForm(f => ({ ...f, title: e.target.value }))} className={inputClass}>
-                      <option value="">-- เลือกประเภท --</option>
+                      <option value="">{tr('admin.selectType')}</option>
                       {LEAVE_TYPES.filter(t => !quotas.some(q => q.Title === t)).map(t => (
                         <option key={t} value={t}>{t}</option>
                       ))}
                     </select>
                   </div>
                   <div className="w-28">
-                    <label className={labelClass}>วันที่ใช้ได้/ปี</label>
+                    <label className={labelClass}>{tr('admin.daysPerYear')}</label>
                     <input type="number" min={0} value={qForm.days}
                       onChange={e => setQForm(f => ({ ...f, days: e.target.value }))}
                       placeholder="0" className={inputClass} />
                   </div>
                 </div>
                 <Button type="submit" size="sm" disabled={savingQuota} className="w-full justify-center">
-                  <Plus size={14} /> เพิ่มโควต้า
+                  <Plus size={14} /> {tr('admin.addQuota')}
                 </Button>
               </form>
 
@@ -678,8 +680,8 @@ export default function Admin() {
                   ? Array.from({ length: 2 }).map((_, i) => <SkeletonRow key={i} />)
                   : quotas.length === 0
                     ? <div className="text-center py-8">
-                        <p className="text-sm text-gray-400 mb-3">ยังไม่ได้กำหนดโควต้าให้พนักงานคนนี้</p>
-                        <Button size="sm" variant="secondary" onClick={applyDefaultQuota} disabled={savingQuota}>ใช้ค่าเริ่มต้น (พักร้อน 6 / ป่วย 30 / กิจ 3)</Button>
+                        <p className="text-sm text-gray-400 mb-3">{tr('admin.noQuota')}</p>
+                        <Button size="sm" variant="secondary" onClick={applyDefaultQuota} disabled={savingQuota}>{tr('admin.useDefault')}</Button>
                       </div>
                     : quotas.map(q => (
                         <div key={q.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -687,7 +689,7 @@ export default function Admin() {
                           <input type="number" min={0} defaultValue={q.Days}
                             onBlur={e => updateQuotaDays(q, Number(e.target.value))}
                             className="w-20 px-2 py-1 text-sm text-right border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-                          <span className="text-xs text-gray-400 w-10">วัน/ปี</span>
+                          <span className="text-xs text-gray-400 w-10">{tr('admin.dayPerYearShort')}</span>
                           <button onClick={() => deleteQuota(q.id, q.Title)}
                             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400">
                             <Trash2 size={14} />
@@ -696,7 +698,7 @@ export default function Admin() {
                       ))
                 }
               </div>
-              <p className="text-xs text-gray-400 mt-2">แก้จำนวนวันแล้วคลิกออกจากช่องเพื่อบันทึกอัตโนมัติ</p>
+              <p className="text-xs text-gray-400 mt-2">{tr('admin.quotaAutoSave')}</p>
             </>
           )}
         </Card>
@@ -705,9 +707,9 @@ export default function Admin() {
         <Card>
           <div className="flex items-center gap-2 mb-3">
             <CalendarDays size={16} className="text-red-600" />
-            <h2 className="text-sm font-semibold">วิดีโอหน้าหลัก (YouTube)</h2>
+            <h2 className="text-sm font-semibold">{tr('admin.homeVideo')}</h2>
           </div>
-          <p className="text-xs text-gray-400 mb-2">วางลิงก์ YouTube (เช่น https://youtu.be/xxxx หรือ https://www.youtube.com/watch?v=xxxx) — เว้นว่างเพื่อซ่อน</p>
+          <p className="text-xs text-gray-400 mb-2">{tr('admin.homeVideoDesc')}</p>
           <div className="flex gap-2">
             <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)}
               placeholder="https://youtu.be/..."
@@ -724,21 +726,21 @@ export default function Admin() {
 
           {/* บัญชีกลางสำหรับส่งอีเมล (Send As) */}
           <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">บัญชีผู้ส่ง (Send As)</label>
+            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">{tr('admin.senderAccount')}</label>
             <div className="flex items-center gap-2 mt-1.5">
               <input value={senderInput} onChange={e => setSenderInput(e.target.value)}
-                type="email" placeholder="support@itservices.co.th (เว้นว่าง = ใช้ค่า default นี้)"
+                type="email" placeholder={tr('admin.senderPlaceholder')}
                 className={`${inputClass} flex-1`} />
               <Button type="button" onClick={saveSender} disabled={savingSender} className="flex-shrink-0">
-                {savingSender ? 'กำลังบันทึก...' : 'บันทึก'}
+                {savingSender ? tr('common.saving') : tr('common.save')}
               </Button>
             </div>
             <p className="text-xs text-gray-400 mt-1.5">
-              อีเมลแจ้งเตือนทั้งหมดจะส่งในนามบัญชีนี้ — ผู้ใช้ที่ login ต้องได้รับสิทธิ์ <strong>Send As</strong> บน mailbox นี้ใน Microsoft 365 ก่อน มิฉะนั้นจะส่งไม่สำเร็จ
+              {tr('admin.senderDesc')}
             </p>
           </div>
           <p className="text-xs text-gray-400 mb-3">
-            ตัวแปรที่ใช้ได้จะแสดงเฉพาะของแต่ละ Template เมื่อกดแก้ไข (✏️)
+            {tr('admin.varsHint')}
           </p>
           {emailLoading
             ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
@@ -751,24 +753,24 @@ export default function Admin() {
                   </div>
                   {tpl.Subject
                     ? <p className="text-xs text-gray-500 mt-0.5 truncate">{tpl.Subject}</p>
-                    : <p className="text-xs text-orange-400 mt-0.5">⚠️ ยังไม่ได้ตั้งค่า Subject</p>}
-                  {tpl.Recipients && <p className="text-xs text-gray-400 mt-0.5">ส่งถึง: {tpl.Recipients}</p>}
+                    : <p className="text-xs text-orange-400 mt-0.5">{tr('admin.noSubject')}</p>}
+                  {tpl.Recipients && <p className="text-xs text-gray-400 mt-0.5">{tr('admin.sentTo')}: {tpl.Recipients}</p>}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <Badge className={tpl.IsEnabled
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}>
-                    {tpl.IsEnabled ? 'เปิด' : 'ปิด'}
+                    {tpl.IsEnabled ? tr('admin.enabled') : tr('admin.disabled')}
                   </Badge>
                   <button onClick={() => setPreviewTpl(tpl)} title="Preview"
                     className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
                     <Eye size={14} />
                   </button>
-                  <button onClick={() => openEditTpl(tpl)} title="แก้ไข"
+                  <button onClick={() => openEditTpl(tpl)} title={tr('common.edit')}
                     className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400">
                     <Pencil size={14} />
                   </button>
-                  <button onClick={() => toggleTpl(tpl)} title="เปิด/ปิด"
+                  <button onClick={() => toggleTpl(tpl)} title={tr('admin.toggleTitle')}
                     className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
                     {tpl.IsEnabled
                       ? <ToggleRight size={16} className="text-primary-600" />
@@ -788,11 +790,11 @@ export default function Admin() {
                     <p className="text-sm font-medium text-gray-500">{TPL_LABELS[k]}</p>
                     <code className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{k}</code>
                   </div>
-                  <p className="text-xs text-orange-500 mt-0.5">⚠️ ยังไม่มี Template นี้ในระบบ</p>
+                  <p className="text-xs text-orange-500 mt-0.5">{tr('admin.noTemplate')}</p>
                 </div>
                 <Button type="button" size="sm" disabled={creatingKey === k}
                   onClick={() => createTpl(k)} className="flex-shrink-0">
-                  <Plus size={14} /> {creatingKey === k ? 'กำลังสร้าง...' : 'สร้าง'}
+                  <Plus size={14} /> {creatingKey === k ? tr('admin.creating') : tr('admin.create')}
                 </Button>
               </div>
             ))}
@@ -802,13 +804,13 @@ export default function Admin() {
 
       {/* Edit Template Modal */}
       <Modal open={!!editingTpl} onClose={() => setEditingTpl(null)}
-        title={`แก้ไข Template: ${editingTpl?.Title ?? ''}`} size="lg">
+        title={`${tr('admin.editTemplate')}: ${editingTpl?.Title ?? ''}`} size="lg">
         <form onSubmit={saveTpl} className="space-y-4">
 
           {/* Variables reference */}
           {editingTpl && TPL_VARS[editingTpl.EventKey] && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-2">ตัวแปรที่ใช้ได้ใน Template นี้ — คลิกที่ช่อง Subject หรือ Body ก่อน แล้วคลิกตัวแปรเพื่อแทรก</p>
+              <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-2">{tr('admin.varsGuide')}</p>
               <div className="flex flex-wrap gap-1.5">
                 {TPL_VARS[editingTpl.EventKey].map(v => (
                   <button key={v.key} type="button"
@@ -828,13 +830,13 @@ export default function Admin() {
             <input ref={subjectRef} required value={tplForm.Subject}
               onChange={e => setTplForm(f => ({ ...f, Subject: e.target.value }))}
               onFocus={() => { lastFocused.current = 'Subject' }}
-              className={inputClass} placeholder="เช่น [iT Services] Ticket {{ticket_number}} — {{ticket_title}}" />
+              className={inputClass} placeholder={tr('admin.subjectPlaceholder')} />
           </div>
           <div>
-            <label className={labelClass}>ส่งถึง (Recipients)</label>
+            <label className={labelClass}>{tr('admin.recipients')}</label>
             <input value={tplForm.Recipients} onChange={e => setTplForm(f => ({ ...f, Recipients: e.target.value }))}
-              className={inputClass} placeholder="customer, agent, approver, requester (คั่นด้วย ,)" />
-            <p className="text-xs text-gray-400 mt-1">ใช้สำหรับอ้างอิงเท่านั้น — code จะส่งอีเมลที่ถูกต้องตาม event</p>
+              className={inputClass} placeholder={tr('admin.recipientsPlaceholder')} />
+            <p className="text-xs text-gray-400 mt-1">{tr('admin.recipientsDesc')}</p>
           </div>
           <div>
             <label className={labelClass}>Body (HTML)</label>
@@ -849,10 +851,10 @@ export default function Admin() {
             <input type="checkbox" checked={tplForm.IsEnabled}
               onChange={e => setTplForm(f => ({ ...f, IsEnabled: e.target.checked }))}
               className="w-4 h-4 accent-primary-600" />
-            เปิดใช้งาน Template นี้
+            {tr('admin.enableTemplate')}
           </label>
           <Button type="submit" disabled={savingTpl} className="w-full justify-center">
-            {savingTpl ? 'กำลังบันทึก...' : 'บันทึก Template'}
+            {savingTpl ? tr('common.saving') : tr('admin.saveTemplate')}
           </Button>
         </form>
       </Modal>
@@ -865,7 +867,7 @@ export default function Admin() {
             <div>
               <p className="text-xs font-medium text-gray-500 mb-1">Subject</p>
               <p className="text-sm bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
-                {renderPreview(previewTpl.Subject || '(ว่าง)')}
+                {renderPreview(previewTpl.Subject || tr('admin.empty'))}
               </p>
             </div>
             <div>
@@ -878,20 +880,20 @@ export default function Admin() {
       </Modal>
 
       {/* Add Holiday Modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="เพิ่มวันหยุด" size="sm">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title={tr('admin.addHoliday')} size="sm">
         <form onSubmit={addHoliday} className="space-y-4">
           <div>
-            <label className={labelClass}>ชื่อวันหยุด *</label>
+            <label className={labelClass}>{tr('admin.holidayName')} *</label>
             <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-              className={inputClass} placeholder="เช่น วันปีใหม่, วันหยุดชดเชย..." />
+              className={inputClass} placeholder={tr('admin.holidayNamePlaceholder')} />
           </div>
           <div>
-            <label className={labelClass}>วันที่ *</label>
+            <label className={labelClass}>{tr('admin.date')} *</label>
             <input required type="date" value={form.holidayDate}
               onChange={e => setForm(f => ({ ...f, holidayDate: e.target.value }))} className={inputClass} />
           </div>
           <div>
-            <label className={labelClass}>ประเภท</label>
+            <label className={labelClass}>{tr('cc.type')}</label>
             <div className="flex gap-2">
               {HOLIDAY_TYPES.map(t => (
                 <button key={t} type="button" onClick={() => setForm(f => ({ ...f, holidayType: t }))}
@@ -906,36 +908,36 @@ export default function Admin() {
             </div>
           </div>
           <Button type="submit" disabled={saving} className="w-full justify-center">
-            {saving ? 'กำลังบันทึก...' : 'เพิ่มวันหยุด'}
+            {saving ? tr('common.saving') : tr('admin.addHoliday')}
           </Button>
         </form>
       </Modal>
 
       {/* Add/Edit Announcement Modal */}
       <Modal open={showAnnModal} onClose={() => setShowAnnModal(false)}
-        title={editingAnn ? 'แก้ไขประกาศ' : 'เพิ่มประกาศ'} size="sm">
+        title={editingAnn ? tr('admin.editAnnouncement') : tr('admin.addAnnouncement')} size="sm">
         <form onSubmit={saveAnn} className="space-y-4">
           <div>
-            <label className={labelClass}>ชื่อประกาศ *</label>
+            <label className={labelClass}>{tr('admin.announcementName')} *</label>
             <input required value={annForm.title}
               onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
-              className={inputClass} placeholder="เช่น ประกาศปิดระบบ..." />
+              className={inputClass} placeholder={tr('admin.announcementNamePlaceholder')} />
           </div>
           <div>
-            <label className={labelClass}>ข้อความวิ่ง *</label>
+            <label className={labelClass}>{tr('admin.marqueeText')} *</label>
             <textarea required rows={3} value={annForm.message}
               onChange={e => setAnnForm(f => ({ ...f, message: e.target.value }))}
-              className={inputClass} placeholder="ข้อความที่จะแสดงบนแถบวิ่ง..." />
+              className={inputClass} placeholder={tr('admin.marqueePlaceholder')} />
           </div>
           <div className="flex gap-4">
             <div className="flex-1">
-              <label className={labelClass}>ลำดับ (SortOrder)</label>
+              <label className={labelClass}>{tr('admin.sortOrder')}</label>
               <input type="number" min={0} value={annForm.sortOrder}
                 onChange={e => setAnnForm(f => ({ ...f, sortOrder: Number(e.target.value) }))}
                 className={inputClass} />
             </div>
             <div className="flex-1">
-              <label className={labelClass}>สถานะ</label>
+              <label className={labelClass}>{tr('assets.statusLabel')}</label>
               <div className="flex gap-2 mt-1">
                 {[true, false].map(v => (
                   <button key={String(v)} type="button"
@@ -945,14 +947,14 @@ export default function Admin() {
                         ? 'bg-primary-600 text-white border-primary-600'
                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
                     }`}>
-                    {v ? 'แสดง' : 'ซ่อน'}
+                    {v ? tr('admin.show') : tr('admin.hide')}
                   </button>
                 ))}
               </div>
             </div>
           </div>
           <Button type="submit" disabled={savingAnn} className="w-full justify-center">
-            {savingAnn ? 'กำลังบันทึก...' : editingAnn ? 'บันทึก' : 'เพิ่มประกาศ'}
+            {savingAnn ? tr('common.saving') : editingAnn ? tr('common.save') : tr('admin.addAnnouncement')}
           </Button>
         </form>
       </Modal>
