@@ -29,6 +29,7 @@ import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } 
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 import { sendTemplateEmail } from '../services/emailService'
 import { GlobalSearch } from '../components/common/GlobalSearch'
+import { useT } from '../i18n/useT'
 
 interface Stats {
   openTickets: number
@@ -38,6 +39,7 @@ interface Stats {
 
 export default function Home() {
   const { user, addToast } = useAppStore()
+  const t = useT()
   const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, openIncidents: 0 })
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [warningAssets, setWarningAssets] = useState<AssetType[]>([])
@@ -168,15 +170,15 @@ export default function Home() {
   }
 
   const statCards = [
-    { label: 'Ticket เปิดอยู่',  value: stats.openTickets,    icon: TicketIcon,    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10',   link: '/my-work' },
-    { label: 'โครงการ Active',   value: stats.activeProjects, icon: FolderOpen,    color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10',  link: '/projects' },
-    { label: 'Incident เปิดอยู่', value: stats.openIncidents,  icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10', link: '/my-work' },
-    { label: 'Asset หมดประกัน',  value: warningAssets.length, icon: CheckCircle,   color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10', link: '/assets' },
+    { label: t('home.stat.openTickets'),  value: stats.openTickets,    icon: TicketIcon,    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10',   link: '/my-work' },
+    { label: t('home.stat.activeProjects'),   value: stats.activeProjects, icon: FolderOpen,    color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10',  link: '/projects' },
+    { label: t('home.stat.openIncidents'), value: stats.openIncidents,  icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/10', link: '/my-work' },
+    { label: t('home.stat.expiringAssets'),  value: warningAssets.length, icon: CheckCircle,   color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/10', link: '/assets' },
   ]
 
   return (
     <div>
-      <Header title={`สวัสดี, ${user?.displayName ?? '...'}`} />
+      <Header title={`${t('home.greeting')}, ${user?.displayName ?? '...'}`} />
 
       <div className="p-4 md:p-6 space-y-6">
         {/* Global Search */}
@@ -187,8 +189,8 @@ export default function Home() {
           <div className="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl px-4 py-3">
             <AlertTriangle size={16} className="text-orange-600 flex-shrink-0" />
             <p className="text-sm text-orange-700 dark:text-orange-400">
-              มี {warningAssets.length} รายการ Asset ที่ประกันจะหมดภายใน 60 วัน
-              <Link to="/assets" className="ml-1 underline font-medium">ดูรายการ</Link>
+              {warningAssets.length} {t('home.warranty')}
+              <Link to="/assets" className="ml-1 underline font-medium">{t('home.viewList')}</Link>
             </p>
           </div>
         )}
@@ -232,12 +234,12 @@ export default function Home() {
                       onClick={() => approveLeave(l.id, true)}
                       disabled={approvingId === l.id}
                       className="px-2.5 py-1 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >อนุมัติ</button>
+                    >{t('common.approve')}</button>
                     <button
                       onClick={() => approveLeave(l.id, false)}
                       disabled={approvingId === l.id}
                       className="px-2.5 py-1 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors"
-                    >ปฏิเสธ</button>
+                    >{t('common.reject')}</button>
                   </div>
                 </div>
               ))}
@@ -251,14 +253,14 @@ export default function Home() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <TicketIcon size={16} className="text-primary-600" />
-                <h3 className="text-sm font-semibold">Ticket ของฉัน</h3>
+                <h3 className="text-sm font-semibold">{t('home.myTickets')}</h3>
               </div>
-              <Link to="/my-work" className="text-xs text-primary-600 hover:underline">ดูทั้งหมด →</Link>
+              <Link to="/my-work" className="text-xs text-primary-600 hover:underline">{t('common.viewAll')} →</Link>
             </div>
             {loading ? (
-              <p className="text-sm text-gray-400 text-center py-4">กำลังโหลด...</p>
+              <p className="text-sm text-gray-400 text-center py-4">{t('common.loading')}</p>
             ) : myTickets.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">ยังไม่มี Ticket ที่เปิดอยู่</p>
+              <p className="text-sm text-gray-400 text-center py-6">{t('home.noOpenTickets')}</p>
             ) : (
               <div className="space-y-2">
                 {myTickets.slice(0, 5).map(t => (
@@ -291,7 +293,7 @@ export default function Home() {
               <h3 className="text-sm font-semibold">Focus Items</h3>
             </div>
             {focusItems.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">ไม่มีงาน Pin ไว้</p>
+              <p className="text-sm text-gray-400 text-center py-6">{t('home.noPinned')}</p>
             ) : (
               <div className="space-y-2">
                 {focusItems.map(f => {
@@ -336,7 +338,7 @@ export default function Home() {
           <Card>
             <div className="flex items-center gap-2 mb-3">
               <CalendarIcon size={16} className="text-primary-600" />
-              <h3 className="text-sm font-semibold">ปฏิทิน</h3>
+              <h3 className="text-sm font-semibold">{t('common.calendar')}</h3>
             </div>
             <OutlookCalendar />
           </Card>
