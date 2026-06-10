@@ -5,9 +5,11 @@ import { createCalendarEvent } from '../../services/graph'
 import { SearchMultiSelect } from './SearchSelect'
 import type { AgentProfile } from '../../types/common'
 import type { Contract } from '../../types/ticket'
+import { useT } from '../../i18n/useT'
 
 export function DateTaskModal() {
   const { dateTaskModal, closeDateTaskModal, user, addToast } = useAppStore()
+  const tr = useT()
 
   const [mode, setMode] = useState<'personal' | 'project'>('personal')
   const [title, setTitle] = useState('')
@@ -102,7 +104,7 @@ export function DateTaskModal() {
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">สร้างจากวันที่ที่พบ</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{tr('dtm.title')}</h3>
           <button onClick={closeDateTaskModal} className="text-gray-400 hover:text-gray-600 text-lg leading-none">✕</button>
         </div>
 
@@ -114,7 +116,7 @@ export function DateTaskModal() {
               {match.allDates.map(d => (
                 <span key={d} className="bg-amber-200 dark:bg-amber-800/50 text-amber-900 dark:text-amber-200 text-xs px-2 py-0.5 rounded-full">{d}</span>
               ))}
-              <span className="text-xs text-amber-600 dark:text-amber-400 self-center">→ จะสร้าง {match.allDates.length} รายการ</span>
+              <span className="text-xs text-amber-600 dark:text-amber-400 self-center">{tr('dtm.willCreatePre')} {match.allDates.length} {tr('dtm.willCreatePost')}</span>
             </div>
           )}
         </div>
@@ -128,7 +130,7 @@ export function DateTaskModal() {
               ? 'bg-primary-600 text-white'
               : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
           >
-            📅 ส่วนตัว
+            {tr('dtm.personal')}
           </button>
           <button
             type="button"
@@ -145,26 +147,26 @@ export function DateTaskModal() {
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
-              {mode === 'personal' ? 'ชื่อนัดหมาย' : 'ชื่อ Task'} *
+              {mode === 'personal' ? tr('dtm.apptName') : tr('dtm.taskName')} *
             </label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               autoFocus
-              placeholder={mode === 'personal' ? 'ชื่อนัดหมายใน Calendar...' : 'ชื่อ Task...'}
+              placeholder={mode === 'personal' ? tr('dtm.apptPlaceholder') : tr('dtm.taskPlaceholder')}
               className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">วันที่</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{tr('dtm.date')}</label>
               <input type="date" value={match.isoDate} readOnly
                 className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">เวลา</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{tr('dtm.time')}</label>
               <input type="time" value={match.time} readOnly
                 className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-500" />
             </div>
@@ -173,15 +175,15 @@ export function DateTaskModal() {
           {mode === 'project' && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-gray-500">โครงการ (ถ้ามี)</label>
+                <label className="block text-xs font-medium text-gray-500">{tr('dtm.project')}</label>
                 <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                   <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)} className="w-3 h-3 accent-primary-600" />
-                  เฉพาะ Active
+                  {tr('dtm.onlyActive')}
                 </label>
               </div>
               <select value={projectId} onChange={e => setProjectId(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="">-- ไม่ระบุ --</option>
+                <option value="">{tr('dtm.none')}</option>
                 {(activeProjectsOnly ? projects.filter(p => p.Status === 'Active') : projects)
                   .map(p => <option key={p.id} value={p.id}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}</option>)}
               </select>
@@ -191,22 +193,22 @@ export function DateTaskModal() {
           {/* Teams meeting — both modes */}
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
             <input type="checkbox" checked={isOnlineMeeting} onChange={e => setIsOnlineMeeting(e.target.checked)} className="rounded accent-primary-600" />
-            💻 เพิ่มการประชุมออนไลน์ (Teams)
+            {tr('dtm.addTeams')}
           </label>
 
           {/* Attendees — shown only after checking Teams */}
           {isOnlineMeeting && (<>
-            <SearchMultiSelect label="ผู้เข้าร่วม Internal" options={internalOptions} selected={internalEmails}
+            <SearchMultiSelect label={tr('dtm.attendeesInternal')} options={internalOptions} selected={internalEmails}
               onToggle={v => setInternalEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
-            <SearchMultiSelect label="ผู้เข้าร่วม ลูกค้า" options={customerOptions} selected={customerEmails}
+            <SearchMultiSelect label={tr('dtm.attendeesCustomer')} options={customerOptions} selected={customerEmails}
               onToggle={v => setCustomerEmails(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v])} />
             <input value={externalAttendees} onChange={e => setExternalAttendees(e.target.value)}
-              placeholder="Email ภายนอก (คั่นด้วย , )"
+              placeholder={tr('dtm.externalPlaceholder')}
               className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </>)}
 
           {mode === 'personal' && (
-            <p className="text-xs text-gray-400">จะเพิ่มเป็นนัดหมายใน Outlook Calendar ของคุณ ไม่บันทึกลง SharePoint</p>
+            <p className="text-xs text-gray-400">{tr('dtm.note')}</p>
           )}
         </div>
 
@@ -214,11 +216,11 @@ export function DateTaskModal() {
         <div className="flex gap-2 pt-1">
           <button onClick={closeDateTaskModal}
             className="flex-1 px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            ยกเลิก
+            {tr('common.cancel')}
           </button>
           <button onClick={handleSave} disabled={saving || !title.trim()}
             className="flex-1 px-4 py-2 text-sm font-medium bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-lg transition-colors">
-            {saving ? 'กำลังสร้าง...' : mode === 'personal' ? 'เพิ่มใน Calendar' : 'สร้าง Task'}
+            {saving ? tr('dtm.creating') : mode === 'personal' ? tr('dtm.addToCalendar') : tr('dtm.createTask')}
           </button>
         </div>
       </div>

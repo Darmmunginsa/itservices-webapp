@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore'
 import type { FocusItem } from '../../types/common'
 import { getStatusColor } from '../../utils/colorUtils'
 import { formatDate, getDueDateColor, getDueDateEmoji } from '../../utils/dateUtils'
+import { useT } from '../../i18n/useT'
 
 const TYPE_ICON: Record<string, string> = {
   Ticket: '🎫', Task: '✅', Project: '📁', Note: '📝',
@@ -32,6 +33,7 @@ function loadPos(): Pos {
 
 export function FloatingFocus() {
   const { user } = useAppStore()
+  const tr = useT()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<FocusItem[]>([])
@@ -171,7 +173,7 @@ export function FloatingFocus() {
           {/* Footer */}
           <Link to="/" onClick={() => setOpen(false)}
             className="flex items-center justify-center gap-1.5 py-2.5 text-xs text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors border-t border-gray-100 dark:border-gray-800 font-medium">
-            ดูทั้งหมดที่ Focus Items
+            {tr('ff.viewAll')}
           </Link>
         </div>
       )}
@@ -181,7 +183,7 @@ export function FloatingFocus() {
         ref={btnRef}
         onPointerDown={onPointerDown}
         onClick={onButtonClick}
-        title="Focus Items (ลากย้ายได้)"
+        title={tr('ff.fab')}
         className={`relative flex items-center justify-center w-11 h-11 rounded-full shadow-lg border transition-all duration-150
           ${dragging ? 'cursor-grabbing shadow-xl scale-110 opacity-80' : 'cursor-grab'}
           ${open

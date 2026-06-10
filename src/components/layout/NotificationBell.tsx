@@ -3,11 +3,13 @@ import { Bell, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
 import { getMyNotifications, dismissNotification, dismissAll, type AppNotification } from '../../services/notificationService'
+import { useT } from '../../i18n/useT'
 
 const POLL_MS = 30_000
 
 export function NotificationBell() {
   const { user } = useAppStore()
+  const tr = useT()
   const navigate = useNavigate()
   const [items, setItems] = useState<AppNotification[]>([])
   const [open, setOpen] = useState(false)
@@ -90,15 +92,15 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-h-[28rem] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">
-            <span className="text-sm font-semibold">การแจ้งเตือน</span>
+            <span className="text-sm font-semibold">{tr('bell.title')}</span>
             {unread > 0 && (
               <button onClick={readAll} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                <Check size={12} /> เคลียร์ทั้งหมด
+                <Check size={12} /> {tr('bell.clearAll')}
               </button>
             )}
           </div>
           {items.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-gray-400">ไม่มีการแจ้งเตือนใหม่</div>
+            <div className="px-4 py-10 text-center text-sm text-gray-400">{tr('bell.empty')}</div>
           ) : (
             items.map(n => (
               <button key={n.id} onClick={() => openItem(n)}

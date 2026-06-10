@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
 import { ProfileMenu } from './ProfileMenu'
 import { NotificationBell } from './NotificationBell'
+import { useT } from '../../i18n/useT'
 
 interface HeaderProps {
   title: string
@@ -12,6 +13,7 @@ interface HeaderProps {
 
 export function Header({ title, backTo, backLabel }: HeaderProps) {
   const { setMobileNavOpen } = useAppStore()
+  const tr = useT()
 
   return (
     <header className="sticky top-0 z-[29] bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-4 md:px-6 py-3 flex items-center gap-3">
@@ -22,7 +24,7 @@ export function Header({ title, backTo, backLabel }: HeaderProps) {
         <Menu size={20} />
       </button>
       {backTo && (
-        <Link to={backTo} title="กลับ"
+        <Link to={backTo} title={tr('header.back')}
           className="flex-shrink-0 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-primary-600 transition-colors">
           <ArrowLeft size={18} />
         </Link>

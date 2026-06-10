@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Video, X, GripVertical } from 'lucide-react'
+import { useT } from '../../i18n/useT'
 
 interface Props {
   embed: string          // YouTube embed URL
@@ -11,6 +12,7 @@ interface BoxState { x: number; y: number; w: number; h: number; hidden?: boolea
 const DEFAULT: BoxState = { x: 24, y: 0, w: 360, h: 250 }
 
 export function FloatingVideo({ embed, storageKey }: Props) {
+  const tr = useT()
   const [box, setBox] = useState<BoxState>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey) || 'null')
@@ -57,7 +59,7 @@ export function FloatingVideo({ embed, storageKey }: Props) {
     return (
       <button onClick={() => setBox(b => ({ ...b, hidden: false }))}
         className="fixed bottom-4 left-4 z-40 flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full px-3.5 py-2 shadow-lg hover:shadow-xl transition-shadow text-sm font-medium text-gray-700 dark:text-gray-300">
-        <Video size={15} className="text-red-600" /> วิดีโอ
+        <Video size={15} className="text-red-600" /> {tr('video.title')}
       </button>
     )
   }
@@ -73,7 +75,7 @@ export function FloatingVideo({ embed, storageKey }: Props) {
         className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 cursor-move select-none flex-shrink-0">
         <GripVertical size={14} className="text-gray-400" />
         <Video size={14} className="text-red-600" />
-        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex-1">วิดีโอแนะนำ</span>
+        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex-1">{tr('video.recommended')}</span>
         <button onClick={() => setBox(b => ({ ...b, hidden: true }))} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
       </div>
       {/* Video body */}

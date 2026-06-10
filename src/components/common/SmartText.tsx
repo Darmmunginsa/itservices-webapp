@@ -1,5 +1,6 @@
 import { detectDates } from '../../utils/detectDates'
 import { useAppStore } from '../../store/useAppStore'
+import { useT } from '../../i18n/useT'
 
 interface SmartTextProps {
   text: string
@@ -8,6 +9,7 @@ interface SmartTextProps {
 
 export function SmartText({ text, className = '' }: SmartTextProps) {
   const openDateTaskModal = useAppStore(s => s.openDateTaskModal)
+  const tr = useT()
   const matches = detectDates(text)
 
   if (matches.length === 0) {
@@ -32,7 +34,7 @@ export function SmartText({ text, className = '' }: SmartTextProps) {
           <mark
             key={i}
             onClick={() => openDateTaskModal(matches[seg.idx])}
-            title="คลิกเพื่อสร้าง Task"
+            title={tr('smart.clickCreate')}
             className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300
                        rounded px-0.5 cursor-pointer hover:bg-amber-200 dark:hover:bg-amber-800/60
                        transition-colors not-italic font-medium"

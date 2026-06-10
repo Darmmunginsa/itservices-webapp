@@ -1,8 +1,10 @@
 // Lightweight dependency-free charts (SVG/CSS)
+import { useT } from '../../i18n/useT'
 
 interface Slice { label: string; value: number; color: string }
 
 export function Donut({ data, size = 140 }: { data: Slice[]; size?: number }) {
+  const tr = useT()
   const total = data.reduce((s, d) => s + d.value, 0) || 1
   const r = size / 2 - 12
   const cx = size / 2, cy = size / 2
@@ -23,7 +25,7 @@ export function Donut({ data, size = 140 }: { data: Slice[]; size?: number }) {
           return seg
         })}
         <text x={cx} y={cy - 2} textAnchor="middle" className="fill-gray-900 dark:fill-gray-100" style={{ fontSize: 22, fontWeight: 700 }}>{total}</text>
-        <text x={cx} y={cy + 16} textAnchor="middle" className="fill-gray-400" style={{ fontSize: 10 }}>รวม</text>
+        <text x={cx} y={cy + 16} textAnchor="middle" className="fill-gray-400" style={{ fontSize: 10 }}>{tr('charts.total')}</text>
       </svg>
       <div className="space-y-1.5">
         {data.map((d, i) => (

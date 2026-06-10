@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
+import { useT } from '../../i18n/useT'
 
 export interface SelectOption {
   value: string
@@ -21,11 +22,14 @@ export function SearchSelect({
   options,
   value,
   onChange,
-  placeholder = 'พิมพ์เพื่อค้นหา...',
-  emptyLabel = '-- ไม่เลือก --',
+  placeholder: placeholderProp,
+  emptyLabel: emptyLabelProp,
   className = '',
   disabled = false,
 }: SearchSelectProps) {
+  const tr = useT()
+  const placeholder = placeholderProp ?? tr('ss.placeholder')
+  const emptyLabel = emptyLabelProp ?? tr('ss.empty')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -100,7 +104,7 @@ export function SearchSelect({
               ref={inputRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="ค้นหา..."
+              placeholder={tr('ss.search')}
               className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
@@ -113,7 +117,7 @@ export function SearchSelect({
               {emptyLabel}
             </div>
             {filtered.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-gray-400 text-center">ไม่พบรายการ</p>
+              <p className="px-3 py-3 text-xs text-gray-400 text-center">{tr('ss.noItems')}</p>
             ) : (
               filtered.map(o => (
                 <div
@@ -145,6 +149,7 @@ interface SearchMultiSelectProps {
 }
 
 export function SearchMultiSelect({ label, options, selected, onToggle }: SearchMultiSelectProps) {
+  const tr = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -172,7 +177,7 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
         className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-left"
       >
         <span className="text-gray-600 dark:text-gray-400 truncate">
-          {selected.length > 0 ? `${label}: ${selected.length} คน` : `เลือก${label}...`}
+          {selected.length > 0 ? `${label}: ${selected.length} ${tr('ss.persons')}` : `${tr('ss.select')}${label}...`}
         </span>
         <ChevronDown size={13} className={`text-gray-400 flex-shrink-0 transition-transform ml-2 ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -184,13 +189,13 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
               autoFocus
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="ค้นหา..."
+              placeholder={tr('ss.search')}
               className="w-full px-2 py-1 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
             />
           </div>
           <div className="max-h-44 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="text-xs text-gray-400 p-3 text-center">ไม่พบรายการ</p>
+              <p className="text-xs text-gray-400 p-3 text-center">{tr('ss.noItems')}</p>
             ) : (
               filtered.map(item => (
                 <label key={item.value} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
@@ -207,7 +212,7 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
           </div>
           {selected.length > 0 && (
             <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400">
-              เลือกแล้ว {selected.length} คน
+              {tr('ss.selectedPre')} {selected.length} {tr('ss.persons')}
             </div>
           )}
         </div>

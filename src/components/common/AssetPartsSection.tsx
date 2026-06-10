@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Cpu } from 'lucide-react'
 import { spGet, spCreate, spDelete } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
+import { useT } from '../../i18n/useT'
 
 export interface AssetPart {
   id: number
@@ -13,6 +14,7 @@ export interface AssetPart {
 
 export function AssetPartsSection({ assetId, canEdit }: { assetId: number; canEdit: boolean }) {
   const { addToast } = useAppStore()
+  const tr = useT()
   const [parts, setParts] = useState<AssetPart[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
@@ -59,9 +61,9 @@ export function AssetPartsSection({ assetId, canEdit }: { assetId: number; canEd
       <p className="text-gray-400 mb-1 flex items-center gap-1"><Cpu size={12} /> Parts / Serial Numbers</p>
 
       {loading ? (
-        <p className="text-xs text-gray-300">กำลังโหลด...</p>
+        <p className="text-xs text-gray-300">{tr('comp.loading')}</p>
       ) : parts.length === 0 ? (
-        <p className="text-xs text-gray-300 mb-2">ยังไม่มี Part</p>
+        <p className="text-xs text-gray-300 mb-2">{tr('parts.none')}</p>
       ) : (
         <div className="space-y-1 mb-2">
           {parts.map(p => (
@@ -70,7 +72,7 @@ export function AssetPartsSection({ assetId, canEdit }: { assetId: number; canEd
               <span className="font-mono text-gray-600 dark:text-gray-300 flex-1 truncate">{p.SerialNumber || '-'}</span>
               {p.Note && <span className="text-gray-400 truncate max-w-[120px]">{p.Note}</span>}
               {canEdit && (
-                <button onClick={e => removePart(p.id, e)} title="ลบ"
+                <button onClick={e => removePart(p.id, e)} title={tr('assets.delete')}
                   className="text-red-400 hover:text-red-600 flex-shrink-0"><Trash2 size={12} /></button>
               )}
             </div>
@@ -80,12 +82,12 @@ export function AssetPartsSection({ assetId, canEdit }: { assetId: number; canEd
 
       {canEdit && (
         <form onSubmit={addPart} className="flex flex-wrap items-center gap-1.5">
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="ชื่อ Part (เช่น HDD 1)" className={`${inp} w-32`} />
+          <input value={name} onChange={e => setName(e.target.value)} placeholder={tr('parts.namePlaceholder')} className={`${inp} w-32`} />
           <input value={serial} onChange={e => setSerial(e.target.value)} placeholder="Serial Number" className={`${inp} w-40 font-mono`} />
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="หมายเหตุ (ไม่บังคับ)" className={`${inp} w-32`} />
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder={tr('parts.notePlaceholder')} className={`${inp} w-32`} />
           <button type="submit" disabled={saving}
             className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
-            <Plus size={12} /> เพิ่ม
+            <Plus size={12} /> {tr('comp.add')}
           </button>
         </form>
       )}

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { ListChecks, Plus, Trash2, ChevronDown } from 'lucide-react'
 import { spGet, spCreate, spUpdate, spDelete } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
+import { useT } from '../../i18n/useT'
 
 interface PlanItem { id: number; Title: string; IsDone: boolean }
 
 export function TaskPlanner() {
   const { user } = useAppStore()
+  const tr = useT()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState<PlanItem[]>([])
   const [text, setText] = useState('')
@@ -63,20 +65,20 @@ export function TaskPlanner() {
       <div className={`fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 rounded-t-2xl shadow-2xl transition-transform duration-300 ${open ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><ListChecks size={16} className="text-primary-600" /> Task Planner — ร่างแผนของฉัน</h3>
+            <h3 className="text-sm font-semibold flex items-center gap-2"><ListChecks size={16} className="text-primary-600" /> {tr('planner.title')}</h3>
             <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600"><ChevronDown size={18} /></button>
           </div>
 
           <form onSubmit={add} className="flex gap-2 mb-3">
-            <input value={text} onChange={e => setText(e.target.value)} placeholder="พิมพ์แผน/ไอเดีย แล้วกด Enter..."
+            <input value={text} onChange={e => setText(e.target.value)} placeholder={tr('planner.placeholder')}
               className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <button type="submit" disabled={adding || !text.trim()}
               className="flex items-center gap-1 px-3 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"><Plus size={15} /></button>
           </form>
 
           <div className="max-h-[40vh] overflow-y-auto space-y-1">
-            {loading ? <p className="text-xs text-gray-400 py-4 text-center">กำลังโหลด...</p>
-              : items.length === 0 ? <p className="text-xs text-gray-400 py-6 text-center">ยังไม่มีแผน — เพิ่มด้านบนได้เลย</p>
+            {loading ? <p className="text-xs text-gray-400 py-4 text-center">{tr('comp.loading')}</p>
+              : items.length === 0 ? <p className="text-xs text-gray-400 py-6 text-center">{tr('planner.empty')}</p>
               : items.map(it => (
                 <div key={it.id} className="flex items-center gap-2 group px-1 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <input type="checkbox" checked={it.IsDone} onChange={() => toggle(it)} className="w-4 h-4 accent-primary-600 flex-shrink-0" />
@@ -86,7 +88,7 @@ export function TaskPlanner() {
               ))
             }
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">เหลือ {pending} รายการ · ติ๊กเพื่อขีดฆ่า · ลบได้ที่ไอคอนถังขยะ</p>
+          <p className="text-[10px] text-gray-400 mt-2">{tr('planner.footerPre')} {pending} {tr('planner.footerPost')}</p>
         </div>
       </div>
     </>

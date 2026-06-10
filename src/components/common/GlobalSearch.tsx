@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, Loader2 } from 'lucide-react'
 import { spGet } from '../../services/sharepoint'
+import { useT } from '../../i18n/useT'
 
 interface Hit {
   type: string        // ป้ายหมวด
@@ -16,6 +17,7 @@ const DEBOUNCE = 350
 
 export function GlobalSearch() {
   const navigate = useNavigate()
+  const tr = useT()
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<Hit[]>([])
   const [loading, setLoading] = useState(false)
@@ -51,7 +53,7 @@ export function GlobalSearch() {
         if (myId !== reqId.current) return  // มี request ใหม่กว่าแล้ว ทิ้งผลเก่า
         for (const t of tk) results.push({ type: 'Ticket', icon: '🎫', title: t.Title, subtitle: t.TicketNumber || `Ticket #${t.id}`, link: `/tickets/${t.id}` })
         for (const p of pj) results.push({ type: 'Project', icon: '📁', title: p.Title, subtitle: p.Status, link: `/projects/${p.id}` })
-        for (const k of ts) results.push({ type: 'Task', icon: '✅', title: k.Title, subtitle: 'ในโครงการ', link: `/projects/${k.ProjectID}` })
+        for (const k of ts) results.push({ type: 'Task', icon: '✅', title: k.Title, subtitle: tr('gsearch.inProject'), link: `/projects/${k.ProjectID}` })
         for (const i of inc) results.push({ type: 'Incident', icon: '🚨', title: i.Title, subtitle: i.Severity, link: `/projects/${i.ProjectID}` })
         for (const a of as) {
           const lc = term.toLowerCase()
@@ -62,7 +64,7 @@ export function GlobalSearch() {
           results.push({ type: 'Asset', icon: '🖥️', title: a.Title, subtitle: sub2, link: `/assets?id=${a.id}` })
         }
         for (const n of nt) results.push({ type: 'Note', icon: '📝', title: n.Title, subtitle: n.Category || 'Tools & Notes', link: `/tools?note=${n.id}` })
-        for (const pp of pt) results.push({ type: 'Part', icon: '🔩', title: pp.Title, subtitle: `S/N: ${pp.SerialNumber || '-'} · อุปกรณ์ #${pp.AssetID}`, link: `/assets?id=${pp.AssetID}` })
+        for (const pp of pt) results.push({ type: 'Part', icon: '🔩', title: pp.Title, subtitle: `S/N: ${pp.SerialNumber || '-'} · ${tr('gsearch.device')} #${pp.AssetID}`, link: `/assets?id=${pp.AssetID}` })
         setHits(results)
       } finally {
         if (myId === reqId.current) setLoading(false)
@@ -81,7 +83,7 @@ export function GlobalSearch() {
           value={q}
           onChange={e => { setQ(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
-          placeholder="ค้นหาทุกอย่าง — Ticket, โครงการ, Task, Incident, Asset, Note..."
+          placeholder={tr('gsearch.placeholder')}
           className="flex-1 bg-transparent text-sm focus:outline-none text-gray-800 dark:text-gray-100"
         />
         {loading && <Loader2 size={16} className="text-gray-400 animate-spin flex-shrink-0" />}
@@ -93,7 +95,7 @@ export function GlobalSearch() {
       {open && q.trim().length >= MIN && (
         <div className="absolute z-40 left-0 right-0 mt-2 max-h-[28rem] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl">
           {!loading && hits.length === 0 && (
-            <p className="px-4 py-8 text-center text-sm text-gray-400">ไม่พบผลลัพธ์สำหรับ "{q}"</p>
+            <p className="px-4 py-8 text-center text-sm text-gray-400">{tr('gsearch.noResult')} "{q}"</p>
           )}
           {hits.map((h, i) => (
             <button key={i} onClick={() => go(h)}

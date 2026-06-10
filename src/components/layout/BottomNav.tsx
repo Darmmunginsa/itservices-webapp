@@ -1,16 +1,18 @@
 import { NavLink } from 'react-router-dom'
 import { Home, Send, ClipboardList, FolderOpen, BarChart2 } from 'lucide-react'
 import { cn } from '../../utils/colorUtils'
+import { useT } from '../../i18n/useT'
 
 const items = [
-  { to: '/',         icon: Home,          label: 'หน้าหลัก' },
-  { to: '/submit',   icon: Send,          label: 'แจ้งงาน' },
-  { to: '/my-work',  icon: ClipboardList, label: 'งานของฉัน' },
-  { to: '/projects', icon: FolderOpen,    label: 'โครงการ' },
-  { to: '/dashboard',icon: BarChart2,     label: 'Dashboard' },
+  { to: '/',         icon: Home,          key: 'nav.home' },
+  { to: '/submit',   icon: Send,          key: 'nav.submit' },
+  { to: '/my-work',  icon: ClipboardList, key: 'nav.myWork' },
+  { to: '/projects', icon: FolderOpen,    key: 'nav.projects' },
+  { to: '/dashboard',icon: BarChart2,     key: 'nav.dashboard' },
 ]
 
 export function BottomNav() {
+  const tr = useT()
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex md:hidden z-40">
       {items.map(item => (
@@ -26,7 +28,7 @@ export function BottomNav() {
           )}
         >
           <item.icon size={20} />
-          <span className="mt-0.5">{item.label}</span>
+          <span className="mt-0.5">{tr(item.key)}</span>
         </NavLink>
       ))}
     </nav>

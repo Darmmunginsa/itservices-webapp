@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { SmartText } from './SmartText'
 import { Button } from './Button'
 import { timeAgo } from '../../utils/dateUtils'
+import { useT } from '../../i18n/useT'
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
 function avatarColor(name: string): string {
@@ -36,6 +37,7 @@ interface Props {
 
 export function CommentSection({ listName, parentField, parentId, mentionCandidates, linkPath, titleLabel, notifyEmails = [] }: Props) {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
 
   const [comments, setComments] = useState<CommentRow[]>([])
@@ -163,7 +165,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
             <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
             {c.CommentType === 'Internal' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">ภายใน</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">{tr('ticket.internal')}</span>
             )}
           </div>
           <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
@@ -176,7 +178,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             <button type="button"
               onClick={() => { setReplyTo({ id: isReply ? (c.ParentID as number) : c.id, author }); document.getElementById('proj-comment-box')?.focus() }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <MessageSquare size={13} /> ตอบกลับ
+              <MessageSquare size={13} /> {tr('ticket.reply')}
             </button>
           </div>
         </div>
@@ -187,7 +189,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
   return (
     <div>
       <div className="space-y-5 mb-6">
-        {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Comment</p>}
+        {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('ticket.noComments')}</p>}
         {topComments.map(c => {
           const kids = repliesByParent.get(c.id) ?? []
           const open = openThreads[c.id]
@@ -199,7 +201,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
                   <button type="button" onClick={() => setOpenThreads(p => ({ ...p, [c.id]: !p[c.id] }))}
                     className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-full transition-colors">
                     <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-                    {kids.length} การตอบกลับ
+                    {kids.length} {tr('ticket.replies')}
                   </button>
                   {open && <div className="space-y-4 mt-3">{kids.map(k => renderComment(k, true))}</div>}
                 </div>
@@ -217,7 +219,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         <div className="min-w-0 flex-1 space-y-2">
           {replyTo && (
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-gray-400">กำลังตอบกลับ</span>
+              <span className="text-gray-400">{tr('ticket.replyingTo')}</span>
               <span className="font-medium text-primary-600">@{replyTo.author.replace(/\s+/g, '')}</span>
               <button type="button" onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500"><X size={12} /></button>
             </div>
@@ -227,19 +229,19 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               {(['Internal', 'External'] as const).map(t => (
                 <button key={t} type="button" onClick={() => setCommentType(t)}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
-                  {t === 'Internal' ? 'ภายใน' : 'ภายนอก'}
+                  {t === 'Internal' ? tr('ticket.internal') : tr('ticket.external')}
                 </button>
               ))}
             </div>
           )}
           <div className="relative">
             <textarea ref={commentRef} id="proj-comment-box" required value={comment} onChange={onCommentChange} rows={1}
-              placeholder="เพิ่ม Comment... (พิมพ์ @ เพื่อถามเพื่อนในทีม)"
+              placeholder={tr('ticket.commentPlaceholder')}
               onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
               className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
             {mentionOpen && mentionMatches.length > 0 && (
               <div className="absolute z-20 left-0 bottom-full mb-1 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-                <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">ถามเพื่อนในทีม</p>
+                <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">{tr('ticket.askTeam')}</p>
                 {mentionMatches.map(c => (
                   <button key={c.email} type="button" onClick={() => selectMention(c)}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary-50 dark:hover:bg-primary-900/20">
@@ -256,10 +258,10 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           <div className="flex justify-end gap-2">
             {(comment || replyTo) && (
               <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
-                className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">ยกเลิก</button>
+                className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">{tr('common.cancel')}</button>
             )}
             <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
-              <Send size={14} /> {sending ? 'กำลังส่ง...' : 'Comment'}
+              <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
             </Button>
           </div>
         </div>
