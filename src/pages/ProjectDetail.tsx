@@ -22,6 +22,7 @@ import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
+import { useT } from '../i18n/useT'
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Other']
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
@@ -65,6 +66,7 @@ export default function ProjectDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [project, setProject] = useState<Project | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -616,33 +618,33 @@ export default function ProjectDetail() {
             <p className={`text-sm font-medium leading-snug ${task.IsCompleted ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>{getDueDateEmoji(color)} {task.Title}</p>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 flex-wrap">
               {task.DueDate && <span>{formatDate(task.DueDate)}</span>}
-              {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> รับทราบ</span>}
+              {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> {tr('tracking.ack')}</span>}
             </div>
           </div>
           <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </div>
         {isOpen && (
           <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5 space-y-2">
-            {task.AssignedTo && <p className="text-xs text-gray-500">ผู้รับผิดชอบ: {task.AssignedTo}</p>}
+            {task.AssignedTo && <p className="text-xs text-gray-500">{tr('pd.assignee')}: {task.AssignedTo}</p>}
             {task.TaskNote && <p className="text-xs text-gray-600 dark:text-gray-300 italic">{task.TaskNote}</p>}
             <div className="flex items-center gap-1 flex-wrap">
               {!task.IsAcknowledged && task.AssignedEmail === user?.email && (
-                <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>รับทราบ</Button>
+                <Button size="sm" variant="outline" onClick={() => acknowledgeTask(task)}>{tr('tracking.ack')}</Button>
               )}
               <button onClick={() => pinFocusItem('Task', task)} title="Pin"
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                 <Pin size={14} />
               </button>
               {isAgent && (<>
-                <button onClick={() => toggleAttach('task', task.id)} title="ไฟล์แนบ"
+                <button onClick={() => toggleAttach('task', task.id)} title={tr('pd.attach')}
                   className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
                   <Paperclip size={14} />
                 </button>
-                <button onClick={() => openEditTask(task)} title="แก้ไข"
+                <button onClick={() => openEditTask(task)} title={tr('common.edit')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                   <Edit2 size={14} />
                 </button>
-                <button onClick={() => deleteTask(task.id)} title="ลบ"
+                <button onClick={() => deleteTask(task.id)} title={tr('assets.delete')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
                   <Trash2 size={14} />
                 </button>
@@ -680,16 +682,16 @@ export default function ProjectDetail() {
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                 <Pin size={14} />
               </button>
-              <button onClick={() => toggleAttach('incident', inc.id)} title="ไฟล์แนบ"
+              <button onClick={() => toggleAttach('incident', inc.id)} title={tr('pd.attach')}
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
                 <Paperclip size={14} />
               </button>
-              <button onClick={() => openEditIncident(inc)} title="แก้ไข"
+              <button onClick={() => openEditIncident(inc)} title={tr('common.edit')}
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                 <Edit2 size={14} />
               </button>
               {isBossAdmin && (
-                <button onClick={() => deleteIncident(inc.id)} title="ลบ"
+                <button onClick={() => deleteIncident(inc.id)} title={tr('assets.delete')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
                   <Trash2 size={14} />
                 </button>
@@ -703,8 +705,8 @@ export default function ProjectDetail() {
   }
 
   const PD_TASK_COLS = [
-    { key: 'open', label: 'กำลังทำ', color: 'bg-blue-500' },
-    { key: 'done', label: 'เสร็จแล้ว', color: 'bg-green-500' },
+    { key: 'open', label: tr('pd.inProgress'), color: 'bg-blue-500' },
+    { key: 'done', label: tr('pd.done'), color: 'bg-green-500' },
   ]
   const PD_INCIDENT_COLS = [
     { key: 'Critical', label: 'Critical', color: 'bg-red-600' },
@@ -777,7 +779,7 @@ export default function ProjectDetail() {
     setProjectForm(f => ({ ...f, [key]: val }))
 
   if (loading) return <div className="p-6"><Skeleton className="h-64" /></div>
-  if (!project) return <div className="p-6 text-gray-400">ไม่พบโครงการ</div>
+  if (!project) return <div className="p-6 text-gray-400">{tr('pd.notFound')}</div>
 
   const projectEndDate = projectForm.daysCount && Number(projectForm.daysCount) > 0 && projectForm.startDate
     ? (() => { const d = new Date(projectForm.startDate); d.setDate(d.getDate() + Number(projectForm.daysCount)); return d.toISOString().slice(0, 10) })()
@@ -785,7 +787,7 @@ export default function ProjectDetail() {
 
   return (
     <div>
-      <Header title={project.Title} backTo="/projects" backLabel="โครงการ" />
+      <Header title={project.Title} backTo="/projects" backLabel={tr('pd.backLabel')} />
       <div className="p-4 md:p-6 space-y-5">
 
         {/* Info Card */}
@@ -798,7 +800,7 @@ export default function ProjectDetail() {
             <div className="flex items-center gap-2 flex-shrink-0">
               <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
               <div className="relative">
-                <button onClick={() => setPinMenuOpen(o => !o)} title="Pin โครงการ"
+                <button onClick={() => setPinMenuOpen(o => !o)} title={tr('pd.pinProject')}
                   className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${(pinnedFocus || pinnedNav) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                   <Pin size={14} className={(pinnedFocus || pinnedNav) ? 'fill-current' : ''} />
                 </button>
@@ -806,15 +808,15 @@ export default function ProjectDetail() {
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setPinMenuOpen(false)} />
                     <div className="absolute right-0 mt-1 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-40 py-1 text-sm">
-                      <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">ปักหมุดโครงการนี้ไปที่</p>
+                      <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">{tr('pd.pinTo')}</p>
                       <button onClick={() => togglePinProject('Focus')}
                         className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <span>📌 Focus (กระดิ่ง/หน้าแรก)</span>
+                        <span>{tr('pd.pinFocus')}</span>
                         {pinnedFocus && <span className="text-xs text-primary-600">✓</span>}
                       </button>
                       <button onClick={() => togglePinProject('Navigator')}
                         className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <span>🧭 Navigator (เมนูซ้าย)</span>
+                        <span>{tr('pd.pinNav')}</span>
                         {pinnedNav && <span className="text-xs text-primary-600">✓</span>}
                       </button>
                     </div>
@@ -822,12 +824,12 @@ export default function ProjectDetail() {
                 )}
               </div>
               {canEditProject && (
-                <button onClick={openEditProject} title="แก้ไขโครงการ"
+                <button onClick={openEditProject} title={tr('pd.editProject')}
                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                   <Edit2 size={14} />
                 </button>
               )}
-              <button onClick={() => setInfoOpen(o => !o)} title={infoOpen ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+              <button onClick={() => setInfoOpen(o => !o)} title={infoOpen ? tr('pd.hideDetail') : tr('pd.showDetail')}
                 className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                 <ChevronDown size={16} className={`transition-transform ${infoOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -836,15 +838,15 @@ export default function ProjectDetail() {
           {infoOpen && (<>
           <div className="mb-4">
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-              <span>ความคืบหน้า</span><span className="font-medium">{project.Progress ?? 0}%</span>
+              <span>{tr('pd.progress')}</span><span className="font-medium">{project.Progress ?? 0}%</span>
             </div>
             <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2">
               <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${project.Progress ?? 0}%` }} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 text-sm">
-            <div><span className="text-gray-400 text-xs">เริ่มต้น</span><p>{formatDate(project.StartDate)}</p></div>
-            <div><span className="text-gray-400 text-xs">สิ้นสุด</span><p>{formatDate(project.EndDate)}</p></div>
+            <div><span className="text-gray-400 text-xs">{tr('pd.start')}</span><p>{formatDate(project.StartDate)}</p></div>
+            <div><span className="text-gray-400 text-xs">{tr('pd.end')}</span><p>{formatDate(project.EndDate)}</p></div>
           </div>
           {project.ProjectGroup && (
             <span className="inline-block mt-3 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-2 py-0.5 rounded">
@@ -868,9 +870,9 @@ export default function ProjectDetail() {
             </div>
             {canSeeSecure
               ? showSecure
-                ? <pre className="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded-lg font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{project.SecureNote || '(ว่าง)'}</pre>
-                : <p className="text-xs text-gray-400 italic">{project.SecureNote ? 'คลิก 👁 เพื่อดูข้อมูล' : '(ว่าง)'}</p>
-              : <p className="text-xs text-gray-400 flex items-center gap-1"><Lock size={12} /> ข้อมูลลับ</p>
+                ? <pre className="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded-lg font-mono text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{project.SecureNote || tr('pd.empty')}</pre>
+                : <p className="text-xs text-gray-400 italic">{project.SecureNote ? tr('pd.clickToView') : tr('pd.empty')}</p>
+              : <p className="text-xs text-gray-400 flex items-center gap-1"><Lock size={12} /> {tr('pd.secret')}</p>
             }
           </div>
           </>)}
@@ -881,7 +883,7 @@ export default function ProjectDetail() {
           {(['tasks', 'notes', 'incidents', 'links', 'assets', 'comments'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : t === 'assets' ? `อุปกรณ์ (${linkedAssets.length})` : 'Comments'}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : 'Comments'}
             </button>
           ))}
         </div>
@@ -890,10 +892,10 @@ export default function ProjectDetail() {
         {tab === 'tasks' && (
           <div className="space-y-3">
             {isAgent && (
-              <Button size="sm" onClick={openAddTask}><Plus size={14} /> เพิ่ม Task</Button>
+              <Button size="sm" onClick={openAddTask}><Plus size={14} /> {tr('pd.addTask')}</Button>
             )}
             {sortedTasks.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Task</p>
+              ? <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noTask')}</p>
               : <PdColumns cols={PD_TASK_COLS} items={sortedTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => renderTaskCard(t)} />
             }
           </div>
@@ -902,9 +904,9 @@ export default function ProjectDetail() {
         {/* ── Notes ── */}
         {tab === 'notes' && (
           <div className="space-y-3">
-            <Button size="sm" onClick={openAddNote}><Plus size={14} /> เพิ่ม Note</Button>
+            <Button size="sm" onClick={openAddNote}><Plus size={14} /> {tr('pd.addNote')}</Button>
             {notes.length === 0
-              ? <p className="text-sm text-gray-400 text-center py-8">ไม่มี Note</p>
+              ? <p className="text-sm text-gray-400 text-center py-8">{tr('pd.noNote')}</p>
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {notes.map(note => {
                     const ak = `note-${note.id}`
@@ -914,7 +916,7 @@ export default function ProjectDetail() {
                       <div key={note.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
                         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{note.Title || '(ไม่มีชื่อ)'}</p>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{note.Title || tr('pd.untitled')}</p>
                             {!isOpen && note.NoteText && <p className="text-xs text-gray-400 truncate mt-0.5">{(note.NoteText).split('\n')[0]}</p>}
                             {isOpen && note.NoteText && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300 mt-1.5" />}
                             <p className="text-xs text-gray-400 mt-1">{note.NoteBy} • {formatDate(note.Created)}</p>
@@ -924,7 +926,7 @@ export default function ProjectDetail() {
                         {isOpen && (
                           <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5">
                             <div className="flex items-center gap-2 text-gray-400">
-                              <button onClick={() => toggleAttach('note', note.id)} title="ไฟล์แนบ"
+                              <button onClick={() => toggleAttach('note', note.id)} title={tr('pd.attach')}
                                 className={`hover:text-primary-600 transition-colors ${attachKey === ak ? 'text-primary-600' : ''}`}>
                                 <Paperclip size={14} />
                               </button>
@@ -947,9 +949,9 @@ export default function ProjectDetail() {
         {/* ── Incidents ── */}
         {tab === 'incidents' && (
           <div className="space-y-3">
-            <Button size="sm" variant="outline" onClick={openAddIncident}><Plus size={14} /> แจ้ง Incident</Button>
+            <Button size="sm" variant="outline" onClick={openAddIncident}><Plus size={14} /> {tr('pd.reportIncident')}</Button>
             {incidents.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Incident</p>
+              ? <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noIncident')}</p>
               : <PdColumns cols={PD_INCIDENT_COLS} items={incidents} keyOf={i => i.Severity} render={i => renderIncidentCard(i)} />
             }
           </div>
@@ -958,9 +960,9 @@ export default function ProjectDetail() {
         {/* ── Links ── */}
         {tab === 'links' && (
           <div className="space-y-3">
-            <Button size="sm" onClick={openAddLink}><Plus size={14} /> เพิ่ม Link</Button>
+            <Button size="sm" onClick={openAddLink}><Plus size={14} /> {tr('pd.addLink')}</Button>
             {links.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-10">ไม่มี Link</p>
+              ? <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noLink')}</p>
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {links.map(link => (
                     <div key={link.id} className="flex items-start gap-2 p-4 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
@@ -975,12 +977,12 @@ export default function ProjectDetail() {
                         {link.LinkType && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 mt-1.5">{link.LinkType}</Badge>}
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <button onClick={() => openEditLink(link)} title="แก้ไข"
+                        <button onClick={() => openEditLink(link)} title={tr('common.edit')}
                           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                           <Edit2 size={13} />
                         </button>
                         {isBossAdmin && (
-                          <button onClick={() => deleteLink(link.id)} title="ลบ"
+                          <button onClick={() => deleteLink(link.id)} title={tr('assets.delete')}
                             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
                             <Trash2 size={13} />
                           </button>
@@ -1009,10 +1011,10 @@ export default function ProjectDetail() {
         {tab === 'assets' && (
           <div className="space-y-3">
             {isAgent && (
-              <Button size="sm" onClick={() => { setAssetSearch(''); setShowAssetPicker(true) }}><Plus size={14} /> เพิ่มอุปกรณ์</Button>
+              <Button size="sm" onClick={() => { setAssetSearch(''); setShowAssetPicker(true) }}><Plus size={14} /> {tr('pd.addDevice')}</Button>
             )}
             {linkedAssets.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-10">ยังไม่มีอุปกรณ์ที่ผูกกับโครงการนี้</p>
+              ? <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noLinkedDevice')}</p>
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {linkedAssets.map(la => {
                     const asset = allAssets.find(a => a.id === la.AssetID)
@@ -1023,10 +1025,10 @@ export default function ProjectDetail() {
                           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 leading-snug">{asset?.Title || la.AssetTitle}</p>
                           {(asset?.AssetCode || la.AssetCode) && <p className="text-xs text-gray-400 font-mono">{asset?.AssetCode || la.AssetCode}</p>}
                           {asset && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 mt-1.5">{asset.Category}</Badge>}
-                          {!asset && <p className="text-xs text-amber-500 mt-1">(อุปกรณ์ถูกลบหรือปลดระวาง)</p>}
+                          {!asset && <p className="text-xs text-amber-500 mt-1">{tr('pd.deviceRemoved')}</p>}
                         </button>
                         {isAgent && (
-                          <button onClick={() => unlinkAsset(la)} title="นำออก"
+                          <button onClick={() => unlinkAsset(la)} title={tr('pd.remove')}
                             className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors flex-shrink-0">
                             <Trash2 size={13} />
                           </button>
@@ -1041,10 +1043,10 @@ export default function ProjectDetail() {
       </div>
 
       {/* ── Asset Picker Modal ── */}
-      <Modal open={showAssetPicker} onClose={() => setShowAssetPicker(false)} title="เลือกอุปกรณ์จาก IT Assets" size="md">
+      <Modal open={showAssetPicker} onClose={() => setShowAssetPicker(false)} title={tr('pd.pickDevice')} size="md">
         <div className="space-y-3">
           <input value={assetSearch} onChange={e => setAssetSearch(e.target.value)}
-            placeholder="ค้นหาอุปกรณ์..." autoFocus
+            placeholder={tr('pd.searchDevice')} autoFocus
             className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           <div className="max-h-[50vh] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
             {allAssets
@@ -1059,7 +1061,7 @@ export default function ProjectDetail() {
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{a.Title}</p>
                       <p className="text-xs text-gray-400">{a.Category}{a.AssetCode ? ` · ${a.AssetCode}` : ''}</p>
                     </div>
-                    {linked && <span className="text-xs text-green-600 flex-shrink-0">✓ ผูกแล้ว</span>}
+                    {linked && <span className="text-xs text-green-600 flex-shrink-0">{tr('pd.linked')}</span>}
                   </button>
                 )
               })}
@@ -1088,20 +1090,20 @@ export default function ProjectDetail() {
           })()
           return (
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {viewAsset.AssetCode && <div><p className="text-xs text-gray-400">รหัส</p><p className="font-mono">{viewAsset.AssetCode}</p></div>}
-              <div><p className="text-xs text-gray-400">หมวดหมู่</p><p>{viewAsset.Category}</p></div>
-              <div><p className="text-xs text-gray-400">สถานะ</p><p>{viewAsset.Status}</p></div>
+              {viewAsset.AssetCode && <div><p className="text-xs text-gray-400">{tr('pd.code')}</p><p className="font-mono">{viewAsset.AssetCode}</p></div>}
+              <div><p className="text-xs text-gray-400">{tr('common.category')}</p><p>{viewAsset.Category}</p></div>
+              <div><p className="text-xs text-gray-400">{tr('assets.statusLabel')}</p><p>{viewAsset.Status}</p></div>
               {viewAsset.IPAddress && <div><p className="text-xs text-gray-400">IP</p><p className="font-mono whitespace-pre-line">{viewAsset.IPAddress}</p></div>}
               {viewAsset.SerialNumber && <div><p className="text-xs text-gray-400">Serial</p><p>{viewAsset.SerialNumber}</p></div>}
               {viewAsset.OS && <div><p className="text-xs text-gray-400">OS</p><p>{viewAsset.OS}</p></div>}
               {viewAsset.Vendor && <div><p className="text-xs text-gray-400">Vendor</p><p>{viewAsset.Vendor}</p></div>}
               {viewAsset.Spec && <div className="col-span-2"><p className="text-xs text-gray-400">Spec</p><p>{viewAsset.Spec}</p></div>}
-              {viewAsset.AssignedTo && <div><p className="text-xs text-gray-400">ผู้ใช้งาน</p><p>{viewAsset.AssignedTo}</p></div>}
-              {viewAsset.PurchaseDate && <div><p className="text-xs text-gray-400">วันที่ซื้อ</p><p>{formatDate(viewAsset.PurchaseDate)}</p></div>}
+              {viewAsset.AssignedTo && <div><p className="text-xs text-gray-400">{tr('assets.user')}</p><p>{viewAsset.AssignedTo}</p></div>}
+              {viewAsset.PurchaseDate && <div><p className="text-xs text-gray-400">{tr('assets.purchaseDate')}</p><p>{formatDate(viewAsset.PurchaseDate)}</p></div>}
               {expiryDate && (
                 <div>
-                  <p className="text-xs text-gray-400">{viewAsset.Category === 'Certificate' ? 'วันหมดอายุ SSL' : 'วันหมดประกัน'}</p>
-                  <p className={expiryColor}>{formatDate(expiryDate)}{daysLeft !== null && <span className="ml-1 text-xs">({daysLeft < 0 ? 'หมดแล้ว' : `เหลือ ${daysLeft} วัน`})</span>}</p>
+                  <p className="text-xs text-gray-400">{viewAsset.Category === 'Certificate' ? tr('assets.sslExpiry') : tr('assets.warrantyDate')}</p>
+                  <p className={expiryColor}>{formatDate(expiryDate)}{daysLeft !== null && <span className="ml-1 text-xs">({daysLeft < 0 ? tr('assets.expired') : `${daysLeft}`})</span>}</p>
                 </div>
               )}
               {viewAsset.PortalURL && (
@@ -1123,47 +1125,47 @@ export default function ProjectDetail() {
                       {st ? (
                         <span className={`inline-flex items-center gap-1 text-sm font-medium ${up ? 'text-green-600' : pending ? 'text-amber-500' : 'text-red-600'}`}>
                           <span className={`w-2 h-2 rounded-full ${up ? 'bg-green-500' : pending ? 'bg-amber-400' : 'bg-red-500'}`} />
-                          {up ? 'UP' : pending ? 'รอข้อมูล' : 'DOWN'}
+                          {up ? tr('assets.up') : pending ? tr('assets.waitingData') : tr('assets.down')}
                           {st.Uptime24 != null && <span className="text-xs text-gray-400">· {st.Uptime24}% (24h)</span>}
                         </span>
-                      ) : <span className="text-sm text-gray-400">— ยังไม่มีข้อมูล</span>}
-                      <a href={viewAsset.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:underline">ดูใน Uptime Kuma</a>
+                      ) : <span className="text-sm text-gray-400">{tr('pd.noData')}</span>}
+                      <a href={viewAsset.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary-600 hover:underline">{tr('pd.viewInKuma')}</a>
                     </div>
                   </div>
                 )
               })()}
               {viewAsset.AccessMethod && <div className="col-span-2"><p className="text-xs text-gray-400">Access / URL</p><p className="break-all">{viewAsset.AccessMethod}</p></div>}
-              {liveNote && <div className="col-span-2"><p className="text-xs text-gray-400">หมายเหตุ</p><p className="whitespace-pre-wrap text-xs">{liveNote}</p></div>}
+              {liveNote && <div className="col-span-2"><p className="text-xs text-gray-400">{tr('common.note')}</p><p className="whitespace-pre-wrap text-xs">{liveNote}</p></div>}
             </div>
           )
         })()}
       </Modal>
 
       {/* ── Edit Project Modal ── */}
-      <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title="แก้ไขโครงการ" size="md">
+      <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title={tr('pd.editProject')} size="md">
         <form onSubmit={saveProject} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           <div>
-            <label className={lc}>ชื่อโครงการ *</label>
+            <label className={lc}>{tr('pd.projectName')} *</label>
             <input required value={projectForm.title} onChange={e => pf('title', e.target.value)}
-              className={ic} placeholder="ระบุชื่อโครงการ..." />
+              className={ic} placeholder={tr('pd.projectNamePlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>บริษัท/ลูกค้า</label>
+              <label className={lc}>{tr('pd.company')}</label>
               <OptionSelect category="ProjectCompany" defaults={[]} value={projectForm.company} onChange={v => pf('company', v)} className={ic} />
             </div>
             <div>
-              <label className={lc}>กลุ่มโครงการ</label>
+              <label className={lc}>{tr('pd.group')}</label>
               <OptionSelect category="ProjectGroup" defaults={[...PROJECT_GROUPS]} value={projectForm.projectGroup} onChange={v => pf('projectGroup', v)} className={ic} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>สถานะ</label>
+              <label className={lc}>{tr('assets.statusLabel')}</label>
               <OptionSelect category="ProjectStatus" defaults={[...PROJECT_STATUSES]} value={projectForm.status} onChange={v => pf('status', v)} className={ic} />
             </div>
             <div>
-              <label className={lc}>ความคืบหน้า (%)</label>
+              <label className={lc}>{tr('pd.progressPct')}</label>
               <div className="flex items-center gap-2">
                 <input type="range" min="0" max="100" value={projectForm.progress}
                   onChange={e => pf('progress', e.target.value)}
@@ -1173,60 +1175,60 @@ export default function ProjectDetail() {
             </div>
           </div>
           <div>
-            <label className={lc}>วันที่เริ่มต้น</label>
+            <label className={lc}>{tr('pd.startDate')}</label>
             <input type="date" value={projectForm.startDate} onChange={e => pf('startDate', e.target.value)} className={ic} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>วันสิ้นสุด</label>
+              <label className={lc}>{tr('pd.endDate')}</label>
               <input type="date" value={projectForm.endDate} onChange={e => pf('endDate', e.target.value)}
                 disabled={!!projectForm.daysCount} className={ic} />
             </div>
             <div>
-              <label className={lc}>หรือจำนวนวัน (นับจากวันเริ่ม)</label>
-              <input type="number" min="1" placeholder="เช่น 30" value={projectForm.daysCount}
+              <label className={lc}>{tr('pd.orDays')}</label>
+              <input type="number" min="1" placeholder="30" value={projectForm.daysCount}
                 onChange={e => pf('daysCount', e.target.value)} className={ic} />
             </div>
           </div>
           {projectEndDate && <p className="text-xs text-primary-600">📅 End date: {projectEndDate}</p>}
           <div>
-            <label className={lc}>รายละเอียด / หมายเหตุ</label>
+            <label className={lc}>{tr('pd.detailNote')}</label>
             <textarea value={projectForm.comment} onChange={e => pf('comment', e.target.value)}
-              className={ic} rows={4} placeholder="รายละเอียดโครงการ, หมายเหตุ..." />
+              className={ic} rows={4} placeholder={tr('pd.detailNotePlaceholder')} />
           </div>
           {canSeeSecure && (
             <div className="border border-yellow-300 dark:border-yellow-700 rounded-lg p-3 bg-yellow-50 dark:bg-yellow-900/10">
               <label className="flex items-center gap-1.5 text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-1.5">
-                <Lock size={12} /> Secure Note <span className="font-normal opacity-70">(เฉพาะผู้สร้าง/Admin)</span>
+                <Lock size={12} /> Secure Note <span className="font-normal opacity-70">{tr('pd.creatorAdmin')}</span>
               </label>
               <textarea value={projectForm.secureNote} onChange={e => pf('secureNote', e.target.value)}
-                className={ic} rows={3} placeholder="ข้อมูลที่เป็นความลับ..." />
+                className={ic} rows={3} placeholder={tr('pd.secretPlaceholder')} />
             </div>
           )}
           <Button type="submit" disabled={savingProject} className="w-full justify-center">
-            {savingProject ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+            {savingProject ? tr('common.saving') : tr('common.saveEdit')}
           </Button>
         </form>
       </Modal>
 
       {/* ── Task Modal (Create / Edit) ── */}
       <Modal open={showTaskModal} onClose={() => setShowTaskModal(false)}
-        title={editingTask ? 'แก้ไข Task' : 'เพิ่ม Task'} size="md">
+        title={editingTask ? tr('pd.editTask') : tr('pd.addTask')} size="md">
         <form onSubmit={saveTask} className="space-y-4">
           <div>
-            <label className={lc}>ชื่อ Task *</label>
+            <label className={lc}>{tr('pd.taskName')} *</label>
             <input required value={taskForm.title}
               onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
-              className={ic} placeholder="ระบุชื่อ Task..." />
+              className={ic} placeholder={tr('pd.taskNamePlaceholder')} />
           </div>
           <div>
-            <label className={lc}>Assign ให้</label>
+            <label className={lc}>{tr('pd.assignTo')}</label>
             <SearchSelect
               options={agentOptions}
               value={taskForm.assignedEmail}
               onChange={v => setTaskForm(f => ({ ...f, assignedEmail: v }))}
-              emptyLabel="-- ยังไม่ Assign --"
-              placeholder="ค้นหาชื่อ Agent..."
+              emptyLabel={tr('pd.notAssigned')}
+              placeholder={tr('ticket.searchAgent')}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1238,8 +1240,8 @@ export default function ProjectDetail() {
                 className={ic} />
             </div>
             <div>
-              <label className={lc}>หรือกำหนดวัน (นับจากวันนี้)</label>
-              <input type="number" min="1" placeholder="เช่น 7 = 1 สัปดาห์"
+              <label className={lc}>{tr('pd.orDaysToday')}</label>
+              <input type="number" min="1" placeholder="7"
                 value={taskForm.daysCount}
                 onChange={e => setTaskForm(f => ({ ...f, daysCount: e.target.value }))}
                 className={ic} />
@@ -1254,7 +1256,7 @@ export default function ProjectDetail() {
             <label className={lc}>Task Note</label>
             <textarea value={taskForm.taskNote}
               onChange={e => setTaskForm(f => ({ ...f, taskNote: e.target.value }))}
-              rows={3} className={ic} placeholder="รายละเอียดเพิ่มเติม หรือขั้นตอนที่ต้องทำ..." />
+              rows={3} className={ic} placeholder={tr('pd.taskNotePlaceholder')} />
           </div>
 
           {/* Track + Outlook Calendar (เฉพาะตอนสร้างใหม่ — เหมือนหน้าแจ้งงาน) */}
@@ -1263,31 +1265,31 @@ export default function ProjectDetail() {
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={trackTask} onChange={e => setTrackTask(e.target.checked)}
                   className="rounded accent-primary-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Task นี้</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">{tr('pd.trackTask')}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={addCalendar} onChange={e => setAddCalendar(e.target.checked)}
                   className="rounded accent-primary-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">📅 เพิ่มใน Outlook Calendar</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">{tr('pd.addCalendar')}</span>
               </label>
 
               {addCalendar && (
                 <div className="space-y-3 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
-                  <p className="text-xs font-medium text-primary-600">📅 ตั้งค่านัดหมาย Outlook Calendar</p>
+                  <p className="text-xs font-medium text-primary-600">{tr('pd.calSettings')}</p>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="col-span-3 sm:col-span-1">
-                      <label className={lc}>วันที่ *</label>
+                      <label className={lc}>{tr('pd.date')} *</label>
                       <input required={addCalendar} type="date" value={taskForm.calendarDate}
                         onChange={e => setTaskForm(f => ({ ...f, calendarDate: e.target.value }))} className={ic} />
                     </div>
                     <div>
-                      <label className={lc}>เริ่ม</label>
+                      <label className={lc}>{tr('pd.timeStart')}</label>
                       <select value={taskForm.startHour} onChange={e => setTaskForm(f => ({ ...f, startHour: e.target.value }))} className={ic}>
                         {HOURS.map(h => <option key={h}>{h}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className={lc}>สิ้นสุด</label>
+                      <label className={lc}>{tr('pd.timeEnd')}</label>
                       <select value={taskForm.endHour} onChange={e => setTaskForm(f => ({ ...f, endHour: e.target.value }))} className={ic}>
                         {HOURS.map(h => <option key={h}>{h}</option>)}
                       </select>
@@ -1296,27 +1298,27 @@ export default function ProjectDetail() {
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input type="checkbox" checked={isOnlineMeeting} onChange={e => setIsOnlineMeeting(e.target.checked)}
                       className="rounded accent-primary-600" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">🎥 เพิ่มการประชุมออนไลน์ (Teams)</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{tr('pd.addTeams')}</span>
                   </label>
                   <div>
-                    <label className={lc}>ผู้เข้าร่วม Internal (เลือกได้หลายคน)</label>
+                    <label className={lc}>{tr('pd.attendeesInternal')}</label>
                     <SearchMultiSelect label="Internal" options={agentOptions} selected={calInternalEmails}
                       onToggle={v => setCalInternalEmails(prev => prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v])} />
                     {calInternalEmails.length > 0 && <p className="text-xs text-gray-400 mt-1 truncate">{calInternalEmails.join(', ')}</p>}
                   </div>
                   <div>
-                    <label className={lc}>ผู้เข้าร่วม ลูกค้า (เลือกได้หลายคน)</label>
-                    <SearchMultiSelect label="ลูกค้า" options={contractEmailOptions} selected={calCustomerEmails}
+                    <label className={lc}>{tr('pd.attendeesCustomer')}</label>
+                    <SearchMultiSelect label={tr('pd.customer')} options={contractEmailOptions} selected={calCustomerEmails}
                       onToggle={v => setCalCustomerEmails(prev => prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v])} />
                     {calCustomerEmails.length > 0 && <p className="text-xs text-gray-400 mt-1 truncate">{calCustomerEmails.join(', ')}</p>}
                   </div>
                   <div>
-                    <label className={lc}>Email ภายนอก (คั่นด้วย ,)</label>
+                    <label className={lc}>{tr('pd.externalEmail')}</label>
                     <input value={taskForm.externalAttendees} onChange={e => setTaskForm(f => ({ ...f, externalAttendees: e.target.value }))}
                       className={ic} placeholder="ext@company.com, partner@co.th" />
                   </div>
                   {buildCalendarAttendees().length > 0 && (
-                    <p className="text-xs text-primary-600">รวม {buildCalendarAttendees().length} ผู้เข้าร่วม</p>
+                    <p className="text-xs text-primary-600">{tr('pd.totalAttendeesPre')} {buildCalendarAttendees().length} {tr('pd.totalAttendeesPost')}</p>
                   )}
                 </div>
               )}
@@ -1324,94 +1326,94 @@ export default function ProjectDetail() {
           )}
 
           <Button type="submit" disabled={savingTask} className="w-full justify-center">
-            {savingTask ? 'กำลังบันทึก...' : editingTask ? 'บันทึกการแก้ไข' : 'เพิ่ม Task'}
+            {savingTask ? tr('common.saving') : editingTask ? tr('common.saveEdit') : tr('pd.addTask')}
           </Button>
         </form>
       </Modal>
 
       {/* ── Note Modal (Create / Edit) ── */}
       <Modal open={showNoteModal} onClose={() => setShowNoteModal(false)}
-        title={editingNote ? 'แก้ไข Note' : 'เพิ่ม Note'}>
+        title={editingNote ? tr('pd.editNote') : tr('pd.addNote')}>
         <form onSubmit={saveNote} className="space-y-3">
           <div>
-            <label className={lc}>ชื่อ Note *</label>
+            <label className={lc}>{tr('tools.noteName')} *</label>
             <input required value={noteTitle} onChange={e => setNoteTitle(e.target.value)}
-              className={ic} placeholder="เช่น สรุปการประชุม, ขั้นตอน deploy..." />
+              className={ic} placeholder={tr('pd.noteNamePlaceholder')} />
           </div>
           <div>
-            <label className={lc}>รายละเอียด</label>
+            <label className={lc}>{tr('ticket.description')}</label>
             <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
-              rows={5} className={ic} placeholder="รายละเอียด Note..." />
+              rows={5} className={ic} placeholder={tr('pd.noteDetailPlaceholder')} />
           </div>
           <Button type="submit" className="w-full justify-center">
-            {editingNote ? 'บันทึกการแก้ไข' : 'บันทึก'}
+            {editingNote ? tr('common.saveEdit') : tr('common.save')}
           </Button>
         </form>
       </Modal>
 
       {/* ── Incident Modal (Create / Edit) ── */}
       <Modal open={showIncidentModal} onClose={() => setShowIncidentModal(false)}
-        title={editingIncident ? 'แก้ไข Incident' : 'แจ้ง Incident'} size="md">
+        title={editingIncident ? tr('pd.editIncident') : tr('pd.reportIncident')} size="md">
         <form onSubmit={saveIncident} className="space-y-4">
           <div>
-            <label className={lc}>ชื่อ Incident *</label>
+            <label className={lc}>{tr('pd.incidentName')} *</label>
             <input required value={incidentForm.title}
               onChange={e => setIncidentForm(f => ({ ...f, title: e.target.value }))}
-              className={ic} placeholder="อธิบายปัญหาที่เกิดขึ้น..." />
+              className={ic} placeholder={tr('pd.incidentNamePlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>ความรุนแรง</label>
+              <label className={lc}>{tr('pd.severity')}</label>
               <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={incidentForm.severity} onChange={v => setIncidentForm(f => ({ ...f, severity: v }))} className={ic} />
             </div>
             <div>
-              <label className={lc}>สถานะ</label>
+              <label className={lc}>{tr('assets.statusLabel')}</label>
               <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={incidentForm.status} onChange={v => setIncidentForm(f => ({ ...f, status: v }))} className={ic} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>วันที่เกิด Incident</label>
+              <label className={lc}>{tr('pd.incidentDate')}</label>
               <input type="date" value={incidentForm.incidentDate}
                 onChange={e => setIncidentForm(f => ({ ...f, incidentDate: e.target.value }))} className={ic} />
             </div>
             <div>
-              <label className={lc}>วันที่แก้ไขได้</label>
+              <label className={lc}>{tr('pd.incidentResolvedDate')}</label>
               <input type="date" value={incidentForm.resolvedDate}
                 onChange={e => setIncidentForm(f => ({ ...f, resolvedDate: e.target.value }))} className={ic} />
             </div>
           </div>
           <div>
-            <label className={lc}>รายละเอียด</label>
+            <label className={lc}>{tr('ticket.description')}</label>
             <textarea value={incidentForm.description}
               onChange={e => setIncidentForm(f => ({ ...f, description: e.target.value }))}
-              rows={3} className={ic} placeholder="อธิบายรายละเอียดของปัญหา..." />
+              rows={3} className={ic} placeholder={tr('pd.incidentDescPlaceholder')} />
           </div>
           <div>
-            <label className={lc}>Assign ให้ Agent</label>
+            <label className={lc}>{tr('pd.assignAgent')}</label>
             <SearchSelect
               options={agentOptions}
               value={incidentForm.assignedAgentEmail}
               onChange={v => setIncidentForm(f => ({ ...f, assignedAgentEmail: v }))}
-              emptyLabel="-- ยังไม่ Assign --"
-              placeholder="ค้นหาชื่อ Agent..."
+              emptyLabel={tr('pd.notAssigned')}
+              placeholder={tr('ticket.searchAgent')}
             />
           </div>
           <div>
-            <label className={lc}>วิธีแก้ไข (ถ้ามี)</label>
+            <label className={lc}>{tr('pd.howToFix')}</label>
             <textarea value={incidentForm.resolution}
               onChange={e => setIncidentForm(f => ({ ...f, resolution: e.target.value }))}
-              rows={2} className={ic} placeholder="อธิบายวิธีที่แก้ไขปัญหา..." />
+              rows={2} className={ic} placeholder={tr('ticket.resolutionPlaceholder')} />
           </div>
           <Button type="submit" disabled={savingIncident} className="w-full justify-center">
-            {savingIncident ? 'กำลังบันทึก...' : editingIncident ? 'บันทึกการแก้ไข' : 'บันทึก Incident'}
+            {savingIncident ? tr('common.saving') : editingIncident ? tr('common.saveEdit') : tr('pd.saveIncident')}
           </Button>
         </form>
       </Modal>
 
       {/* ── Link Modal (Create / Edit) ── */}
       <Modal open={showLinkModal} onClose={() => setShowLinkModal(false)}
-        title={editingLink ? 'แก้ไข Link' : 'เพิ่ม Link'}>
+        title={editingLink ? tr('pd.editLink') : tr('pd.addLink')}>
         <form onSubmit={saveLink} className="space-y-4">
           <div>
             <label className={lc}>URL *</label>
@@ -1420,25 +1422,25 @@ export default function ProjectDetail() {
               className={ic} placeholder="https://..." />
           </div>
           <div>
-            <label className={lc}>ชื่อ Link</label>
+            <label className={lc}>{tr('pd.linkName')}</label>
             <input value={linkForm.title}
               onChange={e => setLinkForm(f => ({ ...f, title: e.target.value }))}
-              className={ic} placeholder="(ถ้าไม่กรอกจะใช้ URL)" />
+              className={ic} placeholder={tr('pd.linkNamePlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={lc}>ประเภท</label>
+              <label className={lc}>{tr('pd.type')}</label>
               <OptionSelect category="LinkType" defaults={[...LINK_TYPES]} value={linkForm.linkType} onChange={v => setLinkForm(f => ({ ...f, linkType: v }))} className={ic} />
             </div>
             <div>
-              <label className={lc}>หมายเหตุ</label>
+              <label className={lc}>{tr('common.note')}</label>
               <input value={linkForm.linkNote}
                 onChange={e => setLinkForm(f => ({ ...f, linkNote: e.target.value }))}
                 className={ic} placeholder="..." />
             </div>
           </div>
           <Button type="submit" disabled={savingLink} className="w-full justify-center">
-            {savingLink ? 'กำลังบันทึก...' : editingLink ? 'บันทึกการแก้ไข' : 'บันทึก'}
+            {savingLink ? tr('common.saving') : editingLink ? tr('common.saveEdit') : tr('common.save')}
           </Button>
         </form>
       </Modal>
