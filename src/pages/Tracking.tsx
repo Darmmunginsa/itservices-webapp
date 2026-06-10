@@ -9,9 +9,11 @@ import { spGet, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { TrackingItem } from '../types/common'
 import { getStatusColor } from '../utils/colorUtils'
+import { useT } from '../i18n/useT'
 
 export default function Tracking() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [items, setItems] = useState<TrackingItem[]>([])
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState('')
@@ -74,15 +76,15 @@ export default function Tracking() {
         <div className="flex flex-wrap gap-2 items-center">
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">ประเภททั้งหมด</option>
+            <option value="">{tr('tracking.allTypes')}</option>
             <option value="Ticket">Ticket</option>
             <option value="Task">Task</option>
           </select>
           <select value={ackFilter} onChange={e => setAckFilter(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">รับทราบทั้งหมด</option>
-            <option value="yes">รับทราบแล้ว</option>
-            <option value="no">ยังไม่รับทราบ</option>
+            <option value="">{tr('tracking.allAck')}</option>
+            <option value="yes">{tr('tracking.acked')}</option>
+            <option value="no">{tr('tracking.notAcked')}</option>
           </select>
           <Button size="sm" variant="outline" onClick={load}><RefreshCw size={14} /> Refresh</Button>
         </div>
@@ -91,7 +93,7 @@ export default function Tracking() {
           {loading
             ? Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
             : filtered.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มีรายการที่ติดตาม</p>
+              ? <p className="text-center text-sm text-gray-400 py-12">{tr('tracking.empty')}</p>
               : filtered.map(item => (
                   <div key={item.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm">
                     <div className="flex-1 min-w-0">
@@ -109,20 +111,20 @@ export default function Tracking() {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <Badge className={getStatusColor(item.Status)}>{item.Status}</Badge>
                       {item.IsAcknowledged
-                        ? <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={12} /> รับทราบแล้ว</span>
+                        ? <span className="text-xs text-green-600 flex items-center gap-0.5"><CheckCircle2 size={12} /> {tr('tracking.acked')}</span>
                         : (
                           <button
                             onClick={() => acknowledge(item)}
                             className="text-xs text-orange-500 hover:text-orange-700 underline"
                           >
-                            รับทราบ
+                            {tr('tracking.ack')}
                           </button>
                         )
                       }
-                      <button onClick={() => syncStatus(item)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title="Sync สถานะ">
+                      <button onClick={() => syncStatus(item)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400" title={tr('tracking.syncStatus')}>
                         <RefreshCw size={13} />
                       </button>
-                      <button onClick={() => removeTracking(item)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400" title="หยุดติดตาม">
+                      <button onClick={() => removeTracking(item)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400" title={tr('tracking.stopTracking')}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -130,7 +132,7 @@ export default function Tracking() {
                 ))
           }
         </div>
-        <p className="text-xs text-gray-400">{filtered.length} รายการ</p>
+        <p className="text-xs text-gray-400">{filtered.length} {tr('assets.items')}</p>
       </div>
     </div>
   )

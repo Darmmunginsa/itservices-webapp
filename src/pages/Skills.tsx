@@ -10,6 +10,7 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Skill } from '../types/asset'
 import { formatDate } from '../utils/dateUtils'
+import { useT } from '../i18n/useT'
 
 const EMPTY_FORM = {
   title: '', level: 'Beginner', status: 'Learning',
@@ -24,6 +25,7 @@ function resolveUrl(raw: unknown): string {
 
 export default function Skills() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [levelFilter, setLevelFilter] = useState('')
@@ -125,25 +127,25 @@ export default function Skills() {
 
   return (
     <div>
-      <Header title="ทักษะของฉัน" />
+      <Header title={tr('skills.title')} />
       <div className="p-4 md:p-6 space-y-4">
         <div className="flex flex-wrap gap-2 items-center">
           <select value={levelFilter} onChange={e => setLevelFilter(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">Level ทั้งหมด</option>
+            <option value="">{tr('skills.allLevels')}</option>
             {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">สถานะทั้งหมด</option>
+            <option value="">{tr('common.allStatus')}</option>
             {['Learning', 'Completed', 'Planned'].map(s => <option key={s}>{s}</option>)}
           </select>
-          <Button size="sm" onClick={openCreate}><Plus size={14} /> เพิ่ม Skill</Button>
+          <Button size="sm" onClick={openCreate}><Plus size={14} /> {tr('skills.addSkill')}</Button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
             : filtered.length === 0
-              ? <div className="col-span-3 text-center py-12 text-gray-400 text-sm">ไม่มี Skill</div>
+              ? <div className="col-span-3 text-center py-12 text-gray-400 text-sm">{tr('skills.noSkill')}</div>
               : filtered.map(skill => (
                   <div key={skill.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-primary-300 dark:hover:border-primary-700 transition-all overflow-hidden">
                     <div className="flex items-start justify-between mb-3">
@@ -165,7 +167,7 @@ export default function Skills() {
                     </div>
                     {(skill.StartDate || skill.EndDate) && (
                       <p className="text-xs text-gray-400 mb-1">
-                        {skill.StartDate ? formatDate(skill.StartDate) : '?'} → {skill.EndDate ? formatDate(skill.EndDate) : 'ต่อเนื่อง'}
+                        {skill.StartDate ? formatDate(skill.StartDate) : '?'} → {skill.EndDate ? formatDate(skill.EndDate) : tr('skills.ongoing')}
                       </p>
                     )}
                     {skill.Note && <p className="text-xs text-gray-500 italic mb-2 break-words line-clamp-3">{skill.Note}</p>}
@@ -186,10 +188,10 @@ export default function Skills() {
         </div>
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไข Skill' : 'เพิ่ม Skill'}>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tr('skills.editSkill') : tr('skills.addSkill')}>
         <form onSubmit={save} className="space-y-4">
-          <div><label className={labelClass}>ชื่อ Skill *</label>
-            <input required value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder="เช่น React, Python, Azure..." />
+          <div><label className={labelClass}>{tr('skills.skillName')} *</label>
+            <input required value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder={tr('skills.skillPlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelClass}>Level</label>
@@ -197,27 +199,27 @@ export default function Skills() {
                 {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(l => <option key={l}>{l}</option>)}
               </select>
             </div>
-            <div><label className={labelClass}>สถานะ</label>
+            <div><label className={labelClass}>{tr('assets.statusLabel')}</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className={inputClass}>
                 {['Learning', 'Completed', 'Planned'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={labelClass}>วันที่เริ่ม</label>
+            <div><label className={labelClass}>{tr('skills.startDate')}</label>
               <input type="date" value={form.startDate} onChange={e => set('startDate', e.target.value)} className={inputClass} />
             </div>
-            <div><label className={labelClass}>วันที่เสร็จ</label>
+            <div><label className={labelClass}>{tr('skills.endDate')}</label>
               <input type="date" value={form.endDate} onChange={e => set('endDate', e.target.value)} className={inputClass} />
             </div>
           </div>
           <div><label className={labelClass}>Course Link (URL)</label>
             <input type="url" value={form.courseLink} onChange={e => set('courseLink', e.target.value)} className={inputClass} placeholder="https://..." />
           </div>
-          <div><label className={labelClass}>หมายเหตุ</label>
-            <textarea value={form.note} onChange={e => set('note', e.target.value)} rows={2} className={inputClass} placeholder="บันทึกเพิ่มเติม..." />
+          <div><label className={labelClass}>{tr('common.note')}</label>
+            <textarea value={form.note} onChange={e => set('note', e.target.value)} rows={2} className={inputClass} placeholder={tr('skills.notePlaceholder')} />
           </div>
-          <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+          <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? tr('common.saving') : tr('common.save')}</Button>
         </form>
       </Modal>
     </div>

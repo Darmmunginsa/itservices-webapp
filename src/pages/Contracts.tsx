@@ -9,9 +9,11 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Contract } from '../types/ticket'
 import { getStatusColor } from '../utils/colorUtils'
+import { useT } from '../i18n/useT'
 
 export default function Contracts() {
   const { addToast } = useAppStore()
+  const tr = useT()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -76,27 +78,27 @@ export default function Contracts() {
 
   return (
     <div>
-      <Header title="ลูกค้า / Contacts" />
+      <Header title={tr('contacts.title')} />
       <div className="p-4 md:p-6 space-y-4">
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative w-full sm:w-48">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input placeholder="ค้นหา..." value={search} onChange={e => setSearch(e.target.value)}
+            <input placeholder={tr('contacts.search')} value={search} onChange={e => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">สถานะทั้งหมด</option>
+            <option value="">{tr('common.allStatus')}</option>
             {['Active', 'Inactive', 'Expired'].map(s => <option key={s}>{s}</option>)}
           </select>
-          <Button size="sm" onClick={openCreate}><Plus size={14} /> เพิ่มลูกค้า</Button>
+          <Button size="sm" onClick={openCreate}><Plus size={14} /> {tr('contacts.addCustomer')}</Button>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           {loading
             ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
             : filtered.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มีข้อมูลลูกค้า</p>
+              ? <p className="text-center text-sm text-gray-400 py-12">{tr('contacts.noData')}</p>
               : filtered.map(c => (
                   <div key={c.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm">
                     <div className="flex-1 min-w-0">
@@ -113,21 +115,21 @@ export default function Contracts() {
                 ))
           }
         </div>
-        <p className="text-xs text-gray-400">{filtered.length} รายการ</p>
+        <p className="text-xs text-gray-400">{filtered.length} {tr('assets.items')}</p>
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไขลูกค้า' : 'เพิ่มลูกค้า'}>
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tr('contacts.editCustomer') : tr('contacts.addCustomer')}>
         <form onSubmit={save} className="space-y-4">
-          <div><label className={labelClass}>ชื่อผู้ติดต่อ *</label><input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inputClass} /></div>
-          <div><label className={labelClass}>บริษัท</label><input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} className={inputClass} /></div>
+          <div><label className={labelClass}>{tr('contacts.contactName')} *</label><input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inputClass} /></div>
+          <div><label className={labelClass}>{tr('contacts.company')}</label><input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} className={inputClass} /></div>
           <div><label className={labelClass}>Email *</label><input required type="email" value={form.customerEmail} onChange={e => setForm(f => ({ ...f, customerEmail: e.target.value }))} className={inputClass} /></div>
-          <div><label className={labelClass}>เบอร์โทร</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputClass} /></div>
-          <div><label className={labelClass}>สถานะ</label>
+          <div><label className={labelClass}>{tr('contacts.phone')}</label><input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputClass} /></div>
+          <div><label className={labelClass}>{tr('assets.statusLabel')}</label>
             <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className={inputClass}>
               {['Active', 'Inactive', 'Expired'].map(s => <option key={s}>{s}</option>)}
             </select>
           </div>
-          <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+          <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? tr('common.saving') : tr('common.save')}</Button>
         </form>
       </Modal>
     </div>
