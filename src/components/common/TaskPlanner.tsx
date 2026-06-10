@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListChecks, X, Plus, Trash2, ChevronDown } from 'lucide-react'
+import { ListChecks, Plus, Trash2, ChevronDown } from 'lucide-react'
 import { spGet, spCreate, spUpdate, spDelete } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
 
