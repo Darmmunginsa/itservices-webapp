@@ -10,6 +10,7 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate } from '../utils/dateUtils'
 import type { FocusItem } from '../types/common'
+import { useT } from '../i18n/useT'
 
 interface ToolNote {
   id: number
@@ -37,6 +38,7 @@ function categoryColor(cat?: string) {
 
 export default function Tools() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [notes, setNotes] = useState<ToolNote[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -197,10 +199,10 @@ export default function Tools() {
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <Notebook size={20} className="text-primary-600" /> Tools &amp; Notes
             </h1>
-            <p className="text-xs text-gray-400 mt-0.5">บันทึกส่วนตัว — มองเห็นเฉพาะคุณเท่านั้น</p>
+            <p className="text-xs text-gray-400 mt-0.5">{tr('tools.subtitle')}</p>
           </div>
           <Button onClick={openCreate} className="flex items-center gap-2">
-            <Plus size={15} /> สร้าง Note
+            <Plus size={15} /> {tr('tools.create')}
           </Button>
         </div>
 
@@ -211,7 +213,7 @@ export default function Tools() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="ค้นหา..."
+              placeholder={tr('tools.search')}
               className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
@@ -240,7 +242,7 @@ export default function Tools() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Notebook size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{notes.length === 0 ? 'ยังไม่มี Note — กด "สร้าง Note" เพื่อเริ่ม' : 'ไม่พบ Note ที่ค้นหา'}</p>
+            <p className="text-sm">{notes.length === 0 ? tr('tools.createNote') : '-'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -296,15 +298,15 @@ export default function Tools() {
                   {viewing.Category}
                 </span>
               )}
-              <span className="text-xs text-gray-400 ml-auto">แก้ไขล่าสุด: {formatDate(viewing.Modified)}</span>
+              <span className="text-xs text-gray-400 ml-auto">{tr('tools.lastEdit')}: {formatDate(viewing.Modified)}</span>
             </div>
             <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto font-sans">
               {viewing.NoteContent}
             </pre>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="ghost" onClick={() => setViewing(null)}>ปิด</Button>
+              <Button variant="ghost" onClick={() => setViewing(null)}>{tr('common.close')}</Button>
               <Button onClick={() => openEdit(viewing)} className="flex items-center gap-2">
-                <Pencil size={14} /> แก้ไข
+                <Pencil size={14} /> {tr('common.edit')}
               </Button>
             </div>
           </div>
@@ -315,39 +317,39 @@ export default function Tools() {
       <Modal
         open={showModal}
         onClose={() => setShowModal(false)}
-        title={editing ? 'แก้ไข Note' : 'สร้าง Note ใหม่'}
+        title={editing ? tr('tools.editNote') : tr('tools.createNote')}
         size="lg"
       >
         <form onSubmit={save} className="space-y-4">
           <div>
-            <label className={lc}>ชื่อ Note *</label>
+            <label className={lc}>{tr('tools.noteName')} *</label>
             <input
               required
               value={form.title}
               onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
               className={ic}
-              placeholder="ตั้งชื่อ Note..."
+              placeholder={tr('tools.namePlaceholder')}
             />
           </div>
           <div>
-            <label className={lc}>หมวดหมู่</label>
+            <label className={lc}>{tr('common.category')}</label>
             <OptionSelect category="ToolNoteCategory" defaults={[...CATEGORIES]} value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} className={ic} />
           </div>
           <div>
-            <label className={lc}>เนื้อหา *</label>
+            <label className={lc}>{tr('tools.content')} *</label>
             <textarea
               required
               value={form.noteContent}
               onChange={e => setForm(f => ({ ...f, noteContent: e.target.value }))}
               className={ic}
               rows={14}
-              placeholder="เขียน Note ที่นี่..."
+              placeholder={tr('tools.contentPlaceholder')}
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>ยกเลิก</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>{tr('common.cancel')}</Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'บันทึก'}
+              {saving ? tr('common.saving') : editing ? tr('common.saveEdit') : tr('common.save')}
             </Button>
           </div>
         </form>

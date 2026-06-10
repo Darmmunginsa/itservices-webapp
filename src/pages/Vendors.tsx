@@ -8,6 +8,7 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate, isWarrantyExpiringSoon, daysUntil } from '../utils/dateUtils'
 import type { Vendor } from '../types/vendor'
+import { useT } from '../i18n/useT'
 
 const EMPTY = {
   Title: '', ContactName: '', Phone: '', Email: '',
@@ -27,6 +28,7 @@ function toForm(v: Vendor): Form {
 
 export default function Vendors() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const isAdmin = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,10 +93,10 @@ export default function Vendors() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 flex-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
             <Search size={16} className="text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหา Vendor / ผู้ติดต่อ / เลขสัญญา..."
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={tr('vendors.search')}
               className="flex-1 bg-transparent text-sm focus:outline-none" />
           </div>
-          {isAdmin && <Button onClick={openCreate}><Plus size={15} /> เพิ่ม Vendor</Button>}
+          {isAdmin && <Button onClick={openCreate}><Plus size={15} /> {tr('vendors.add')}</Button>}
         </div>
 
         {loading ? (
@@ -102,7 +104,7 @@ export default function Vendors() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-400">
             <Briefcase size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{vendors.length === 0 ? 'ยังไม่มี Vendor — กด "เพิ่ม Vendor"' : 'ไม่พบ Vendor ที่ค้นหา'}</p>
+            <p className="text-sm">{vendors.length === 0 ? `${tr('vendors.add')}` : '-'}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -127,12 +129,12 @@ export default function Vendors() {
                     {v.ContactName && <p className="font-medium text-gray-800 dark:text-gray-200">{v.ContactName}</p>}
                     {v.Phone && <p className="flex items-center gap-1.5"><Phone size={12} className="text-gray-400" /> <a href={`tel:${v.Phone}`} className="hover:underline">{v.Phone}</a></p>}
                     {v.Email && <p className="flex items-center gap-1.5"><Mail size={12} className="text-gray-400" /> <a href={`mailto:${v.Email}`} className="hover:underline truncate">{v.Email}</a></p>}
-                    {v.PortalURL && <p className="flex items-center gap-1.5"><ExternalLink size={12} className="text-gray-400" /> <a href={v.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate">Portal แจ้งงาน</a></p>}
+                    {v.PortalURL && <p className="flex items-center gap-1.5"><ExternalLink size={12} className="text-gray-400" /> <a href={v.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate">{tr('vendors.portalReport')}</a></p>}
                     {v.SupportScope && <p className="text-gray-500 line-clamp-2 pt-1">{v.SupportScope}</p>}
                     {v.ContractEnd && (
                       <p className={`pt-1 ${expiring ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
-                        สัญญาถึง {formatDate(v.ContractEnd)}
-                        {days !== null && (days < 0 ? ' (หมดแล้ว)' : ` (เหลือ ${days} วัน)`)}
+                        {tr('vendors.endDate')}: {formatDate(v.ContractEnd)}
+                        {days !== null && (days < 0 ? ` ${tr('assets.expired')}` : ` (${days})`)}
                       </p>
                     )}
                   </div>
@@ -143,30 +145,30 @@ export default function Vendors() {
         )}
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไข Vendor' : 'เพิ่ม Vendor'} size="lg">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tr('vendors.edit') : tr('vendors.add')} size="lg">
         <form onSubmit={save} className="grid grid-cols-2 gap-4">
-          <div className="col-span-2"><label className={labelClass}>ชื่อ Vendor / บริษัท *</label>
-            <input required value={form.Title} onChange={e => set('Title', e.target.value)} className={inputClass} placeholder="เช่น Inet, Dell ProSupport..." /></div>
-          <div><label className={labelClass}>ผู้ติดต่อ</label>
+          <div className="col-span-2"><label className={labelClass}>{tr('vendors.name')} *</label>
+            <input required value={form.Title} onChange={e => set('Title', e.target.value)} className={inputClass} placeholder={tr('vendors.namePlaceholder')} /></div>
+          <div><label className={labelClass}>{tr('vendors.contact')}</label>
             <input value={form.ContactName} onChange={e => set('ContactName', e.target.value)} className={inputClass} /></div>
-          <div><label className={labelClass}>เลขสัญญา</label>
+          <div><label className={labelClass}>{tr('vendors.contractNo')}</label>
             <input value={form.ContractNo} onChange={e => set('ContractNo', e.target.value)} className={`${inputClass} font-mono`} /></div>
-          <div><label className={labelClass}>โทรศัพท์</label>
+          <div><label className={labelClass}>{tr('common.phone')}</label>
             <input value={form.Phone} onChange={e => set('Phone', e.target.value)} className={inputClass} /></div>
-          <div><label className={labelClass}>อีเมล</label>
+          <div><label className={labelClass}>{tr('common.email')}</label>
             <input type="email" value={form.Email} onChange={e => set('Email', e.target.value)} className={inputClass} /></div>
-          <div><label className={labelClass}>วันเริ่มสัญญา</label>
+          <div><label className={labelClass}>{tr('vendors.startDate')}</label>
             <input type="date" value={form.ContractStart} onChange={e => set('ContractStart', e.target.value)} className={inputClass} /></div>
-          <div><label className={labelClass}>วันหมดสัญญา</label>
+          <div><label className={labelClass}>{tr('vendors.endDate')}</label>
             <input type="date" value={form.ContractEnd} onChange={e => set('ContractEnd', e.target.value)} className={inputClass} /></div>
-          <div className="col-span-2"><label className={labelClass}>เว็บ / Portal แจ้งงาน</label>
+          <div className="col-span-2"><label className={labelClass}>{tr('vendors.portalUrl')}</label>
             <input value={form.PortalURL} onChange={e => set('PortalURL', e.target.value)} className={inputClass} placeholder="https://support.vendor.com" /></div>
-          <div className="col-span-2"><label className={labelClass}>ขอบเขตบริการ / SLA</label>
-            <textarea value={form.SupportScope} onChange={e => set('SupportScope', e.target.value)} rows={2} className={inputClass} placeholder="เช่น 8x5 NBD, ครอบคลุม Hardware..." /></div>
-          <div className="col-span-2"><label className={labelClass}>หมายเหตุ</label>
+          <div className="col-span-2"><label className={labelClass}>{tr('vendors.scope')}</label>
+            <textarea value={form.SupportScope} onChange={e => set('SupportScope', e.target.value)} rows={2} className={inputClass} placeholder={tr('vendors.scopePlaceholder')} /></div>
+          <div className="col-span-2"><label className={labelClass}>{tr('common.note')}</label>
             <textarea value={form.Note} onChange={e => set('Note', e.target.value)} rows={2} className={inputClass} /></div>
           <div className="col-span-2">
-            <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'เพิ่ม Vendor'}</Button>
+            <Button type="submit" disabled={saving} className="w-full justify-center">{saving ? tr('common.saving') : editing ? tr('common.saveEdit') : tr('vendors.add')}</Button>
           </div>
         </form>
       </Modal>

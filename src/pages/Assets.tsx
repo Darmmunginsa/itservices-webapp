@@ -13,6 +13,7 @@ import { useAppStore } from '../store/useAppStore'
 import type { Asset } from '../types/asset'
 import { getStatusColor } from '../utils/colorUtils'
 import { formatDate, isWarrantyExpiringSoon, daysUntil } from '../utils/dateUtils'
+import { useT } from '../i18n/useT'
 
 const SSL_WORKER_URL = import.meta.env.VITE_SSL_WORKER_URL ?? ''
 
@@ -108,23 +109,24 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
   sslChecking: number | 'new' | null
   vendors: { id: number; Title: string }[]
 }) {
+  const tr = useT()
   const isCert = f.Category === 'Certificate'
   const hasPortal = PORTAL_CATEGORIES.has(f.Category)
   return (
     <>
-      <div className="col-span-2"><label className={labelClass}>ชื่อ Asset *</label>
-        <input required value={f.Title} onChange={e => upd('Title', e.target.value)} className={inputClass} placeholder="เช่น LAPTOP-JOHN-01" /></div>
-      <div><label className={labelClass}>รหัส Asset <span className="text-gray-400 font-normal">(Auto)</span></label>
+      <div className="col-span-2"><label className={labelClass}>{tr('assets.name')} *</label>
+        <input required value={f.Title} onChange={e => upd('Title', e.target.value)} className={inputClass} placeholder={tr('assets.namePlaceholder')} /></div>
+      <div><label className={labelClass}>{tr('assets.assetCode')} <span className="text-gray-400 font-normal">(Auto)</span></label>
         <input value={f.AssetCode} onChange={e => upd('AssetCode', e.target.value)} className={`${inputClass} font-mono`} placeholder="IT-2026-001" /></div>
-      <div><label className={labelClass}>หมวดหมู่</label>
+      <div><label className={labelClass}>{tr('common.category')}</label>
         <OptionSelect category="AssetCategory" defaults={[...CATEGORIES]} value={f.Category} onChange={v => upd('Category', v)} className={inputClass} /></div>
-      <div><label className={labelClass}>สถานะ</label>
+      <div><label className={labelClass}>{tr('assets.statusLabel')}</label>
         <OptionSelect category="AssetStatus" defaults={[...STATUSES]} value={f.Status} onChange={v => upd('Status', v)} className={inputClass} /></div>
-      <div><label className={labelClass}>ประเภทผู้ถือครอง</label>
+      <div><label className={labelClass}>{tr('assets.ownerType')}</label>
         <OptionSelect category="AssetOwnerType" defaults={[...OWNER_TYPES]} value={f.OwnerType} onChange={v => upd('OwnerType', v)} className={inputClass} /></div>
-      <div className="col-span-2"><label className={labelClass}>🏢 Vendor Contract (ผู้ดูแล/รับผิดชอบ)</label>
+      <div className="col-span-2"><label className={labelClass}>{tr('assets.vendorContract')}</label>
         <select value={f.VendorID} onChange={e => upd('VendorID', e.target.value)} className={inputClass}>
-          <option value="">-- ไม่ผูก Vendor --</option>
+          <option value="">{tr('assets.noVendor')}</option>
           {vendors.map(v => <option key={v.id} value={v.id}>{v.Title}</option>)}
         </select></div>
 
@@ -141,7 +143,7 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
           <OptionSelect category="AssetOS" defaults={['Windows 11', 'Windows 10', 'Windows Server 2022', 'Windows Server 2019', 'Ubuntu', 'macOS', 'อื่นๆ']} value={f.OS} onChange={v => upd('OS', v)} className={inputClass} /></div>
         <div><label className={labelClass}>Serial Number</label>
           <input value={f.SerialNumber} onChange={e => upd('SerialNumber', e.target.value)} className={inputClass} /></div>
-        <div><label className={labelClass}>Vendor / ยี่ห้อ</label>
+        <div><label className={labelClass}>{tr('assets.vendorBrand')}</label>
           <OptionSelect category="AssetVendor" defaults={['Dell', 'HP', 'HPE', 'Lenovo', 'Cisco', 'Microsoft', 'อื่นๆ']} value={f.Vendor} onChange={v => upd('Vendor', v)} className={inputClass} /></div>
         <div className="col-span-2"><label className={labelClass}>Spec</label>
           <input value={f.Spec} onChange={e => upd('Spec', e.target.value)} className={inputClass} placeholder="i7 16GB RAM 512GB SSD..." /></div>
@@ -152,7 +154,7 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
       </>)}
 
       {isSoftware && (<>
-        <div><label className={labelClass}>App / ชื่อซอฟต์แวร์</label>
+        <div><label className={labelClass}>{tr('assets.appName')}</label>
           <input value={f.AppName} onChange={e => upd('AppName', e.target.value)} className={inputClass} /></div>
         <div><label className={labelClass}>License Type</label>
           <input value={f.LicenseType} onChange={e => upd('LicenseType', e.target.value)} className={inputClass} placeholder="Annual, Perpetual..." /></div>
@@ -162,7 +164,7 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
         )}
 
         <div className={isCert ? 'col-span-2' : ''}>
-          <label className={labelClass}>{isCert ? '🌐 URL / Domain' : 'วิธีเข้าถึง'}</label>
+          <label className={labelClass}>{isCert ? '🌐 URL / Domain' : tr('assets.accessMethod')}</label>
           <div className="flex gap-2">
             <input value={f.AccessMethod} onChange={e => upd('AccessMethod', e.target.value)}
               className={inputClass} placeholder={isCert ? 'https://itservices.co.th' : 'URL, VPN, Key...'} />
@@ -171,31 +173,31 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
                 disabled={sslChecking === 'new'}
                 className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors whitespace-nowrap">
                 <RefreshCw size={12} className={sslChecking === 'new' ? 'animate-spin' : ''} />
-                ตรวจ SSL
+                {tr('assets.checkSsl')}
               </button>
             )}
           </div>
         </div>
 
-        <div><label className={labelClass}>วันหมดอายุ {isCert && <span className="text-gray-400">(auto-fill จาก SSL)</span>}</label>
+        <div><label className={labelClass}>{tr('assets.expiryDate')} {isCert && <span className="text-gray-400">{tr('assets.sslAutofill')}</span>}</label>
           <input type="date" value={f.ExpiryDate} onChange={e => upd('ExpiryDate', e.target.value)} className={inputClass} /></div>
         <div><label className={labelClass}>Vendor</label>
           <OptionSelect category="AssetVendor" defaults={['Dell', 'HP', 'HPE', 'Lenovo', 'Cisco', 'Microsoft', 'อื่นๆ']} value={f.Vendor} onChange={v => upd('Vendor', v)} className={inputClass} /></div>
       </>)}
 
-      <div><label className={labelClass}>ผู้ใช้งาน</label>
+      <div><label className={labelClass}>{tr('assets.user')}</label>
         <OptionSelect category="AssetAssignedTo" defaults={['Company', 'IT Department']} value={f.AssignedTo} onChange={v => upd('AssignedTo', v)} className={inputClass} /></div>
-      <div><label className={labelClass}>Email ผู้ใช้งาน</label>
+      <div><label className={labelClass}>{tr('assets.userEmail')}</label>
         <input type="email" value={f.AssignedEmail} onChange={e => upd('AssignedEmail', e.target.value)} className={inputClass} /></div>
-      <div><label className={labelClass}>วันที่ซื้อ</label>
+      <div><label className={labelClass}>{tr('assets.purchaseDate')}</label>
         <input type="date" value={f.PurchaseDate} onChange={e => upd('PurchaseDate', e.target.value)} className={inputClass} /></div>
-      <div><label className={labelClass}>ราคา (บาท)</label>
+      <div><label className={labelClass}>{tr('assets.price')}</label>
         <input type="number" min="0" value={f.Price} onChange={e => upd('Price', e.target.value)} className={inputClass} /></div>
       {!isSoftware && (
-        <div><label className={labelClass}>วันหมดประกัน</label>
+        <div><label className={labelClass}>{tr('assets.warrantyDate')}</label>
           <input type="date" value={f.WarrantyDate} onChange={e => upd('WarrantyDate', e.target.value)} className={inputClass} /></div>
       )}
-      <div className="col-span-2"><label className={labelClass}>หมายเหตุ</label>
+      <div className="col-span-2"><label className={labelClass}>{tr('common.note')}</label>
         <textarea value={f.Note} onChange={e => upd('Note', e.target.value)} rows={2} className={inputClass} /></div>
     </>
   )
@@ -204,6 +206,7 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function Assets() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -390,37 +393,37 @@ export default function Assets() {
         {assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)).length > 0 && (
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-3 text-sm text-orange-700 dark:text-orange-400 flex items-center gap-2">
             <AlertTriangle size={15} />
-            <span>{assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)).length} รายการประกัน/ใบอนุญาตจะหมดภายใน 60 วัน</span>
+            <span>{assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)).length} {tr('assets.warrantyAlert')}</span>
           </div>
         )}
 
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative w-full sm:w-56">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input placeholder="ค้นหา Asset, IP, Serial, ผู้ใช้..." value={search} onChange={e => setSearch(e.target.value)}
+            <input placeholder={tr('assets.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
             className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">หมวดหมู่ทั้งหมด</option>
+            <option value="">{tr('assets.allCategories')}</option>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
           </select>
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             className="flex-1 sm:flex-none px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">สถานะทั้งหมด</option>
+            <option value="">{tr('common.allStatus')}</option>
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
-          {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> เพิ่ม Asset</Button>}
+          {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> {tr('assets.addAsset')}</Button>}
           <button onClick={() => setShowRetired(s => !s)}
             className={`text-xs underline ml-1 ${showRetired ? 'text-primary-600' : 'text-gray-400'}`}>
-            {showRetired ? 'ซ่อนที่ปลดระวาง' : 'แสดงที่ปลดระวาง'}
+            {showRetired ? tr('assets.hideRetired') : tr('assets.showRetired')}
           </button>
         </div>
 
         {loading ? (
           <div className="flex gap-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-72 flex-shrink-0 space-y-3"><SkeletonRow /><SkeletonRow /></div>)}</div>
         ) : filtered.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 py-12">ไม่มี Asset</p>
+          <p className="text-center text-sm text-gray-400 py-12">{tr('assets.noAsset')}</p>
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
             {assetColumns.map(col => (
@@ -432,7 +435,7 @@ export default function Assets() {
                 </div>
                 <div className="space-y-3 min-h-[100px]">
                   {col.items.length === 0
-                    ? <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-xs text-gray-400">ไม่มีอุปกรณ์</div>
+                    ? <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center text-xs text-gray-400">{tr('assets.noDevice')}</div>
                     : col.items.map(a => {
                         const warrantyDate = a.WarrantyDate || a.ExpiryDate
                         const expiring = isWarrantyExpiringSoon(warrantyDate)
@@ -445,7 +448,7 @@ export default function Assets() {
                             className={`w-full text-left block bg-white dark:bg-gray-900 border rounded-xl p-3.5 hover:border-primary-300 dark:hover:border-primary-700 transition-all hover:shadow-md group ${expiring ? 'border-orange-300 dark:border-orange-800' : 'border-gray-200 dark:border-gray-800'}`}>
                             <div className="flex items-start justify-between gap-2 mb-1.5">
                               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 flex-1 group-hover:text-primary-600 transition-colors">{a.Title}</h3>
-                              {st && <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1 ${up ? 'bg-green-500' : st.Status === 'pending' ? 'bg-amber-400' : 'bg-red-500'}`} title={up ? 'UP' : st.Status === 'pending' ? 'รอข้อมูล' : 'DOWN'} />}
+                              {st && <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1 ${up ? 'bg-green-500' : st.Status === 'pending' ? 'bg-amber-400' : 'bg-red-500'}`} title={up ? tr('assets.up') : st.Status === 'pending' ? tr('assets.waitingData') : tr('assets.down')} />}
                             </div>
                             {a.AssetCode && <p className="text-xs text-gray-400 font-mono mb-2">{a.AssetCode}</p>}
                             <div className="flex items-center justify-between gap-2">
@@ -455,8 +458,8 @@ export default function Assets() {
                             {warrantyDate && (
                               <div className={`flex items-center gap-1 text-xs mt-2 ${expiring ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
                                 {expiring && <AlertTriangle size={11} className="flex-shrink-0" />}
-                                <span>ประกัน {formatDate(warrantyDate)}</span>
-                                {days !== null && days < 0 && <span className="text-red-600">(หมดแล้ว)</span>}
+                                <span>{tr('assets.warranty')} {formatDate(warrantyDate)}</span>
+                                {days !== null && days < 0 && <span className="text-red-600">{tr('assets.expired')}</span>}
                               </div>
                             )}
                           </button>
@@ -468,7 +471,7 @@ export default function Assets() {
             ))}
           </div>
         )}
-        <p className="text-xs text-gray-400">{filtered.length} รายการ</p>
+        <p className="text-xs text-gray-400">{filtered.length} {tr('assets.items')}</p>
       </div>
 
       {/* Asset Detail Modal */}
@@ -486,24 +489,24 @@ export default function Assets() {
                 {a.IPAddress && <div><p className="text-gray-400">IP Address</p><p className="font-mono whitespace-pre-line">{a.IPAddress}</p></div>}
                 {a.SerialNumber && <div><p className="text-gray-400">Serial No.</p><p>{a.SerialNumber}</p></div>}
                 {a.OS && <div><p className="text-gray-400">OS</p><p>{a.OS}</p></div>}
-                {a.Vendor && <div><p className="text-gray-400">Vendor (ยี่ห้อ)</p><p>{a.Vendor}</p></div>}
-                {a.AssignedTo && <div><p className="text-gray-400">ผู้ใช้งาน</p><p>{a.AssignedTo}</p></div>}
-                {a.AssignedEmail && <div><p className="text-gray-400">Email ผู้ใช้</p><p className="truncate">{a.AssignedEmail}</p></div>}
-                {a.PurchaseDate && <div><p className="text-gray-400">วันที่ซื้อ</p><p>{formatDate(a.PurchaseDate)}</p></div>}
-                {a.Price != null && <div><p className="text-gray-400">ราคา</p><p>{a.Price.toLocaleString()} บาท</p></div>}
+                {a.Vendor && <div><p className="text-gray-400">{tr('assets.vendorBrandCol')}</p><p>{a.Vendor}</p></div>}
+                {a.AssignedTo && <div><p className="text-gray-400">{tr('assets.user')}</p><p>{a.AssignedTo}</p></div>}
+                {a.AssignedEmail && <div><p className="text-gray-400">{tr('assets.userEmailShort')}</p><p className="truncate">{a.AssignedEmail}</p></div>}
+                {a.PurchaseDate && <div><p className="text-gray-400">{tr('assets.purchaseDate')}</p><p>{formatDate(a.PurchaseDate)}</p></div>}
+                {a.Price != null && <div><p className="text-gray-400">{tr('assets.priceShort')}</p><p>{a.Price.toLocaleString()}</p></div>}
                 {(a.WarrantyDate || a.ExpiryDate) && (() => {
                   const wd = a.WarrantyDate || a.ExpiryDate!
                   const d = daysUntil(wd)
                   const exp = isWarrantyExpiringSoon(wd)
-                  return <div><p className="text-gray-400">{a.Category === 'Certificate' ? 'วันหมดอายุ SSL' : 'วันหมดประกัน'}</p>
-                    <p className={exp ? 'text-orange-600 font-medium' : ''}>{formatDate(wd)}{d !== null && (d < 0 ? ' (หมดแล้ว)' : ` (เหลือ ${d} วัน)`)}</p></div>
+                  return <div><p className="text-gray-400">{a.Category === 'Certificate' ? tr('assets.sslExpiry') : tr('assets.warrantyDate')}</p>
+                    <p className={exp ? 'text-orange-600 font-medium' : ''}>{formatDate(wd)}{d !== null && (d < 0 ? ` ${tr('assets.expired')}` : ` (${d})`)}</p></div>
                 })()}
                 {a.AppName && <div><p className="text-gray-400">App</p><p>{a.AppName}</p></div>}
                 {a.LicenseType && <div><p className="text-gray-400">License</p><p>{a.LicenseType}</p></div>}
                 {a.Username && canAdmin && <div><p className="text-gray-400">Username</p><p className="font-mono">{a.Username}</p></div>}
                 {a.Spec && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
                 {a.PortalURL && <div><p className="text-gray-400">🌐 Portal</p><a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a></div>}
-                {a.MonitorUrl && <div><p className="text-gray-400">📊 Monitor</p><a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">ดูสถานะ (Uptime Kuma)</a></div>}
+                {a.MonitorUrl && <div><p className="text-gray-400">📊 Monitor</p><a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{tr('assets.viewStatus')}</a></div>}
                 {a.AccessMethod && (
                   <div className="col-span-2 md:col-span-3">
                     <p className="text-gray-400">{a.Category === 'Certificate' ? 'URL' : 'Access'}</p>
@@ -519,7 +522,7 @@ export default function Assets() {
                         <button type="button" onClick={() => checkSSL(a.AccessMethod!, a.id)} disabled={sslChecking === a.id}
                           className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:underline">
                           <RefreshCw size={10} className={sslChecking === a.id ? 'animate-spin' : ''} />
-                          {sslChecking === a.id ? 'กำลังตรวจ...' : 'ตรวจสอบ SSL'}
+                          {sslChecking === a.id ? tr('assets.checkingSsl') : tr('assets.checkSslLink')}
                         </button>
                       )
                     })()}
@@ -532,13 +535,13 @@ export default function Assets() {
                 if (!ven) return null
                 return (
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4 text-xs">
-                    <p className="text-gray-400 mb-1">🏢 Vendor (ผู้ดูแล/รับผิดชอบ)</p>
+                    <p className="text-gray-400 mb-1">{tr('assets.vendorMgr')}</p>
                     <p className="font-medium text-gray-700 dark:text-gray-200">{ven.Title}{ven.ContactName ? ` · ${ven.ContactName}` : ''}</p>
                     <p className="flex flex-wrap gap-x-3 mt-1">
                       {ven.Phone && <a href={`tel:${ven.Phone}`} className="text-primary-600 hover:underline">📞 {ven.Phone}</a>}
                       {ven.Email && <a href={`mailto:${ven.Email}`} className="text-primary-600 hover:underline truncate">✉️ {ven.Email}</a>}
                       {ven.PortalURL && <a href={ven.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">🌐 Portal</a>}
-                      <Link to="/vendors" className="text-gray-400 hover:underline">ดูสัญญา →</Link>
+                      <Link to="/vendors" className="text-gray-400 hover:underline">{tr('assets.viewContract')}</Link>
                     </p>
                   </div>
                 )
@@ -546,14 +549,14 @@ export default function Assets() {
 
               {a.Note && (
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mb-4">
-                  <p className="text-xs text-gray-400 mb-1">หมายเหตุ</p>
+                  <p className="text-xs text-gray-400 mb-1">{tr('common.note')}</p>
                   <p className="text-xs whitespace-pre-wrap">{a.Note}</p>
                 </div>
               )}
 
               {assetProjects[a.id]?.length > 0 && (
                 <div className="mb-4">
-                  <p className="text-xs text-gray-400 mb-1">📁 ใช้ในโครงการ</p>
+                  <p className="text-xs text-gray-400 mb-1">{tr('assets.usedInProjects')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {assetProjects[a.id].map(p => (
                       <Link key={p.id} to={`/projects/${p.id}`} onClick={() => setViewAsset(null)}
@@ -571,7 +574,7 @@ export default function Assets() {
 
               {canAdmin && (
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => { openEdit(a); setViewAsset(null) }}><Edit2 size={12} /> แก้ไข</Button>
+                  <Button size="sm" variant="outline" onClick={() => { openEdit(a); setViewAsset(null) }}><Edit2 size={12} /> {tr('common.edit')}</Button>
                   {a.Status !== 'Retired' && (
                     <button onClick={() => { writeOffAsset(a.id, a.Title); setViewAsset(null) }} disabled={writingOff === a.id}
                       className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/10 disabled:opacity-50 transition-colors">
@@ -580,7 +583,7 @@ export default function Assets() {
                   )}
                   <button onClick={() => { deleteAsset(a.id, a.Title); setViewAsset(null) }}
                     className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                    <Trash2 size={12} /> ลบ
+                    <Trash2 size={12} /> {tr('assets.delete')}
                   </button>
                 </div>
               )}
@@ -590,25 +593,25 @@ export default function Assets() {
       </Modal>
 
       {/* Create Modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่ม IT Asset" size="lg">
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tr('assets.addItAsset')} size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}
             sslChecking={sslChecking} vendors={vendors}
             onCheckSSL={url => checkSSL(url, 'new', iso => set('ExpiryDate', iso), note => set('Note', note))} />
           <div className="col-span-2">
-            <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? 'กำลังบันทึก...' : 'บันทึก Asset'}</Button>
+            <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? tr('common.saving') : tr('assets.saveAsset')}</Button>
           </div>
         </form>
       </Modal>
 
       {/* Edit Modal */}
-      <Modal open={!!editingAsset} onClose={() => setEditingAsset(null)} title={`แก้ไข: ${editingAsset?.Title ?? ''}`} size="lg">
+      <Modal open={!!editingAsset} onClose={() => setEditingAsset(null)} title={`${tr('common.edit')}: ${editingAsset?.Title ?? ''}`} size="lg">
         <form onSubmit={updateAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={editForm} upd={setEdit} isSoftware={SOFTWARE_LIKE.has(editForm.Category as never)}
             sslChecking={sslChecking} vendors={vendors}
             onCheckSSL={url => checkSSL(url, editingAsset?.id ?? 'new', iso => setEdit('ExpiryDate', iso), note => setEdit('Note', note))} />
           <div className="col-span-2">
-            <Button type="submit" disabled={updating} className="w-full justify-center">{updating ? 'กำลังอัปเดต...' : 'บันทึกการแก้ไข'}</Button>
+            <Button type="submit" disabled={updating} className="w-full justify-center">{updating ? tr('assets.updating') : tr('common.saveEdit')}</Button>
           </div>
         </form>
       </Modal>
