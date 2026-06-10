@@ -16,6 +16,7 @@ import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types
 import type { AgentProfile } from '../types/common'
 import { getStatusColor, getPriorityColor, TICKET_STATUS_DESC } from '../utils/colorUtils'
 import { formatDate, timeAgo } from '../utils/dateUtils'
+import { useT } from '../i18n/useT'
 
 // Deterministic avatar color from name (YouTube-style colored circles)
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
@@ -28,6 +29,7 @@ function avatarColor(name: string): string {
 export default function TicketDetail() {
   const { id } = useParams()
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [comments, setComments] = useState<TicketComment[]>([])
   const [agents, setAgents] = useState<AgentProfile[]>([])
@@ -329,11 +331,11 @@ export default function TicketDetail() {
 
   const agentOptions = agents.map(a => ({
     value: a.EmailText ?? '',
-    label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}${a.EmailText === ticket?.AssignedEmail ? ' (ปัจจุบัน)' : ''}`,
+    label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}${a.EmailText === ticket?.AssignedEmail ? ` ${tr('ticket.current')}` : ''}`,
   })).filter(o => o.value)
 
   if (loading) return <div className="p-6"><Skeleton className="h-96" /></div>
-  if (!ticket) return <div className="p-6 text-gray-400">ไม่พบ Ticket</div>
+  if (!ticket) return <div className="p-6 text-gray-400">{tr('ticket.notFound')}</div>
 
   // group replies under their parent
   const repliesByParent = new Map<number, TicketComment[]>()
@@ -363,7 +365,7 @@ export default function TicketDetail() {
             <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
             <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
             {c.CommentType === 'Internal' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">ภายใน</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">{tr('ticket.internal')}</span>
             )}
           </div>
           <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
@@ -392,7 +394,7 @@ export default function TicketDetail() {
             <button type="button"
               onClick={() => { setReplyTo({ id: isReply ? (c.ParentID as number) : c.id, author }); document.getElementById('comment-box')?.focus() }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <MessageSquare size={13} /> ตอบกลับ
+              <MessageSquare size={13} /> {tr('ticket.reply')}
             </button>
           </div>
         </div>
@@ -402,7 +404,7 @@ export default function TicketDetail() {
 
   return (
     <div>
-      <Header title={ticket.TicketNumber ?? 'Ticket'} backTo="/my-work" backLabel="งานของฉัน" />
+      <Header title={ticket.TicketNumber ?? 'Ticket'} backTo="/my-work" backLabel={tr('ticket.myWork')} />
       <div className="p-4 md:p-6 max-w-4xl space-y-5">
 
         {/* Main Info */}
@@ -425,7 +427,7 @@ export default function TicketDetail() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
             <div>
-              <p className="text-xs text-gray-400">ผู้แจ้ง</p>
+              <p className="text-xs text-gray-400">{tr('ticket.reporter')}</p>
               <p className="font-medium">{ticket.CustomerName || '-'}</p>
               <p className="text-xs text-gray-400 truncate">{ticket.CustomerEmail}</p>
             </div>
@@ -434,29 +436,29 @@ export default function TicketDetail() {
               <p className="font-medium">{ticket.AssignedToName || '-'}</p>
               <p className="text-xs text-gray-400 truncate">{ticket.AssignedEmail}</p>
             </div>
-            <div><p className="text-xs text-gray-400">สร้างเมื่อ</p><p>{formatDate(ticket.Created)}</p></div>
+            <div><p className="text-xs text-gray-400">{tr('ticket.createdAt')}</p><p>{formatDate(ticket.Created)}</p></div>
             <div><p className="text-xs text-gray-400">Due Date</p><p>{formatDate(ticket.DueDate)}</p></div>
           </div>
 
           {ticket.IsAcknowledged && (
             <div className="flex items-center gap-2 text-green-600 text-sm mb-4 bg-green-50 dark:bg-green-900/10 rounded-lg px-3 py-2">
               <CheckCircle2 size={15} />
-              <span>รับทราบโดย {ticket.AcknowledgedBy} เมื่อ {formatDate(ticket.AcknowledgedDate)}</span>
+              <span>{tr('ticket.ackByAt').replace('{by}', ticket.AcknowledgedBy ?? '').replace('{at}', formatDate(ticket.AcknowledgedDate))}</span>
             </div>
           )}
 
           {ticket.Description && (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-3">
-              <p className="text-xs text-gray-400 mb-1">รายละเอียด</p>
+              <p className="text-xs text-gray-400 mb-1">{tr('ticket.description')}</p>
               <SmartText text={ticket.Description} className="text-sm text-gray-700 dark:text-gray-300" />
             </div>
           )}
 
           {ticket.ResolutionNote && (
             <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-900 rounded-lg p-4">
-              <p className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium">บันทึกการแก้ไข</p>
+              <p className="text-xs text-green-600 dark:text-green-400 mb-1 font-medium">{tr('ticket.resolution')}</p>
               <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{ticket.ResolutionNote}</p>
-              {ticket.ResolvedDate && <p className="text-xs text-gray-400 mt-1">เมื่อ {formatDate(ticket.ResolvedDate)}</p>}
+              {ticket.ResolvedDate && <p className="text-xs text-gray-400 mt-1">{tr('ticket.at')} {formatDate(ticket.ResolvedDate)}</p>}
             </div>
           )}
         </Card>
@@ -469,7 +471,7 @@ export default function TicketDetail() {
           </button>
           {commentsOpen && (
             <div className="space-y-5 mb-6">
-              {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Comment</p>}
+              {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('ticket.noComments')}</p>}
               {topComments.map(c => {
                 const kids = repliesByParent.get(c.id) ?? []
                 const open = openThreads[c.id]
@@ -481,7 +483,7 @@ export default function TicketDetail() {
                         <button type="button" onClick={() => setOpenThreads(p => ({ ...p, [c.id]: !p[c.id] }))}
                           className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-full transition-colors">
                           <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-                          {kids.length} การตอบกลับ
+                          {kids.length} {tr('ticket.replies')}
                         </button>
                         {open && <div className="space-y-4 mt-3">{kids.map(k => renderComment(k, true))}</div>}
                       </div>
@@ -500,7 +502,7 @@ export default function TicketDetail() {
             <div className="min-w-0 flex-1 space-y-2">
               {replyTo && (
                 <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-gray-400">กำลังตอบกลับ</span>
+                  <span className="text-gray-400">{tr('ticket.replyingTo')}</span>
                   <span className="font-medium text-primary-600">@{replyTo.author.replace(/\s+/g, '')}</span>
                   <button type="button" onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500">
                     <X size={12} />
@@ -512,20 +514,20 @@ export default function TicketDetail() {
                   {(['Internal', 'External'] as const).map(t => (
                     <button key={t} type="button" onClick={() => setCommentType(t)}
                       className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
-                      {t === 'Internal' ? 'ภายใน' : 'ถึงลูกค้า'}
+                      {t === 'Internal' ? tr('ticket.internal') : tr('ticket.toCustomer')}
                     </button>
                   ))}
                 </div>
               )}
               <div className="relative">
                 <textarea ref={commentRef} id="comment-box" required value={comment} onChange={onCommentChange} rows={1}
-                  placeholder="เพิ่ม Comment... (พิมพ์ @ เพื่อถามเพื่อนในทีม)"
+                  placeholder={tr('ticket.commentPlaceholder')}
                   onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
                   className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
                 {/* @mention dropdown */}
                 {mentionOpen && mentionMatches.length > 0 && (
                   <div className="absolute z-20 left-0 bottom-full mb-1 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">ถามเพื่อนในทีม</p>
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">{tr('ticket.askTeam')}</p>
                     {mentionMatches.map(c => (
                       <button key={c.email} type="button" onClick={() => selectMention(c)}
                         className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary-50 dark:hover:bg-primary-900/20">
@@ -543,16 +545,16 @@ export default function TicketDetail() {
                 {(comment || replyTo) && (
                   <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
                     className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                    ยกเลิก
+                    {tr('common.cancel')}
                   </button>
                 )}
                 <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
-                  <ImagePlus size={14} /> แนบรูป
+                  <ImagePlus size={14} /> {tr('ticket.attachImage')}
                   <input type="file" accept="image/*" multiple className="hidden"
                     onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
                 </label>
                 <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
-                  <Send size={14} /> {sending ? 'กำลังส่ง...' : 'Comment'}
+                  <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
                 </Button>
               </div>
               {commentFiles.length > 0 && (
@@ -575,7 +577,7 @@ export default function TicketDetail() {
         {!manageOpen && (
           <button onClick={() => setManageOpen(true)}
             className="fixed bottom-[8rem] right-3 md:bottom-20 md:right-4 z-40 flex items-center gap-2 bg-primary-600 text-white rounded-full px-3.5 py-2 shadow-lg hover:bg-primary-700 transition-colors text-sm font-medium">
-            <Settings2 size={15} /> จัดการ Ticket
+            <Settings2 size={15} /> {tr('ticket.manage')}
           </button>
         )}
 
@@ -583,7 +585,7 @@ export default function TicketDetail() {
         {manageOpen && <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setManageOpen(false)} />}
         <div className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] z-50 bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-transform duration-300 ease-out flex flex-col ${manageOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <h2 className="text-sm font-semibold flex items-center gap-2"><Settings2 size={15} className="text-primary-600" /> จัดการ Ticket</h2>
+            <h2 className="text-sm font-semibold flex items-center gap-2"><Settings2 size={15} className="text-primary-600" /> {tr('ticket.manage')}</h2>
             <button onClick={() => setManageOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
           </div>
           <div className="p-4 space-y-5 overflow-y-auto">
@@ -591,7 +593,7 @@ export default function TicketDetail() {
         {/* Actions */}
         {isAgent && (
           <Card>
-            <h3 className="text-sm font-semibold mb-3">สถานะ &amp; Reassign</h3>
+            <h3 className="text-sm font-semibold mb-3">{tr('ticket.statusReassign')}</h3>
 
             {/* Status + Acknowledge */}
             <div className="space-y-3 mb-4">
@@ -611,10 +613,10 @@ export default function TicketDetail() {
                     </div>
                   )}
                 </div>
-                <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>อัปเดตสถานะ</Button>
+                <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>{tr('ticket.updateStatus')}</Button>
                 {!ticket.IsAcknowledged && (
                   <Button size="sm" variant="outline" onClick={acknowledge}>
-                    <CheckCircle2 size={14} /> รับทราบ
+                    <CheckCircle2 size={14} /> {tr('tracking.ack')}
                   </Button>
                 )}
               </div>
@@ -623,13 +625,13 @@ export default function TicketDetail() {
               {isClosingStatus && (
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">
-                    บันทึกการแก้ไข {newStatus === 'Resolved' || newStatus === 'Closed' ? '(แนะนำให้กรอก)' : ''}
+                    {tr('ticket.resolution')} {newStatus === 'Resolved' || newStatus === 'Closed' ? tr('ticket.recommendFill') : ''}
                   </label>
                   <textarea
                     value={resolutionNote}
                     onChange={e => setResolutionNote(e.target.value)}
                     rows={3}
-                    placeholder="อธิบายวิธีที่แก้ไขปัญหา..."
+                    placeholder={tr('ticket.resolutionPlaceholder')}
                     className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
                   />
                 </div>
@@ -646,8 +648,8 @@ export default function TicketDetail() {
                   options={agentOptions}
                   value={newAssignedEmail}
                   onChange={setNewAssignedEmail}
-                  placeholder="ค้นหาชื่อ Agent..."
-                  emptyLabel="-- เลือก Agent --"
+                  placeholder={tr('ticket.searchAgent')}
+                  emptyLabel={tr('ticket.selectAgent')}
                   className="flex-1"
                 />
                 <Button size="sm" variant="outline" onClick={reassignAgent}
@@ -662,7 +664,7 @@ export default function TicketDetail() {
         {/* Team Members */}
         <Card>
           <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <UserPlus size={15} className="text-primary-600" /> ทีมงาน
+            <UserPlus size={15} className="text-primary-600" /> {tr('ticket.team')}
           </h3>
 
           {/* Current members */}
@@ -692,8 +694,8 @@ export default function TicketDetail() {
                 options={agentOptions.filter(o => !members.some(m => m.AgentEmail === o.value) && o.value !== ticket.AssignedEmail)}
                 value={inviteEmail}
                 onChange={setInviteEmail}
-                placeholder="ค้นหา Agent ที่ต้องการเพิ่ม..."
-                emptyLabel="-- เลือก Agent --"
+                placeholder={tr('ticket.searchAgentAdd')}
+                emptyLabel={tr('ticket.selectAgent')}
                 className="flex-1"
               />
               <Button size="sm" onClick={inviteMember}
@@ -704,13 +706,13 @@ export default function TicketDetail() {
           )}
 
           {members.length === 0 && !isAgent && (
-            <p className="text-sm text-gray-400">ยังไม่มีสมาชิกในทีม</p>
+            <p className="text-sm text-gray-400">{tr('ticket.noMembers')}</p>
           )}
         </Card>
 
         {/* Attachments */}
         <Card>
-          <h3 className="text-sm font-semibold mb-3">ไฟล์แนบ</h3>
+          <h3 className="text-sm font-semibold mb-3">{tr('ticket.attachments')}</h3>
           <AttachmentSection listName="HD_Tickets" itemId={ticket.id} />
         </Card>
           </div>
