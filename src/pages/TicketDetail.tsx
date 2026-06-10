@@ -10,7 +10,6 @@ import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spAttachmentUrl } from '../services/sharepoint'
-import { sendMail } from '../services/graph'
 import { createNotification } from '../services/notificationService'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
@@ -102,17 +101,14 @@ export default function TicketDetail() {
         AgentEmail: inviteEmail,
         AddedBy: user.displayName,
       })
-      // Send email notification
-      try {
-        await sendMail(
-          inviteEmail,
-          `[iT Services] คุณถูก Invite เข้า Ticket: ${ticket.TicketNumber}`,
-          `<p>สวัสดีคุณ <strong>${agent.Title}</strong>,</p>
-           <p><strong>${user.displayName}</strong> ได้เชิญคุณเข้าร่วม Ticket:</p>
-           <p><strong>${ticket.TicketNumber} — ${ticket.Title}</strong></p>
-           <p>คุณสามารถดูรายละเอียดได้ที่ระบบ iT Services Helpdesk</p>`
-        )
-      } catch { /* email fail is non-critical */ }
+      // แจ้งเตือนในแอป (กระดิ่ง) ให้คนที่ถูกเชิญ
+      createNotification({
+        recipients: [inviteEmail],
+        title: `👥 ${user.displayName} เชิญคุณเข้า Ticket ${ticket.TicketNumber ?? ''}`,
+        message: ticket.Title,
+        linkPath: `/tickets/${ticket.id}`,
+        eventType: 'ticket_invite',
+      })
       setInviteEmail('')
       loadMembers()
       addToast('success', `เพิ่ม ${agent.Title} เข้าทีมแล้ว`)
@@ -300,6 +296,16 @@ export default function TicketDetail() {
         AssignedToName: agent?.Title ?? '',
       })
       setTicket(prev => prev ? { ...prev, AssignedEmail: newAssignedEmail, AssignedToName: agent?.Title ?? '' } : prev)
+      // แจ้งเตือนในแอป (กระดิ่ง) ให้คนรับช่วง — ยกเว้นถ้า reassign ให้ตัวเอง
+      if (newAssignedEmail.toLowerCase() !== (user?.email?.toLowerCase() ?? '')) {
+        createNotification({
+          recipients: [newAssignedEmail],
+          title: `🔁 คุณได้รับมอบหมาย Ticket ${ticket.TicketNumber ?? ''}`,
+          message: ticket.Title,
+          linkPath: `/tickets/${ticket.id}`,
+          eventType: 'ticket_reassigned',
+        })
+      }
       addToast('success', `Reassign ให้ ${agent?.Title} แล้ว`)
       setNewAssignedEmail('')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setReassigning(false) }
