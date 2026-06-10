@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Search, FolderOpen, Plus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
+import { useT } from '../i18n/useT'
 import { Button } from '../components/common/Button'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { Modal } from '../components/common/Modal'
@@ -32,6 +33,7 @@ const STATUS_COLUMNS: { status: ProjectStatus; color: string; dot: string }[] = 
 
 export default function Projects() {
   const { user, addToast } = useAppStore()
+  const tr = useT()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -109,19 +111,19 @@ export default function Projects() {
 
   return (
     <div>
-      <Header title="โครงการ" />
+      <Header title={tr('projects.header')} />
       <div className="p-4 md:p-6 space-y-4">
 
         {/* Filters row */}
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-48">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input placeholder="ค้นหาโครงการ..." value={search} onChange={e => setSearch(e.target.value)}
+            <input placeholder={tr('projects.search')} value={search} onChange={e => setSearch(e.target.value)}
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
           <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-            <option value="">กลุ่มทั้งหมด</option>
+            <option value="">{tr('projects.allGroups')}</option>
             {PROJECT_GROUPS.map(g => <option key={g}>{g}</option>)}
           </select>
           <button
@@ -164,7 +166,7 @@ export default function Projects() {
                     ? (
                       <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center">
                         <FolderOpen size={20} className="mx-auto mb-1 text-gray-300 dark:text-gray-600" />
-                        <p className="text-xs text-gray-400">ไม่มีโครงการ</p>
+                        <p className="text-xs text-gray-400">{tr('projects.none')}</p>
                       </div>
                     )
                     : col.items.map(p => (
@@ -184,7 +186,7 @@ export default function Projects() {
                           {/* Progress bar */}
                           <div className="mb-2">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
-                              <span>ความคืบหน้า</span>
+                              <span>{tr('projects.progress')}</span>
                               <span className="font-medium">{p.Progress ?? 0}%</span>
                             </div>
                             <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5">
@@ -208,29 +210,29 @@ export default function Projects() {
       </div>
 
       {/* Create Modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="สร้างโครงการใหม่" size="md">
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tr('projects.create')} size="md">
         <form onSubmit={createProject} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           <div>
-            <label className={labelClass}>ชื่อโครงการ *</label>
-            <input required value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder="ระบุชื่อโครงการ..." />
+            <label className={labelClass}>{tr('projects.name')} *</label>
+            <input required value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder={tr('projects.namePlaceholder')} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>บริษัท/ลูกค้า</label>
+              <label className={labelClass}>{tr('projects.company')}</label>
               <OptionSelect category="ProjectCompany" defaults={[]} value={form.company} onChange={v => set('company', v)} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>กลุ่มโครงการ</label>
+              <label className={labelClass}>{tr('projects.group')}</label>
               <OptionSelect category="ProjectGroup" defaults={[...PROJECT_GROUPS]} value={form.projectGroup} onChange={v => set('projectGroup', v)} className={inputClass} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>สถานะเริ่มต้น</label>
+              <label className={labelClass}>{tr('projects.startStatus')}</label>
               <OptionSelect category="ProjectStatus" defaults={[...PROJECT_STATUSES]} value={form.status} onChange={v => set('status', v)} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>ความคืบหน้า (%)</label>
+              <label className={labelClass}>{tr('projects.progressPct')}</label>
               <div className="flex items-center gap-2">
                 <input type="range" min="0" max="100" value={form.progress}
                   onChange={e => set('progress', e.target.value)}
@@ -240,18 +242,18 @@ export default function Projects() {
             </div>
           </div>
           <div>
-            <label className={labelClass}>วันที่เริ่มต้น</label>
+            <label className={labelClass}>{tr('projects.startDate')}</label>
             <input type="date" value={form.startDate} onChange={e => set('startDate', e.target.value)} className={inputClass} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>วันสิ้นสุด</label>
+              <label className={labelClass}>{tr('projects.endDate')}</label>
               <input type="date" value={form.endDate} onChange={e => set('endDate', e.target.value)}
                 disabled={!!form.daysCount} className={inputClass} />
             </div>
             <div>
-              <label className={labelClass}>หรือจำนวนวัน (นับจากวันเริ่ม)</label>
-              <input type="number" min="1" placeholder="เช่น 30" value={form.daysCount}
+              <label className={labelClass}>{tr('projects.daysFromStart')}</label>
+              <input type="number" min="1" placeholder={tr('projects.daysEg')} value={form.daysCount}
                 onChange={e => set('daysCount', e.target.value)} className={inputClass} />
             </div>
           </div>
@@ -259,8 +261,8 @@ export default function Projects() {
             <p className="text-xs text-primary-600">📅 End date: {computedEndDate()}</p>
           )}
           <div>
-            <label className={labelClass}>รายละเอียด / หมายเหตุ</label>
-            <textarea value={form.comment} onChange={e => set('comment', e.target.value)} className={inputClass} rows={3} placeholder="รายละเอียดโครงการ / บันทึกเพิ่มเติม..." />
+            <label className={labelClass}>{tr('projects.descNote')}</label>
+            <textarea value={form.comment} onChange={e => set('comment', e.target.value)} className={inputClass} rows={3} placeholder={tr('projects.descPlaceholder')} />
           </div>
           <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? 'กำลังสร้าง...' : 'สร้างโครงการ'}</Button>
         </form>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BarChart3, Ticket as TicketIcon, Clock, Users, TrendingUp, Award, Building2, CalendarDays } from 'lucide-react'
 import { Header } from '../components/layout/Header'
+import { useT } from '../i18n/useT'
 import { Card } from '../components/common/Card'
 import { Skeleton } from '../components/common/Skeleton'
 import { Donut, BarChart, Columns } from '../components/common/Charts'
@@ -27,6 +28,7 @@ const PRIORITIES = [
 
 export default function Reports() {
   const { user } = useAppStore()
+  const tr = useT()
   const isBoss = ['Boss', 'Admin'].includes(user?.role ?? '')
   const [tickets, setTickets]   = useState<Ticket[]>([])
   const [leaves, setLeaves]     = useState<LeaveRequest[]>([])
@@ -189,21 +191,21 @@ export default function Reports() {
 
   return (
     <div>
-      <Header title="รายงาน / Reports" />
+      <Header title={tr('reports.header')} />
       <div className="p-4 md:p-6 space-y-6">
 
         {/* Scope toggle */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">ขอบเขตข้อมูล:</span>
+          <span className="text-xs text-gray-500">{tr('reports.scope')}</span>
           {isBoss ? (
             <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
               <button onClick={() => setScopeAll(false)}
-                className={`px-3 py-1.5 font-medium transition-colors ${!scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>ของฉัน</button>
+                className={`px-3 py-1.5 font-medium transition-colors ${!scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.mine')}</button>
               <button onClick={() => setScopeAll(true)}
-                className={`px-3 py-1.5 font-medium transition-colors ${scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>ทั้งองค์กร</button>
+                className={`px-3 py-1.5 font-medium transition-colors ${scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.org')}</button>
             </div>
           ) : (
-            <span className="text-xs font-medium text-primary-600">เฉพาะของฉัน</span>
+            <span className="text-xs font-medium text-primary-600">{tr('reports.onlyMine')}</span>
           )}
         </div>
 
@@ -218,11 +220,11 @@ export default function Reports() {
         {/* Charts row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <h3 className="text-sm font-semibold mb-4">Ticket ตามสถานะ</h3>
+            <h3 className="text-sm font-semibold mb-4">{tr('reports.byStatus')}</h3>
             <Donut data={byStatus.filter(d => d.value > 0)} />
           </Card>
           <Card>
-            <h3 className="text-sm font-semibold mb-4">Ticket ตามความสำคัญ</h3>
+            <h3 className="text-sm font-semibold mb-4">{tr('reports.byPriority')}</h3>
             <BarChart data={byPriority} />
           </Card>
         </div>
@@ -230,7 +232,7 @@ export default function Reports() {
         {/* Charts row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <h3 className="text-sm font-semibold mb-4">แนวโน้ม Ticket (6 เดือน)</h3>
+            <h3 className="text-sm font-semibold mb-4">{tr('reports.trend')}</h3>
             <Columns data={trend} />
           </Card>
           <Card>
@@ -240,14 +242,14 @@ export default function Reports() {
               { label: 'เกินกำหนด (ค้าง)',  value: overdue,  color: '#ef4444' },
               { label: 'ปิดช้ากว่ากำหนด',   value: breached, color: '#f59e0b' },
             ].filter(d => d.value > 0)} />
-            {slaTotal === 0 && <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี Ticket ที่กำหนด Due Date</p>}
+            {slaTotal === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('reports.noDue')}</p>}
           </Card>
         </div>
 
         {/* Category breakdown */}
         {byCategory.length > 0 && (
           <Card>
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp size={15} className="text-primary-600" /> Ticket ตามหมวดหมู่</h3>
+            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp size={15} className="text-primary-600" /> {tr('reports.byCategory')}</h3>
             <div className="space-y-2">
               {byCategory.map(c => (
                 <div key={c.label} className="flex items-center gap-3">
@@ -272,15 +274,15 @@ export default function Reports() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[140px]">สมาชิก</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">ทั้งหมด</th>
+                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[140px]">{tr('reports.member')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.total')}</th>
                   <th className="text-center py-2 px-2 font-medium text-blue-500">Open</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">กำลังทำ</th>
+                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.inProgress')}</th>
                   <th className="text-center py-2 px-2 font-medium text-purple-500">Pending</th>
-                  <th className="text-center py-2 px-2 font-medium text-green-600">ปิดแล้ว</th>
-                  <th className="text-center py-2 px-2 font-medium text-red-500">ค้าง</th>
+                  <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.closed')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-red-500">{tr('reports.pending')}</th>
                   <th className="text-center py-2 px-2 font-medium text-gray-500">SLA%</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">เฉลี่ย (ชม.)</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.avgHrs')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -317,7 +319,7 @@ export default function Reports() {
                 ))}
               </tbody>
             </table>
-            {agentRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">ไม่มีข้อมูล</p>}
+            {agentRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noData')}</p>}
           </div>
         </Card>
 
@@ -330,13 +332,13 @@ export default function Reports() {
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[160px]">ลูกค้า</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">ทั้งหมด</th>
+                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[160px]">{tr('reports.customer')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.total')}</th>
                   <th className="text-center py-2 px-2 font-medium text-blue-500">Open</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">กำลังทำ</th>
-                  <th className="text-center py-2 px-2 font-medium text-green-600">ปิดแล้ว</th>
+                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.inProgress')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.closed')}</th>
                   <th className="text-center py-2 px-2 font-medium text-red-500">Critical/High</th>
-                  <th className="text-left py-2 pl-3 font-medium text-gray-500">สัดส่วน</th>
+                  <th className="text-left py-2 pl-3 font-medium text-gray-500">{tr('reports.share')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -367,7 +369,7 @@ export default function Reports() {
                 ))}
               </tbody>
             </table>
-            {custRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">ไม่มีข้อมูล</p>}
+            {custRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noData')}</p>}
           </div>
         </Card>
 
@@ -378,7 +380,7 @@ export default function Reports() {
               <CalendarDays size={15} className="text-primary-600" /> การลางานพนักงาน
             </h3>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">ปี:</span>
+              <span className="text-xs text-gray-500">{tr('reports.year')}</span>
               <select value={leaveYear} onChange={e => setLeaveYear(Number(e.target.value))}
                 className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-900">
                 {[leaveYear - 1, leaveYear, leaveYear + 1].map(y => <option key={y} value={y}>{y + 543}</option>)}
@@ -389,15 +391,15 @@ export default function Reports() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
             <div className="bg-green-50 dark:bg-green-900/10 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-green-600">{leaves.filter(l => l.Status === 'Approved').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">อนุมัติแล้ว (วัน)</p>
+              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.approvedDays')}</p>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-amber-600">{leaves.filter(l => l.Status === 'Pending').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">รอพิจารณา</p>
+              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.waiting')}</p>
             </div>
             <div className="bg-red-50 dark:bg-red-900/10 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-red-500">{leaves.filter(l => l.Status === 'Rejected').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">ไม่อนุมัติ</p>
+              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.rejected')}</p>
             </div>
           </div>
 
@@ -422,11 +424,11 @@ export default function Reports() {
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[140px]">พนักงาน</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">คำขอทั้งหมด</th>
-                  <th className="text-center py-2 px-2 font-medium text-green-600">อนุมัติ</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">รอ</th>
-                  <th className="text-center py-2 px-2 font-medium text-red-500">ไม่อนุมัติ</th>
-                  <th className="text-left py-2 pl-3 font-medium text-gray-500">รายละเอียด</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.allRequests')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.approveShort')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.waitShort')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-red-500">{tr('reports.rejected')}</th>
+                  <th className="text-left py-2 pl-3 font-medium text-gray-500">{tr('reports.detail')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -452,7 +454,7 @@ export default function Reports() {
                 ))}
               </tbody>
             </table>
-            {leaveRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">ไม่มีข้อมูลการลาในปีนี้</p>}
+            {leaveRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noLeaveYear')}</p>}
           </div>
         </Card>
 
