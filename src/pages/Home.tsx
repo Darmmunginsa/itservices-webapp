@@ -72,7 +72,7 @@ export default function Home() {
     const promises: Promise<unknown>[] = [
       spGet<Ticket>('HD_Tickets', ticketFilter),
       spGet<Project>('PM_Projects', "Status eq 'Active'", undefined, 'Title asc'),
-      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, 'Id,Title,RefID,FocusType,FocusedBy,FocusedEmail,DueDate,Status,SortOrder', 'SortOrder asc', 200),
+      spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, 'Id,Title,RefID,FocusType,FocusedBy,FocusedEmail,DueDate,Status,SortOrder,PinTarget', 'SortOrder asc', 200),
       spGet<AssetType>('IT_Assets'),
       spGet<ProjectIncident>('PM_Incidents', incidentFilter),
     ]
@@ -94,7 +94,7 @@ export default function Home() {
         openIncidents: incidents.length,
       })
       setMyTickets(tickets)
-      setFocusItems(focus)
+      setFocusItems((focus ?? []).filter(f => f.PinTarget !== 'Navigator'))
       setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)))
       if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))

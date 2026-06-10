@@ -17,6 +17,7 @@ import { ToastContainer } from './components/common/Toast'
 import { CalendarDrawer } from './components/calendar/CalendarDrawer'
 import { DateTaskModal } from './components/common/DateTaskModal'
 import { FloatingFocus } from './components/common/FloatingFocus'
+import { TaskPlanner } from './components/common/TaskPlanner'
 
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -170,6 +171,7 @@ function AppContent() {
         <ToastContainer />
         <DateTaskModal />
         <FloatingFocus />
+        <TaskPlanner />
 
         {/* Floating calendar toggle — above BottomNav on mobile, bottom-right on desktop */}
         {!calendarOpen && (

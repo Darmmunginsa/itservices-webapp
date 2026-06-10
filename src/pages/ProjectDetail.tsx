@@ -740,28 +740,31 @@ export default function ProjectDetail() {
 
   const pinnedSet = new Set(focusItems.map(f => `${f.FocusType}|${f.Title}`))
 
-  // Pin/unpin ตัวโครงการเอง (FocusType=Project)
-  const projectPinned = focusItems.find(f => f.FocusType === 'Project' && String(f.RefID) === String(project?.id))
-  async function togglePinProject() {
+  // Pin/unpin ตัวโครงการเอง — เลือกปลายทางได้ (Focus หรือ Navigator)
+  const pinnedFocus = focusItems.find(f => f.FocusType === 'Project' && String(f.RefID) === String(project?.id) && f.PinTarget !== 'Navigator')
+  const pinnedNav = focusItems.find(f => f.FocusType === 'Project' && String(f.RefID) === String(project?.id) && f.PinTarget === 'Navigator')
+  async function togglePinProject(target: 'Focus' | 'Navigator') {
     if (!user || !project) return
+    const existing = target === 'Navigator' ? pinnedNav : pinnedFocus
     try {
-      if (projectPinned) {
-        await spDelete('HD_Focus', projectPinned.id)
-        setFocusItems(prev => prev.filter(f => f.id !== projectPinned.id))
-        addToast('success', 'เอาโครงการออกจาก Focus แล้ว')
+      if (existing) {
+        await spDelete('HD_Focus', existing.id)
+        setFocusItems(prev => prev.filter(f => f.id !== existing.id))
+        addToast('success', `เอาออกจาก ${target} แล้ว`)
       } else {
         const res = await spCreate('HD_Focus', {
           Title: project.Title, RefID: String(project.id), FocusType: 'Project',
-          FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status,
+          FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status, PinTarget: target,
         })
         setFocusItems(prev => [...prev, {
           id: res.id, Title: project.Title, RefID: String(project.id),
-          FocusType: 'Project', FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status,
+          FocusType: 'Project', FocusedBy: user.displayName, FocusedEmail: user.email, Status: project.Status, PinTarget: target,
         }])
-        addToast('success', 'Pin โครงการไว้ใน Focus แล้ว')
+        addToast('success', target === 'Navigator' ? 'Pin ไว้ที่เมนูซ้าย (Navigator) แล้ว' : 'Pin ไว้ที่ Focus แล้ว')
       }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
+  const [pinMenuOpen, setPinMenuOpen] = useState(false)
 
   const sortedTasks = [...tasks].sort((a, b) => {
     const order: Record<string, number> = { red: 0, orange: 1, yellow: 2, normal: 3, gray: 4 }
@@ -794,10 +797,30 @@ export default function ProjectDetail() {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
-              <button onClick={togglePinProject} title={projectPinned ? 'เอาออกจาก Focus' : 'Pin โครงการไว้ที่ Focus'}
-                className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${projectPinned ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
-                <Pin size={14} className={projectPinned ? 'fill-current' : ''} />
-              </button>
+              <div className="relative">
+                <button onClick={() => setPinMenuOpen(o => !o)} title="Pin โครงการ"
+                  className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${(pinnedFocus || pinnedNav) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
+                  <Pin size={14} className={(pinnedFocus || pinnedNav) ? 'fill-current' : ''} />
+                </button>
+                {pinMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setPinMenuOpen(false)} />
+                    <div className="absolute right-0 mt-1 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-40 py-1 text-sm">
+                      <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">ปักหมุดโครงการนี้ไปที่</p>
+                      <button onClick={() => togglePinProject('Focus')}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <span>📌 Focus (กระดิ่ง/หน้าแรก)</span>
+                        {pinnedFocus && <span className="text-xs text-primary-600">✓</span>}
+                      </button>
+                      <button onClick={() => togglePinProject('Navigator')}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <span>🧭 Navigator (เมนูซ้าย)</span>
+                        {pinnedNav && <span className="text-xs text-primary-600">✓</span>}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               {canEditProject && (
                 <button onClick={openEditProject} title="แก้ไขโครงการ"
                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">

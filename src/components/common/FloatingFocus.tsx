@@ -51,9 +51,9 @@ export function FloatingFocus() {
   function load() {
     if (!user?.email) return
     spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`,
-      'Id,Title,RefID,FocusType,FocusedEmail,FocusedBy,DueDate,Status,SortOrder',
+      'Id,Title,RefID,FocusType,FocusedEmail,FocusedBy,DueDate,Status,SortOrder,PinTarget',
       'SortOrder asc', 50)
-      .then(setItems).catch(() => {})
+      .then(rows => setItems(rows.filter(r => r.PinTarget !== 'Navigator'))).catch(() => {})
   }
 
   useEffect(() => { load() }, [user?.email])

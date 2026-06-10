@@ -1,65 +1,118 @@
-import { NavLink } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Link } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Briefcase,
-  ChevronRight, Bug, Settings, Notebook, X, PieChart
+  ChevronRight, ChevronDown, Bug, Settings, Notebook, X, PieChart
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import { spGet } from '../../services/sharepoint'
+import type { FocusItem } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 
-const navItems = [
-  { to: '/',            icon: Home,          label: 'หน้าหลัก',           roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/submit',      icon: Send,          label: 'แจ้งงาน',             roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/my-work',     icon: ClipboardList, label: 'งานของฉัน',           roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/projects',    icon: FolderOpen,    label: 'โครงการ',             roles: ['Agent','Supervisor','Boss','Admin'] },
-  { to: '/dashboard',   icon: BarChart2,     label: 'Agent Dashboard',     roles: ['Agent','Supervisor','Boss','Admin'] },
-  { to: '/reports',     icon: PieChart,      label: 'รายงาน (Reports)',    roles: ['Agent','Supervisor','Boss','Admin'] },
-  { to: '/assets',      icon: Monitor,       label: 'IT Assets',           roles: ['Agent','Supervisor','Boss','Admin'] },
-  { to: '/vendors',     icon: Briefcase,     label: 'Vendor Contracts',    roles: ['Agent','Supervisor','Boss','Admin'] },
-  { to: '/tracking',    icon: Pin,           label: 'My Tracking',         roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/skills',      icon: BookOpen,      label: 'ทักษะ',               roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/tools',       icon: Notebook,      label: 'Tools & Notes',       roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  { to: '/contracts',   icon: FileText,      label: 'ลูกค้า (Contacts)',   roles: ['Admin'] },
-  { to: '/admin',       icon: Settings,      label: 'Admin',               roles: ['Boss','Admin'] },
-  { to: '/debug',       icon: Bug,           label: 'Diagnostic',          roles: ['Boss','Admin'] },
+type Role = 'EndUser' | 'Agent' | 'Supervisor' | 'Boss' | 'Admin'
+interface NavItem { to: string; icon: typeof Home; label: string; roles: Role[] }
+interface NavGroup { title: string; items: NavItem[] }
+
+const NAV_GROUPS: NavGroup[] = [
+  { title: 'หลัก', items: [
+    { to: '/',         icon: Home,          label: 'หน้าหลัก',     roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/submit',   icon: Send,          label: 'แจ้งงาน',       roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/my-work',  icon: ClipboardList, label: 'งานของฉัน',     roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/tracking', icon: Pin,           label: 'My Tracking',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+  ]},
+  { title: 'งาน & รายงาน', items: [
+    { to: '/projects',  icon: FolderOpen, label: 'โครงการ',         roles: ['Agent','Supervisor','Boss','Admin'] },
+    { to: '/dashboard', icon: BarChart2,  label: 'Agent Dashboard', roles: ['Agent','Supervisor','Boss','Admin'] },
+    { to: '/reports',   icon: PieChart,   label: 'รายงาน (Reports)', roles: ['Agent','Supervisor','Boss','Admin'] },
+  ]},
+  { title: 'ทรัพยากร', items: [
+    { to: '/assets',    icon: Monitor,   label: 'IT Assets',        roles: ['Agent','Supervisor','Boss','Admin'] },
+    { to: '/vendors',   icon: Briefcase, label: 'Vendor Contracts', roles: ['Agent','Supervisor','Boss','Admin'] },
+    { to: '/tools',     icon: Notebook,  label: 'Tools & Notes',    roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/skills',    icon: BookOpen,  label: 'ทักษะ',            roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/contracts', icon: FileText,  label: 'ลูกค้า (Contacts)', roles: ['Admin'] },
+  ]},
+  { title: 'ระบบ', items: [
+    { to: '/admin', icon: Settings, label: 'Admin',      roles: ['Boss','Admin'] },
+    { to: '/debug', icon: Bug,      label: 'Diagnostic', roles: ['Boss','Admin'] },
+  ]},
 ]
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAppStore()
-  const role = user?.role ?? 'EndUser'
-  const visible = navItems.filter(n => n.roles.includes(role))
+  const role = (user?.role ?? 'EndUser') as Role
+
+  // กลุ่มที่ย่อ (เก็บใน localStorage)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem('navCollapsed') || '{}') } catch { return {} }
+  })
+  function toggleGroup(t: string) {
+    setCollapsed(prev => { const next = { ...prev, [t]: !prev[t] }; localStorage.setItem('navCollapsed', JSON.stringify(next)); return next })
+  }
+
+  // โครงการที่ Pin ไว้ที่ Navigator
+  const [pinnedProjects, setPinnedProjects] = useState<FocusItem[]>([])
+  useEffect(() => {
+    if (!user?.email) return
+    spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}' and FocusType eq 'Project'`,
+      'Id,Title,RefID,FocusType,PinTarget', undefined, 100)
+      .then(rows => setPinnedProjects(rows.filter(r => r.PinTarget === 'Navigator')))
+      .catch(() => {})
+  }, [user?.email])
+
+  const linkCls = ({ isActive }: { isActive: boolean }) => cn(
+    'flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm transition-colors group',
+    isActive
+      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium'
+      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+  )
 
   return (
     <div className="flex flex-col h-full">
-      {/* Logo */}
       <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
         <span className="text-primary-600 font-bold text-lg leading-tight">iT Services</span>
         <p className="text-xs text-gray-400 mt-0.5">Helpdesk & PM</p>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-3 overflow-y-auto">
-        {visible.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            onClick={onNavigate}
-            className={({ isActive }) => cn(
-              'flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors group',
-              isActive
-                ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-            )}
-          >
-            <item.icon size={16} />
-            <span className="flex-1">{item.label}</span>
-            <ChevronRight size={12} className="opacity-0 group-hover:opacity-50 transition-opacity" />
-          </NavLink>
-        ))}
+      <nav className="flex-1 py-2 overflow-y-auto">
+        {NAV_GROUPS.map(group => {
+          const items = group.items.filter(n => n.roles.includes(role))
+          if (items.length === 0) return null
+          const isCol = collapsed[group.title]
+          return (
+            <div key={group.title} className="mb-1">
+              <button onClick={() => toggleGroup(group.title)}
+                className="w-full flex items-center justify-between px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <span>{group.title}</span>
+                <ChevronDown size={12} className={`transition-transform ${isCol ? '-rotate-90' : ''}`} />
+              </button>
+              {!isCol && items.map(item => (
+                <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={onNavigate} className={linkCls}>
+                  <item.icon size={16} />
+                  <span className="flex-1">{item.label}</span>
+                  <ChevronRight size={12} className="opacity-0 group-hover:opacity-50 transition-opacity" />
+                </NavLink>
+              ))}
+            </div>
+          )
+        })}
+
+        {/* โครงการที่ Pin (Navigator shortcuts) */}
+        {pinnedProjects.length > 0 && (
+          <div className="mb-1 mt-1 border-t border-gray-100 dark:border-gray-800 pt-2">
+            <p className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">📌 โครงการ</p>
+            {pinnedProjects.map(p => (
+              <Link key={p.id} to={`/projects/${p.RefID}`} onClick={onNavigate}
+                className="flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-primary-600 transition-colors">
+                <FolderOpen size={15} className="flex-shrink-0 text-primary-500" />
+                <span className="flex-1 truncate">{p.Title}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </nav>
 
-      {/* Footer */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-800">
         <div className="px-3 py-2">
           <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{user?.displayName}</p>

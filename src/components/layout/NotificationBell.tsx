@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/useAppStore'
-import { getMyNotifications, markRead, markAllRead, type AppNotification } from '../../services/notificationService'
+import { getMyNotifications, dismissNotification, dismissAll, type AppNotification } from '../../services/notificationService'
 
 const POLL_MS = 30_000
 
@@ -42,7 +42,7 @@ export function NotificationBell() {
       }
       rows.forEach(r => seenIds.current.add(r.id))
       firstLoad.current = false
-      setItems(rows)
+      setItems(rows.filter(r => !r.IsRead))  // โชว์เฉพาะที่ยังไม่อ่าน
     }
 
     tick()
@@ -59,21 +59,20 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [])
 
-  const unread = items.filter(i => !i.IsRead).length
+  const unread = items.length  // โชว์เฉพาะที่ยังไม่อ่าน → จำนวน = ทั้งหมดที่ค้าง
 
+  // เปิด = อ่านแล้ว → ลบทิ้งทันที (ไม่ให้ค้างปนของใหม่)
   async function openItem(n: AppNotification) {
     setOpen(false)
-    if (!n.IsRead) {
-      setItems(prev => prev.map(x => x.id === n.id ? { ...x, IsRead: true } : x))
-      markRead(n.id)
-    }
+    setItems(prev => prev.filter(x => x.id !== n.id))
+    dismissNotification(n.id)
     if (n.LinkPath) navigate(n.LinkPath)
   }
 
   async function readAll() {
-    const ids = items.filter(i => !i.IsRead).map(i => i.id)
-    setItems(prev => prev.map(x => ({ ...x, IsRead: true })))
-    await markAllRead(ids)
+    const ids = items.map(i => i.id)
+    setItems([])
+    await dismissAll(ids)
   }
 
   return (
@@ -94,12 +93,12 @@ export function NotificationBell() {
             <span className="text-sm font-semibold">การแจ้งเตือน</span>
             {unread > 0 && (
               <button onClick={readAll} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                <Check size={12} /> อ่านทั้งหมด
+                <Check size={12} /> เคลียร์ทั้งหมด
               </button>
             )}
           </div>
           {items.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-gray-400">ยังไม่มีการแจ้งเตือน</div>
+            <div className="px-4 py-10 text-center text-sm text-gray-400">ไม่มีการแจ้งเตือนใหม่</div>
           ) : (
             items.map(n => (
               <button key={n.id} onClick={() => openItem(n)}

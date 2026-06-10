@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare } from 'lucide-react'
+import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -9,7 +9,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
-import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spAttachmentUrl } from '../services/sharepoint'
 import { sendMail } from '../services/graph'
 import { createNotification } from '../services/notificationService'
 import { useAppStore } from '../store/useAppStore'
@@ -36,6 +36,7 @@ export default function TicketDetail() {
   const [comment, setComment] = useState('')
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
   const [sending, setSending] = useState(false)
+  const [commentFiles, setCommentFiles] = useState<File[]>([])
   // @mention เพื่อนในทีม
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -59,7 +60,7 @@ export default function TicketDetail() {
     Promise.all([
       spGet<Ticket>('HD_Tickets', `Id eq ${id}`, '*,Author/Title,Author/EMail', undefined, 500, 'Author'),
       // TicketID is a Number field — no quotes in the filter
-      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title', 'CommentDate asc', 500, 'Author'),
+      spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title,AttachmentFiles/FileName,AttachmentFiles/ServerRelativeUrl', 'CommentDate asc', 500, 'Author,AttachmentFiles'),
     ]).then(([t, c]) => {
       setTicket(t[0] ?? null)
       if (t[0]) {
@@ -172,7 +173,7 @@ export default function TicketDetail() {
     if (!user || !comment.trim()) return
     setSending(true)
     try {
-      await spCreate('HD_TicketComments', {
+      const createdComment = await spCreate('HD_TicketComments', {
         Title: comment.slice(0, 100),
         TicketID: Number(id),
         CommentText: comment,
@@ -180,7 +181,14 @@ export default function TicketDetail() {
         CommentDate: new Date().toISOString(),
         ParentID: replyTo?.id ?? 0,
       })
+      // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
+      if (commentFiles.length && createdComment?.id) {
+        for (const f of commentFiles) {
+          try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) } catch { /* ignore */ }
+        }
+      }
       setComment('')
+      setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
@@ -353,6 +361,22 @@ export default function TicketDetail() {
             )}
           </div>
           <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {c.AttachmentFiles.map(f => {
+                const url = spAttachmentUrl(f.ServerRelativeUrl)
+                const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.FileName)
+                return isImg ? (
+                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer" title={f.FileName}>
+                    <img src={url} alt={f.FileName} className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity" />
+                  </a>
+                ) : (
+                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary-600 hover:underline px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {f.FileName}</a>
+                )
+              })}
+            </div>
+          )}
           <div className="flex items-center gap-1 mt-1.5 -ml-1.5">
             <button type="button" disabled={likeBusy === c.id} onClick={() => toggleLike(c)}
               className={`flex items-center gap-1 px-1.5 py-1 rounded-full text-xs transition-colors disabled:opacity-50 ${liked ? 'text-primary-600' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
@@ -516,10 +540,26 @@ export default function TicketDetail() {
                     ยกเลิก
                   </button>
                 )}
+                <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                  <ImagePlus size={14} /> แนบรูป
+                  <input type="file" accept="image/*" multiple className="hidden"
+                    onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+                </label>
                 <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
                   <Send size={14} /> {sending ? 'กำลังส่ง...' : 'Comment'}
                 </Button>
               </div>
+              {commentFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {commentFiles.map((f, i) => (
+                    <div key={i} className="relative">
+                      <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                      <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
+                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </form>
         </Card>

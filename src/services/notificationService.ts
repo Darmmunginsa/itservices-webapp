@@ -10,7 +10,7 @@
  *   LinkPath (Single line)       — route ปลายทาง เช่น /tickets/12
  *   IsRead (Yes/No, default No)
  */
-import { spGet, spCreate, spUpdate } from './sharepoint'
+import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 
 export interface AppNotification {
   id: number
@@ -69,4 +69,12 @@ export async function markRead(id: number): Promise<void> {
 
 export async function markAllRead(ids: number[]): Promise<void> {
   await Promise.all(ids.map(id => markRead(id)))
+}
+
+/** ลบทิ้งเมื่ออ่านแล้ว — กันไม่ให้ค้างปนกับของใหม่ */
+export async function dismissNotification(id: number): Promise<void> {
+  try { await spDelete('HD_Notifications', id) } catch { /* ignore */ }
+}
+export async function dismissAll(ids: number[]): Promise<void> {
+  await Promise.all(ids.map(id => dismissNotification(id)))
 }

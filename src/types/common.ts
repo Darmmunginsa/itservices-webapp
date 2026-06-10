@@ -71,6 +71,7 @@ export interface FocusItem {
   DueDate?: string
   Status: string
   SortOrder?: number
+  PinTarget?: 'Focus' | 'Navigator'   // ปักหมุดไปที่ Focus (default) หรือ Navigator shortcut
 }
 
 export interface TrackingItem {
