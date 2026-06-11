@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Paperclip, Upload } from 'lucide-react'
-import { spGetAttachments, spUploadAttachment, spAttachmentUrl } from '../../services/sharepoint'
+import { Download, Paperclip, Upload, Trash2 } from 'lucide-react'
+import { spGetAttachments, spUploadAttachment, spAttachmentUrl, spDeleteAttachment } from '../../services/sharepoint'
 import { useT } from '../../i18n/useT'
 
 interface Props {
@@ -42,6 +42,16 @@ export function AttachmentSection({ listName, itemId, readOnly = false }: Props)
     }
   }
 
+  async function handleDelete(fileName: string) {
+    if (!window.confirm(`${tr('assets.delete')} "${fileName}"?`)) return
+    try {
+      await spDeleteAttachment(listName, itemId, fileName)
+      setFiles(prev => prev.filter(f => f.FileName !== fileName))
+    } catch {
+      setError(tr('attach.deleteErr'))
+    }
+  }
+
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -74,16 +84,23 @@ export function AttachmentSection({ listName, itemId, readOnly = false }: Props)
       ) : (
         <div className="space-y-1 pl-4">
           {files.map(f => (
-            <a
-              key={f.FileName}
-              href={spAttachmentUrl(f.ServerRelativeUrl)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline"
-            >
-              <Download size={11} className="flex-shrink-0" />
-              <span className="truncate">{f.FileName}</span>
-            </a>
+            <div key={f.FileName} className="flex items-center gap-1.5 group">
+              <a
+                href={spAttachmentUrl(f.ServerRelativeUrl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline min-w-0 flex-1"
+              >
+                <Download size={11} className="flex-shrink-0" />
+                <span className="truncate">{f.FileName}</span>
+              </a>
+              {!readOnly && (
+                <button type="button" onClick={() => handleDelete(f.FileName)} title={tr('assets.delete')}
+                  className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

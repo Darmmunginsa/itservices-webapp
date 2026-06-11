@@ -390,6 +390,7 @@ export const TRANSLATIONS: Record<Lang, Dict> = {
     'attach.uploading': 'กำลังอัปโหลด...',
     'attach.upload': 'อัปโหลด',
     'attach.none': 'ไม่มีไฟล์แนบ',
+    'attach.deleteErr': 'ลบไฟล์ไม่สำเร็จ',
     // GlobalSearch
     'gsearch.placeholder': 'ค้นหาทุกอย่าง — Ticket, โครงการ, Task, Incident, Asset, Note...',
     'gsearch.noResult': 'ไม่พบผลลัพธ์สำหรับ',
@@ -954,6 +955,7 @@ export const TRANSLATIONS: Record<Lang, Dict> = {
     'attach.uploading': 'Uploading...',
     'attach.upload': 'Upload',
     'attach.none': 'No attachments',
+    'attach.deleteErr': 'Failed to delete file',
     // GlobalSearch
     'gsearch.placeholder': 'Search anything — Ticket, project, Task, Incident, Asset, Note...',
     'gsearch.noResult': 'No results for',

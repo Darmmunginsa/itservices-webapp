@@ -140,6 +140,17 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
   }
 }
 
+export async function spDeleteAttachment(listName: string, itemId: number, fileName: string): Promise<void> {
+  const headers = await getHeaders()
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')`
+  const res = await fetch(url, { method: 'POST', headers: { ...headers, 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE' } })
+  if (!res.ok) {
+    let body = ''; try { body = await res.text() } catch { /* ignore */ }
+    console.error(`[SP] DELETE attachment ${listName}(${itemId})/${fileName} → HTTP ${res.status}`, body)
+    throw new Error(`SharePoint attachment delete failed: ${res.status}`)
+  }
+}
+
 export function spAttachmentUrl(serverRelativeUrl: string): string {
   return `${SP_HOST}${serverRelativeUrl}`
 }

@@ -75,7 +75,7 @@ export default function ProjectDetail() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets' | 'comments'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets' | 'comments' | 'files'>('tasks')
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
 
@@ -880,10 +880,10 @@ export default function ProjectDetail() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'notes', 'incidents', 'links', 'assets', 'comments'] as const).map(t => (
+          {(['tasks', 'notes', 'incidents', 'links', 'assets', 'comments', 'files'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : 'Comments'}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : tr('ticket.attachments')}
             </button>
           ))}
         </div>
@@ -1006,6 +1006,13 @@ export default function ProjectDetail() {
             mentionCandidates={agents.map(a => ({ name: a.Title, email: a.EmailText })).filter(c => c.email)}
             notifyEmails={[...new Set([project.CreatedByEmail, ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
           />
+        )}
+
+        {/* ── Files (project-level attachments) ── */}
+        {tab === 'files' && (
+          <Card>
+            <AttachmentSection listName="PM_Projects" itemId={project.id} />
+          </Card>
         )}
 
         {tab === 'assets' && (
