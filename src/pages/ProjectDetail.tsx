@@ -86,6 +86,7 @@ export default function ProjectDetail() {
   const [assetSearch, setAssetSearch] = useState('')
   const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
+  const [portals, setPortals] = useState<{ id: number; Title: string; URL?: string; Username?: string }[]>([])
 
   // Attachment panel toggle key: 'task-42' | 'note-7' | 'incident-3'
   const [attachKey, setAttachKey] = useState<string | null>(null)
@@ -184,6 +185,8 @@ export default function ProjectDetail() {
         for (const r of rows) if (r.MonitorId != null) m[r.MonitorId] = r
         setMonitorStatus(m)
       }).catch(() => {})
+    spGet<{ id: number; Title: string; URL?: string; Username?: string }>('IT_Portals', undefined, 'Id,Title,URL,Username', 'Title asc', 500)
+      .then(setPortals).catch(() => {})
     if (user?.email) {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
         .then(setFocusItems).catch(() => {})
@@ -1113,9 +1116,22 @@ export default function ProjectDetail() {
                   <p className={expiryColor}>{formatDate(expiryDate)}{daysLeft !== null && <span className="ml-1 text-xs">({daysLeft < 0 ? tr('assets.expired') : `${daysLeft}`})</span>}</p>
                 </div>
               )}
+              {viewAsset.PortalID != null && (() => {
+                const por = portals.find(p => p.id === viewAsset.PortalID)
+                if (!por) return null
+                return (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400">🌐 Portal</p>
+                    {por.URL
+                      ? <a href={por.URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all">{por.Title}</a>
+                      : <p>{por.Title}</p>}
+                    {por.Username && <p className="text-gray-400 text-[11px]">{por.Username}</p>}
+                  </div>
+                )
+              })()}
               {viewAsset.PortalURL && (
                 <div className="col-span-2">
-                  <p className="text-xs text-gray-400">🌐 Portal</p>
+                  <p className="text-xs text-gray-400">🌐 Portal URL</p>
                   <a href={viewAsset.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all">{viewAsset.PortalURL}</a>
                 </div>
               )}
