@@ -52,7 +52,7 @@ const EMPTY_FORM = {
   OwnerType: 'Company', AssignedTo: '', AssignedEmail: '',
   PurchaseDate: '', Price: '', WarrantyDate: '',
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
-  PortalURL: '', MonitorUrl: '', VendorID: '',
+  PortalURL: '', MonitorUrl: '', VendorID: '', PortalID: '',
   Note: '',
 }
 
@@ -76,6 +76,7 @@ function assetToForm(a: Asset): AssetForm {
     LicenseType: a.LicenseType || '', PortalURL: a.PortalURL || '',
     MonitorUrl: a.MonitorUrl || '',
     VendorID: a.VendorID != null ? String(a.VendorID) : '',
+    PortalID: a.PortalID != null ? String(a.PortalID) : '',
     Note: a.Note || '',
   }
 }
@@ -96,18 +97,20 @@ function formToPayload(form: AssetForm) {
     PortalURL: form.PortalURL || undefined,
     MonitorUrl: form.MonitorUrl || undefined,
     VendorID: form.VendorID ? Number(form.VendorID) : undefined,
+    PortalID: form.PortalID ? Number(form.PortalID) : undefined,
     Note: form.Note || undefined,
   }
 }
 
 // ─── AssetFormFields — OUTSIDE Assets component to prevent focus-loss bug ─────
-function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors }: {
+function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors, portals }: {
   f: AssetForm
   upd: (k: keyof AssetForm, v: string) => void
   isSoftware: boolean
   onCheckSSL?: (url: string) => void
   sslChecking: number | 'new' | null
   vendors: { id: number; Title: string }[]
+  portals: { id: number; Title: string }[]
 }) {
   const tr = useT()
   const isCert = f.Category === 'Certificate'
@@ -128,6 +131,11 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors 
         <select value={f.VendorID} onChange={e => upd('VendorID', e.target.value)} className={inputClass}>
           <option value="">{tr('assets.noVendor')}</option>
           {vendors.map(v => <option key={v.id} value={v.id}>{v.Title}</option>)}
+        </select></div>
+      <div className="col-span-2"><label className={labelClass}>{tr('portals.linkLabel')}</label>
+        <select value={f.PortalID} onChange={e => upd('PortalID', e.target.value)} className={inputClass}>
+          <option value="">{tr('portals.none')}</option>
+          {portals.map(p => <option key={p.id} value={p.id}>{p.Title}</option>)}
         </select></div>
 
       {!isSoftware && (<>
@@ -226,6 +234,7 @@ export default function Assets() {
   const [assetProjects, setAssetProjects] = useState<Record<number, { id: number; title: string }[]>>({})
   const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
   const [vendors, setVendors] = useState<{ id: number; Title: string; Phone?: string; Email?: string; PortalURL?: string; ContactName?: string }[]>([])
+  const [portals, setPortals] = useState<{ id: number; Title: string; URL?: string; Category?: string; Username?: string }[]>([])
 
   async function checkSSL(url: string, assetId: number | 'new', onDone?: (iso: string) => void, onNote?: (note: string) => void) {
     if (!SSL_WORKER_URL) { addToast('error', 'ยังไม่ได้ตั้งค่า VITE_SSL_WORKER_URL'); return }
@@ -300,6 +309,9 @@ export default function Assets() {
     spGet<{ id: number; Title: string; Phone?: string; Email?: string; PortalURL?: string; ContactName?: string }>(
       'IT_Vendors', undefined, 'Id,Title,Phone,Email,PortalURL,ContactName', 'Title asc', 500)
       .then(setVendors).catch(() => {})
+    spGet<{ id: number; Title: string; URL?: string; Category?: string; Username?: string }>(
+      'IT_Portals', undefined, 'Id,Title,URL,Category,Username', 'Title asc', 500)
+      .then(setPortals).catch(() => {})
   }, [])
 
   const set = (key: keyof AssetForm, val: string) => setForm(f => ({ ...f, [key]: val }))
@@ -505,7 +517,17 @@ export default function Assets() {
                 {a.LicenseType && <div><p className="text-gray-400">License</p><p>{a.LicenseType}</p></div>}
                 {a.Username && canAdmin && <div><p className="text-gray-400">Username</p><p className="font-mono">{a.Username}</p></div>}
                 {a.Spec && <div className="col-span-2 md:col-span-3"><p className="text-gray-400">Spec</p><p>{a.Spec}</p></div>}
-                {a.PortalURL && <div><p className="text-gray-400">🌐 Portal</p><a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a></div>}
+                {a.PortalID != null && (() => {
+                  const por = portals.find(p => p.id === a.PortalID)
+                  if (!por) return null
+                  return <div><p className="text-gray-400">🌐 Portal</p>
+                    {por.URL
+                      ? <a href={por.URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{por.Title}</a>
+                      : <p className="truncate">{por.Title}</p>}
+                    {por.Username && <p className="text-gray-400 text-[11px] truncate">{por.Username}</p>}
+                  </div>
+                })()}
+                {a.PortalURL && <div><p className="text-gray-400">🌐 Portal URL</p><a href={a.PortalURL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{a.PortalURL}</a></div>}
                 {a.MonitorUrl && <div><p className="text-gray-400">📊 Monitor</p><a href={a.MonitorUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate block">{tr('assets.viewStatus')}</a></div>}
                 {a.AccessMethod && (
                   <div className="col-span-2 md:col-span-3">
@@ -596,7 +618,7 @@ export default function Assets() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tr('assets.addItAsset')} size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}
-            sslChecking={sslChecking} vendors={vendors}
+            sslChecking={sslChecking} vendors={vendors} portals={portals}
             onCheckSSL={url => checkSSL(url, 'new', iso => set('ExpiryDate', iso), note => set('Note', note))} />
           <div className="col-span-2">
             <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? tr('common.saving') : tr('assets.saveAsset')}</Button>
@@ -608,7 +630,7 @@ export default function Assets() {
       <Modal open={!!editingAsset} onClose={() => setEditingAsset(null)} title={`${tr('common.edit')}: ${editingAsset?.Title ?? ''}`} size="lg">
         <form onSubmit={updateAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={editForm} upd={setEdit} isSoftware={SOFTWARE_LIKE.has(editForm.Category as never)}
-            sslChecking={sslChecking} vendors={vendors}
+            sslChecking={sslChecking} vendors={vendors} portals={portals}
             onCheckSSL={url => checkSSL(url, editingAsset?.id ?? 'new', iso => setEdit('ExpiryDate', iso), note => setEdit('Note', note))} />
           <div className="col-span-2">
             <Button type="submit" disabled={updating} className="w-full justify-center">{updating ? tr('assets.updating') : tr('common.saveEdit')}</Button>
