@@ -56,7 +56,6 @@ const EMPTY_FORM = {
   Note: '',
 }
 
-const PORTAL_CATEGORIES = new Set(['VM', 'Software', 'Certificate'])
 
 type AssetForm = typeof EMPTY_FORM
 
@@ -114,7 +113,6 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
 }) {
   const tr = useT()
   const isCert = f.Category === 'Certificate'
-  const hasPortal = PORTAL_CATEGORIES.has(f.Category)
   return (
     <>
       <div className="col-span-2"><label className={labelClass}>{tr('assets.name')} *</label>
@@ -143,10 +141,6 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
           <textarea value={f.IPAddress} onChange={e => upd('IPAddress', e.target.value)} onKeyDown={e => e.key === 'Enter' && e.stopPropagation()} rows={2} className={`${inputClass} resize-none`} placeholder={"IP Private: 192.168.x.x\nIP Public: 203.x.x.x"} /></div>
         <div><label className={labelClass}>📊 Monitor URL <span className="text-gray-400 font-normal">(Uptime Kuma)</span></label>
           <input value={f.MonitorUrl} onChange={e => upd('MonitorUrl', e.target.value)} className={inputClass} placeholder="http://monitor.itservices.co.th/dashboard/3" /></div>
-        {hasPortal && (
-          <div><label className={labelClass}>🌐 Portal URL</label>
-            <input value={f.PortalURL} onChange={e => upd('PortalURL', e.target.value)} className={inputClass} placeholder="https://portal.example.com" /></div>
-        )}
         <div><label className={labelClass}>OS</label>
           <OptionSelect category="AssetOS" defaults={['Windows 11', 'Windows 10', 'Windows Server 2022', 'Windows Server 2019', 'Ubuntu', 'macOS', 'อื่นๆ']} value={f.OS} onChange={v => upd('OS', v)} className={inputClass} /></div>
         <div><label className={labelClass}>Serial Number</label>
@@ -166,10 +160,6 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
           <input value={f.AppName} onChange={e => upd('AppName', e.target.value)} className={inputClass} /></div>
         <div><label className={labelClass}>License Type</label>
           <input value={f.LicenseType} onChange={e => upd('LicenseType', e.target.value)} className={inputClass} placeholder="Annual, Perpetual..." /></div>
-        {hasPortal && (
-          <div className="col-span-2"><label className={labelClass}>🌐 Portal URL</label>
-            <input value={f.PortalURL} onChange={e => upd('PortalURL', e.target.value)} className={inputClass} placeholder="https://portal.example.com" /></div>
-        )}
 
         <div className={isCert ? 'col-span-2' : ''}>
           <label className={labelClass}>{isCert ? '🌐 URL / Domain' : tr('assets.accessMethod')}</label>
