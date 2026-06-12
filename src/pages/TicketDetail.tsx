@@ -440,12 +440,21 @@ export default function TicketDetail() {
             <div><p className="text-xs text-gray-400">Due Date</p><p>{formatDate(ticket.DueDate)}</p></div>
           </div>
 
-          {ticket.IsAcknowledged && (
-            <div className="flex items-center gap-2 text-green-600 text-sm mb-4 bg-green-50 dark:bg-green-900/10 rounded-lg px-3 py-2">
-              <CheckCircle2 size={15} />
-              <span>{tr('ticket.ackByAt').replace('{by}', ticket.AcknowledgedBy ?? '').replace('{at}', formatDate(ticket.AcknowledgedDate))}</span>
-            </div>
-          )}
+          {ticket.IsAcknowledged && (() => {
+            const by = ticket.AcknowledgedBy?.trim()
+            const at = ticket.AcknowledgedDate ? formatDate(ticket.AcknowledgedDate) : ''
+            const label = by && at
+              ? tr('ticket.ackByAt').replace('{by}', by).replace('{at}', at)
+              : by
+                ? `${tr('tracking.acked')} — ${by}`
+                : tr('tracking.acked')
+            return (
+              <div className="flex items-center gap-2 text-green-600 text-sm mb-4 bg-green-50 dark:bg-green-900/10 rounded-lg px-3 py-2">
+                <CheckCircle2 size={15} />
+                <span>{label}</span>
+              </div>
+            )
+          })()}
 
           {ticket.Description && (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 mb-3">
