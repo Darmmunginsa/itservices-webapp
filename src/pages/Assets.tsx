@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive, Paperclip } from 'lucide-react'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -9,7 +9,7 @@ import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { AttachmentSection } from '../components/common/AttachmentSection'
-import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Asset } from '../types/asset'
 import { getStatusColor } from '../utils/colorUtils'
@@ -235,6 +235,7 @@ export default function Assets() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState<AssetForm>({ ...EMPTY_FORM })
   const [creating, setCreating] = useState(false)
+  const [createFiles, setCreateFiles] = useState<File[]>([])
   const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
   const [editForm, setEditForm] = useState<AssetForm>({ ...EMPTY_FORM })
@@ -346,9 +347,15 @@ export default function Assets() {
     e.preventDefault()
     setCreating(true)
     try {
-      await spCreate('IT_Assets', formToPayload(form))
+      const created = await spCreate('IT_Assets', formToPayload(form))
+      // อัปโหลดไฟล์แนบที่เลือกไว้ตอนสร้าง (หลังได้ item id)
+      if (createFiles.length && created?.id) {
+        for (const f of createFiles) {
+          try { await spUploadAttachment('IT_Assets', created.id, f) } catch { /* ignore */ }
+        }
+      }
       addToast('success', 'เพิ่ม Asset เรียบร้อย')
-      setShowCreate(false); setForm({ ...EMPTY_FORM }); load()
+      setShowCreate(false); setForm({ ...EMPTY_FORM }); setCreateFiles([]); load()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setCreating(false) }
   }
 
@@ -631,11 +638,29 @@ export default function Assets() {
       </Modal>
 
       {/* Create Modal */}
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title={tr('assets.addItAsset')} size="lg">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreateFiles([]) }} title={tr('assets.addItAsset')} size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}
             sslChecking={sslChecking} vendors={vendors} portals={portals}
             onCheckSSL={url => checkSSL(url, 'new', iso => set('ExpiryDate', iso), note => set('Note', note))} />
+          <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+            <label className={labelClass}>{tr('ticket.attachments')}</label>
+            <label className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline cursor-pointer w-fit">
+              <Paperclip size={13} /> {tr('attach.upload')}
+              <input type="file" multiple className="hidden"
+                onChange={e => { if (e.target.files) setCreateFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+            </label>
+            {createFiles.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {createFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 dark:bg-gray-800 rounded px-2 py-1">
+                    <span className="flex-1 truncate">{f.name}</span>
+                    <button type="button" onClick={() => setCreateFiles(prev => prev.filter((_, x) => x !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="col-span-2">
             <Button type="submit" disabled={creating} className="w-full justify-center">{creating ? tr('common.saving') : tr('assets.saveAsset')}</Button>
           </div>
@@ -648,6 +673,11 @@ export default function Assets() {
           <AssetFormFields f={editForm} upd={setEdit} isSoftware={SOFTWARE_LIKE.has(editForm.Category as never)}
             sslChecking={sslChecking} vendors={vendors} portals={portals}
             onCheckSSL={url => checkSSL(url, editingAsset?.id ?? 'new', iso => setEdit('ExpiryDate', iso), note => setEdit('Note', note))} />
+          {editingAsset && (
+            <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+              <AttachmentSection listName="IT_Assets" itemId={editingAsset.id} />
+            </div>
+          )}
           <div className="col-span-2">
             <Button type="submit" disabled={updating} className="w-full justify-center">{updating ? tr('assets.updating') : tr('common.saveEdit')}</Button>
           </div>
