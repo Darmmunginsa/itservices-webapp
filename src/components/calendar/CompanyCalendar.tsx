@@ -30,7 +30,7 @@ function leaveTypeMatch(stored: string, quotaTitle: string): boolean {
 
 type ModalMode = 'leave' | 'holiday'
 
-const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '' }
+const EMPTY_LEAVE    = { leaveType: 'ลาพักร้อน', reason: '', endDate: '' }
 // ค่าพิเศษ: ผู้ใช้ที่ไม่ต้องขออนุมัติ (เช่น เจ้าของบริษัท) — ลาแล้วอนุมัติอัตโนมัติ
 export const SELF_APPROVE = '__SELF__'
 const EMPTY_HOLIDAY  = { title: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
@@ -125,7 +125,7 @@ export function CompanyCalendar() {
     setHolidayForm({ ...EMPTY_HOLIDAY })
     setShowModal(true)
   }
-  function closeModal() { setShowModal(false); setSelectedDay(null) }
+  function closeModal() { setShowModal(false); setSelectedDay(null); setLeaveForm({ ...EMPTY_LEAVE }) }
 
   /* ── Leave request ── */
   async function submitLeave(e: React.FormEvent) {
@@ -136,33 +136,44 @@ export function CompanyCalendar() {
     const approverEmail = myProfile?.ApproverEmail
     if (!approverEmail) { addToast('error', 'ยังไม่ได้กำหนดผู้อนุมัติของคุณ กรุณาติดต่อ Admin'); return }
     const selfApprove = approverEmail === SELF_APPROVE
+    // ช่วงวันลา: start = วันที่เลือก, end = endDate (ถ้ากรอก) — ลาหลายวันติดกันได้
+    const endDay = leaveForm.endDate ? new Date(leaveForm.endDate) : selectedDay
+    if (endDay < selectedDay) { addToast('error', 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'); return }
+    const days = eachDayOfInterval({ start: selectedDay, end: endDay })
     const b = balance.find(x => x.type === leaveForm.leaveType)
-    if (b && b.remaining <= 0 && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วันแล้ว\nต้องการส่งคำขอต่อหรือไม่?`)) return
+    if (b && b.remaining < days.length && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วัน แต่ขอลา ${days.length} วัน\nต้องการส่งคำขอต่อหรือไม่?`)) return
     setSaving(true)
     try {
       const approver  = agents.find(a => a.EmailText === approverEmail)
-      const dateStr   = format(selectedDay, 'yyyy-MM-dd')
-      await spCreate('HD_LeaveRequests', {
-        Title:          leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
-        LeaveDate:      dateStr,
-        LeaveType:      leaveForm.leaveType,
-        RequestedBy:    user.displayName,
-        RequestedEmail: user.email,
-        // self-approve: ไม่มีผู้อนุมัติ → อนุมัติอัตโนมัติ
-        ApproverEmail:  selfApprove ? user.email : approverEmail,
-        ApproverName:   selfApprove ? 'อนุมัติอัตโนมัติ' : (approver?.Title ?? ''),
-        Status:         selfApprove ? 'Approved' : 'Pending',
-        Note:           leaveForm.reason,
-      })
+      const startStr  = format(selectedDay, 'yyyy-MM-dd')
+      const endStr    = format(endDay, 'yyyy-MM-dd')
+      const rangeLabel = days.length > 1
+        ? `${format(selectedDay, 'd MMM', { locale: th })} – ${format(endDay, 'd MMM yyyy', { locale: th })}`
+        : format(selectedDay, 'd MMM yyyy', { locale: th })
+      // สร้าง 1 record ต่อ 1 วัน (ปฏิทินแสดงผลรายวัน)
+      for (const d of days) {
+        const dateStr = format(d, 'yyyy-MM-dd')
+        await spCreate('HD_LeaveRequests', {
+          Title:          leaveForm.reason || `ลา ${dateStr} - ${user.displayName}`,
+          LeaveDate:      dateStr,
+          LeaveType:      leaveForm.leaveType,
+          RequestedBy:    user.displayName,
+          RequestedEmail: user.email,
+          ApproverEmail:  selfApprove ? user.email : approverEmail,
+          ApproverName:   selfApprove ? 'อนุมัติอัตโนมัติ' : (approver?.Title ?? ''),
+          Status:         selfApprove ? 'Approved' : 'Pending',
+          Note:           leaveForm.reason,
+        })
+      }
       if (selfApprove) {
-        addToast('success', `บันทึกการลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว (ไม่ต้องขออนุมัติ)`)
+        addToast('success', `บันทึกการลา ${rangeLabel} (${days.length} วัน) แล้ว (ไม่ต้องขออนุมัติ)`)
       } else {
-        addToast('success', `ส่งคำขอลา ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว — รอการอนุมัติ`)
-        // ส่ง email แจ้งผู้อนุมัติ
+        addToast('success', `ส่งคำขอลา ${rangeLabel} (${days.length} วัน) แล้ว — รอการอนุมัติ`)
+        // ส่ง email แจ้งผู้อนุมัติ (ฉบับเดียว สรุปช่วงวัน)
         sendTemplateEmail('leave_requested', {
           requester_name: user.displayName,
           leave_type:     leaveForm.leaveType,
-          leave_date:     dateStr,
+          leave_date:     days.length > 1 ? `${startStr} ถึง ${endStr} (${days.length} วัน)` : startStr,
           approver_name:  approver?.Title ?? '',
           link:           window.location.origin,
         }, [approverEmail])
@@ -374,6 +385,13 @@ export function CompanyCalendar() {
                 )}
               </div>
             )}
+            <div>
+              <label className={labelCx}>{tr('cc.leaveEnd')}</label>
+              <input type="date" value={leaveForm.endDate}
+                min={selectedDay ? format(selectedDay, 'yyyy-MM-dd') : undefined}
+                onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))}
+                className={inputCx} />
+            </div>
             <div>
               <label className={labelCx}>{tr('cc.reason')}</label>
               <textarea value={leaveForm.reason}

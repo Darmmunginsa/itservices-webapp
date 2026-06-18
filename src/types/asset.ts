@@ -32,6 +32,10 @@ export interface Asset {
   MonitorUrl?: string   // ลิงก์หน้า monitor ใน Uptime Kuma (อ้างอิงเฉยๆ)
   VendorID?: number     // ผูกกับ Vendor Contract (IT_Vendors)
   PortalID?: number     // ผูกกับ Portal (IT_Portals)
+  // การแจ้งเตือนราย Item (เก็บค่า — ส่งจริงทำภายหลัง)
+  AlertEnabled?: boolean // เปิด/ปิดการแจ้งเตือนหมดประกัน/ใบอนุญาต
+  AlertDays?: number     // แจ้งล่วงหน้ากี่วันก่อนหมด
+  AlertEmail?: string    // อีเมลผู้รับแจ้งเตือน (คั่นด้วย ,)
   // General
   Note?: string
   Created: string

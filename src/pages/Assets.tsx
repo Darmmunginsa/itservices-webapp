@@ -8,6 +8,7 @@ import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { AssetPartsSection } from '../components/common/AssetPartsSection'
+import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Asset } from '../types/asset'
@@ -53,6 +54,7 @@ const EMPTY_FORM = {
   PurchaseDate: '', Price: '', WarrantyDate: '',
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
   PortalURL: '', MonitorUrl: '', VendorID: '', PortalID: '',
+  AlertEnabled: '', AlertDays: '60', AlertEmail: '',
   Note: '',
 }
 
@@ -76,6 +78,9 @@ function assetToForm(a: Asset): AssetForm {
     MonitorUrl: a.MonitorUrl || '',
     VendorID: a.VendorID != null ? String(a.VendorID) : '',
     PortalID: a.PortalID != null ? String(a.PortalID) : '',
+    AlertEnabled: a.AlertEnabled ? '1' : '',
+    AlertDays: a.AlertDays != null ? String(a.AlertDays) : '60',
+    AlertEmail: a.AlertEmail || '',
     Note: a.Note || '',
   }
 }
@@ -97,6 +102,9 @@ function formToPayload(form: AssetForm) {
     MonitorUrl: form.MonitorUrl || undefined,
     VendorID: form.VendorID ? Number(form.VendorID) : undefined,
     PortalID: form.PortalID ? Number(form.PortalID) : undefined,
+    AlertEnabled: form.AlertEnabled === '1',
+    AlertDays: form.AlertDays ? Number(form.AlertDays) : undefined,
+    AlertEmail: form.AlertEmail || undefined,
     Note: form.Note || undefined,
   }
 }
@@ -195,6 +203,20 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
         <div><label className={labelClass}>{tr('assets.warrantyDate')}</label>
           <input type="date" value={f.WarrantyDate} onChange={e => upd('WarrantyDate', e.target.value)} className={inputClass} /></div>
       )}
+      <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3 mt-1">
+        <label className="flex items-center gap-2 cursor-pointer select-none mb-2">
+          <input type="checkbox" checked={f.AlertEnabled === '1'} onChange={e => upd('AlertEnabled', e.target.checked ? '1' : '')} className="rounded accent-primary-600" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">🔔 {tr('assets.alertEnable')}</span>
+        </label>
+        {f.AlertEnabled === '1' && (
+          <div className="grid grid-cols-2 gap-3 pl-6">
+            <div><label className={labelClass}>{tr('assets.alertDays')}</label>
+              <input type="number" min="1" value={f.AlertDays} onChange={e => upd('AlertDays', e.target.value)} className={inputClass} placeholder="60" /></div>
+            <div><label className={labelClass}>{tr('assets.alertEmail')}</label>
+              <input value={f.AlertEmail} onChange={e => upd('AlertEmail', e.target.value)} className={inputClass} placeholder="a@x.com, b@x.com" /></div>
+          </div>
+        )}
+      </div>
       <div className="col-span-2"><label className={labelClass}>{tr('common.note')}</label>
         <textarea value={f.Note} onChange={e => upd('Note', e.target.value)} rows={2} className={inputClass} /></div>
     </>
@@ -582,6 +604,10 @@ export default function Assets() {
 
               <div className="border-t border-gray-100 dark:border-gray-800 pt-3 mb-4">
                 <AssetPartsSection assetId={a.id} canEdit={canAdmin} />
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-3 mb-4">
+                <AttachmentSection listName="IT_Assets" itemId={a.id} readOnly={!canAdmin} />
               </div>
 
               {canAdmin && (

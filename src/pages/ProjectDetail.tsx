@@ -144,11 +144,13 @@ export default function ProjectDetail() {
     .filter(c => c.CustomerEmail)
     .map(c => ({ value: c.CustomerEmail, label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
 
-  const buildCalendarAttendees = () => [
+  const buildCalendarAttendees = () => [...new Set([
+    // คนที่ถูก assign → ใส่เป็น attendee อัตโนมัติ เพื่อให้ Outlook ส่ง invite
+    ...(taskForm.assignedEmail ? [taskForm.assignedEmail] : []),
     ...calInternalEmails,
     ...calCustomerEmails,
     ...taskForm.externalAttendees.split(',').map(s => s.trim()).filter(Boolean),
-  ]
+  ].filter(Boolean))]
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return
