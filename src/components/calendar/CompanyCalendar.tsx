@@ -53,6 +53,10 @@ export function CompanyCalendar() {
   const [leaveForm, setLeaveForm]     = useState({ ...EMPTY_LEAVE })
   const [holidayForm, setHolidayForm] = useState({ ...EMPTY_HOLIDAY })
   const [saving, setSaving]           = useState(false)
+  // โหมดเลือกหลายวันอิสระ (แตะวันเพื่อ toggle)
+  const [pickMode, setPickMode]       = useState(false)
+  const [pickedDays, setPickedDays]   = useState<Set<string>>(new Set())
+  const [leaveMulti, setLeaveMulti]   = useState(false)  // ฟอร์มลาแบบหลายวัน (ไม่โชว์ end date)
 
   const isAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
 
@@ -121,11 +125,22 @@ export function CompanyCalendar() {
   function openModal(day: Date) {
     setSelectedDay(day)
     setModalMode('leave')
+    setLeaveMulti(false)
     setLeaveForm({ ...EMPTY_LEAVE })
     setHolidayForm({ ...EMPTY_HOLIDAY })
     setShowModal(true)
   }
-  function closeModal() { setShowModal(false); setSelectedDay(null); setLeaveForm({ ...EMPTY_LEAVE }) }
+  // เปิดฟอร์มลาแบบหลายวัน (จากวันที่เลือกไว้อิสระ)
+  function openLeaveMulti() {
+    if (pickedDays.size === 0) return
+    const first = [...pickedDays].sort()[0]
+    setSelectedDay(new Date(first))   // ใช้คำนวณผู้อนุมัติ/ปี
+    setModalMode('leave')
+    setLeaveMulti(true)
+    setLeaveForm({ ...EMPTY_LEAVE })
+    setShowModal(true)
+  }
+  function closeModal() { setShowModal(false); setSelectedDay(null); setLeaveForm({ ...EMPTY_LEAVE }); setLeaveMulti(false) }
 
   /* ── Leave request ── */
   async function submitLeave(e: React.FormEvent) {
@@ -136,20 +151,31 @@ export function CompanyCalendar() {
     const approverEmail = myProfile?.ApproverEmail
     if (!approverEmail) { addToast('error', 'ยังไม่ได้กำหนดผู้อนุมัติของคุณ กรุณาติดต่อ Admin'); return }
     const selfApprove = approverEmail === SELF_APPROVE
-    // ช่วงวันลา: start = วันที่เลือก, end = endDate (ถ้ากรอก) — ลาหลายวันติดกันได้
-    const endDay = leaveForm.endDate ? new Date(leaveForm.endDate) : selectedDay
-    if (endDay < selectedDay) { addToast('error', 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'); return }
-    const days = eachDayOfInterval({ start: selectedDay, end: endDay })
+    // รายการวันลา: โหมดเลือกอิสระ = ใช้วันที่ติ๊กไว้ ; โหมดปกติ = ช่วง start..endDate
+    let days: Date[]
+    if (leaveMulti) {
+      days = [...pickedDays].sort().map(s => new Date(s))
+    } else {
+      const endDay = leaveForm.endDate ? new Date(leaveForm.endDate) : selectedDay
+      if (endDay < selectedDay) { addToast('error', 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'); return }
+      days = eachDayOfInterval({ start: selectedDay, end: endDay })
+    }
+    if (days.length === 0) return
     const b = balance.find(x => x.type === leaveForm.leaveType)
     if (b && b.remaining < days.length && !window.confirm(`วันลาประเภท "${leaveForm.leaveType}" คงเหลือ ${b.remaining} วัน แต่ขอลา ${days.length} วัน\nต้องการส่งคำขอต่อหรือไม่?`)) return
     setSaving(true)
     try {
       const approver  = agents.find(a => a.EmailText === approverEmail)
-      const startStr  = format(selectedDay, 'yyyy-MM-dd')
-      const endStr    = format(endDay, 'yyyy-MM-dd')
-      const rangeLabel = days.length > 1
-        ? `${format(selectedDay, 'd MMM', { locale: th })} – ${format(endDay, 'd MMM yyyy', { locale: th })}`
-        : format(selectedDay, 'd MMM yyyy', { locale: th })
+      const firstDay  = days[0]
+      const lastDay   = days[days.length - 1]
+      const startStr  = format(firstDay, 'yyyy-MM-dd')
+      const endStr    = format(lastDay, 'yyyy-MM-dd')
+      const contiguous = !leaveMulti  // เลือกอิสระอาจไม่ติดกัน → ไม่แสดงเป็นช่วง
+      const rangeLabel = days.length === 1
+        ? format(firstDay, 'd MMM yyyy', { locale: th })
+        : contiguous
+          ? `${format(firstDay, 'd MMM', { locale: th })} – ${format(lastDay, 'd MMM yyyy', { locale: th })}`
+          : `${days.length} ${tr('cc.daysUnit')}`
       // สร้าง 1 record ต่อ 1 วัน (ปฏิทินแสดงผลรายวัน)
       for (const d of days) {
         const dateStr = format(d, 'yyyy-MM-dd')
@@ -173,7 +199,9 @@ export function CompanyCalendar() {
         sendTemplateEmail('leave_requested', {
           requester_name: user.displayName,
           leave_type:     leaveForm.leaveType,
-          leave_date:     days.length > 1 ? `${startStr} ถึง ${endStr} (${days.length} วัน)` : startStr,
+          leave_date:     days.length === 1 ? startStr
+                            : leaveMulti ? `${days.map(d => format(d, 'yyyy-MM-dd')).join(', ')} (${days.length} วัน)`
+                            : `${startStr} ถึง ${endStr} (${days.length} วัน)`,
           approver_name:  approver?.Title ?? '',
           link:           window.location.origin,
         }, [approverEmail])
@@ -191,6 +219,8 @@ export function CompanyCalendar() {
         }).catch(() => {})
       }
       closeModal()
+      setPickMode(false); setPickedDays(new Set())   // ออกจากโหมดเลือกหลายวัน
+      loadData()
     } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }
     finally  { setSaving(false) }
   }
@@ -253,6 +283,27 @@ export function CompanyCalendar() {
           <span className="hidden sm:inline ml-auto text-gray-400 italic">{tr('cc.tapDay')}</span>
         </div>
 
+        {/* Toolbar: เลือกหลายวันอิสระ */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex-wrap">
+          <button
+            onClick={() => { setPickMode(m => !m); setPickedDays(new Set()) }}
+            className={cn('text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors',
+              pickMode ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300')}>
+            {pickMode ? tr('cc.pickModeOn') : tr('cc.pickMode')}
+          </button>
+          {pickMode && (
+            <>
+              <span className="text-xs text-gray-500">{tr('cc.pickHint')}</span>
+              {pickedDays.size > 0 && (
+                <button onClick={openLeaveMulti}
+                  className="ml-auto text-xs font-semibold px-3 py-1 rounded-lg bg-primary-600 text-white hover:bg-primary-700">
+                  📅 {tr('cc.requestLeave')} ({pickedDays.size} {tr('cc.daysUnit')})
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Grid */}
         <table className="w-full text-xs table-fixed">
           <thead>
@@ -271,16 +322,25 @@ export function CompanyCalendar() {
                   const isSun             = getDay(day) === 0
                   const isRajakanHoliday  = holiday?.HolidayType === 'ราชการ'
                   const isCompanyHoliday  = holiday?.HolidayType === 'บริษัท'
+                  const dayKey            = format(day, 'yyyy-MM-dd')
+                  const isPicked          = pickMode && pickedDays.has(dayKey)
                   return (
                     <td
                       key={day.toISOString()}
-                      onClick={() => inMonth && openModal(day)}
+                      onClick={() => {
+                        if (!inMonth) return
+                        if (pickMode) {
+                          if (holiday) return  // วันหยุดไม่ต้องลา
+                          setPickedDays(prev => { const n = new Set(prev); n.has(dayKey) ? n.delete(dayKey) : n.add(dayKey); return n })
+                        } else openModal(day)
+                      }}
                       className={cn(
                         'p-1 align-top border border-gray-100 dark:border-gray-600 min-h-[52px] overflow-hidden transition-colors',
                         !inMonth && 'opacity-30',
                         inMonth && !holiday && 'cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20',
                         inMonth && isRajakanHoliday && 'bg-red-50 dark:bg-red-900/30 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/40',
                         inMonth && isCompanyHoliday && 'bg-violet-50 dark:bg-violet-900/30 cursor-pointer hover:bg-violet-100 dark:hover:bg-violet-900/40',
+                        isPicked && 'bg-amber-100 dark:bg-amber-900/40 ring-2 ring-inset ring-amber-400',
                       )}
                     >
                       <div className={cn(
@@ -320,7 +380,7 @@ export function CompanyCalendar() {
       <Modal
         open={showModal}
         onClose={closeModal}
-        title={selectedDay ? format(selectedDay, 'EEEE d MMMM yyyy', { locale: th }) : ''}
+        title={leaveMulti ? `${tr('cc.requestLeave')} · ${pickedDays.size} ${tr('cc.daysUnit')}` : (selectedDay ? format(selectedDay, 'EEEE d MMMM yyyy', { locale: th }) : '')}
         size="sm"
       >
         {/* Mode tabs */}
@@ -385,13 +445,15 @@ export function CompanyCalendar() {
                 )}
               </div>
             )}
-            <div>
-              <label className={labelCx}>{tr('cc.leaveEnd')}</label>
-              <input type="date" value={leaveForm.endDate}
-                min={selectedDay ? format(selectedDay, 'yyyy-MM-dd') : undefined}
-                onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))}
-                className={inputCx} />
-            </div>
+            {!leaveMulti && (
+              <div>
+                <label className={labelCx}>{tr('cc.leaveEnd')}</label>
+                <input type="date" value={leaveForm.endDate}
+                  min={selectedDay ? format(selectedDay, 'yyyy-MM-dd') : undefined}
+                  onChange={e => setLeaveForm(f => ({ ...f, endDate: e.target.value }))}
+                  className={inputCx} />
+              </div>
+            )}
             <div>
               <label className={labelCx}>{tr('cc.reason')}</label>
               <textarea value={leaveForm.reason}
