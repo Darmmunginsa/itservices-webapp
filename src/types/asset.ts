@@ -38,6 +38,7 @@ export interface Asset {
   AlertEmail?: string    // อีเมลผู้รับแจ้งเตือน (คั่นด้วย ,)
   // General
   Note?: string
+  QuotationRef?: string   // อ้างอิงใบเสนอราคาจาก SalePro (เลขที่ QT)
   Created: string
   Modified: string
 }

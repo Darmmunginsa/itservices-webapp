@@ -52,7 +52,7 @@ const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
 const EMPTY_PROJECT_FORM = {
   title: '', company: '', projectGroup: 'Internal', status: 'Planning',
   startDate: '', endDate: '', daysCount: '', progress: '0',
-  comment: '', secureNote: '',
+  comment: '', secureNote: '', quotationRef: '',
 }
 
 /** Resolve a SharePoint Hyperlink field to a plain URL string */
@@ -236,6 +236,7 @@ export default function ProjectDetail() {
       progress: String(project.Progress ?? 0),
       comment: project.Comment ?? '',
       secureNote: canSeeSecure ? (project.SecureNote ?? '') : '',
+      quotationRef: project.QuotationRef ?? '',
     })
     setShowEditProject(true)
   }
@@ -262,6 +263,7 @@ export default function ProjectDetail() {
         StartDate: projectForm.startDate || undefined,
         EndDate: endDate,
         Comment: projectForm.comment || undefined,
+        QuotationRef: projectForm.quotationRef || undefined,
         ...(canSeeSecure ? { SecureNote: projectForm.secureNote || undefined } : {}),
       })
       addToast('success', 'อัปเดตโครงการแล้ว')
@@ -665,7 +667,7 @@ export default function ProjectDetail() {
   function renderIncidentCard(inc: ProjectIncident) {
     const ak = `incident-${inc.id}`
     const isOpen = expandedKey === ak
-    const isResolved = inc.Status === 'Resolved'
+    const isResolved = ['Resolved', 'Closed', 'Done', 'Completed'].includes(inc.Status)
     return (
       <div key={inc.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${isResolved ? 'opacity-60' : ''}`}>
         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
@@ -1198,6 +1200,10 @@ export default function ProjectDetail() {
                 <span className="text-sm font-medium w-8 text-right">{projectForm.progress}</span>
               </div>
             </div>
+          </div>
+          <div>
+            <label className={lc}>อ้างอิงใบเสนอราคา (SalePro) <span className="text-gray-400 font-normal">เลขที่ QT</span></label>
+            <input value={projectForm.quotationRef} onChange={e => pf('quotationRef', e.target.value)} className={`${ic} font-mono`} placeholder="QT-2026-06-001" />
           </div>
           <div>
             <label className={lc}>{tr('pd.startDate')}</label>

@@ -9,7 +9,7 @@ import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { AttachmentSection } from '../components/common/AttachmentSection'
-import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spGetFromSite } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Asset } from '../types/asset'
 import { getStatusColor } from '../utils/colorUtils'
@@ -55,7 +55,7 @@ const EMPTY_FORM = {
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
   PortalURL: '', MonitorUrl: '', VendorID: '', PortalID: '',
   AlertEnabled: '', AlertDays: '60', AlertEmail: '',
-  Note: '',
+  Note: '', QuotationRef: '',
 }
 
 
@@ -82,6 +82,7 @@ function assetToForm(a: Asset): AssetForm {
     AlertDays: a.AlertDays != null ? String(a.AlertDays) : '60',
     AlertEmail: a.AlertEmail || '',
     Note: a.Note || '',
+    QuotationRef: a.QuotationRef || '',
   }
 }
 
@@ -106,6 +107,7 @@ function formToPayload(form: AssetForm) {
     AlertDays: form.AlertDays ? Number(form.AlertDays) : undefined,
     AlertEmail: form.AlertEmail || undefined,
     Note: form.Note || undefined,
+    QuotationRef: form.QuotationRef || undefined,
   }
 }
 
@@ -217,6 +219,8 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
           </div>
         )}
       </div>
+      <div className="col-span-2"><label className={labelClass}>อ้างอิงใบเสนอราคา (SalePro) <span className="text-gray-400 font-normal">เลขที่ QT</span></label>
+        <input value={f.QuotationRef} onChange={e => upd('QuotationRef', e.target.value)} className={`${inputClass} font-mono`} placeholder="QT-2026-06-001" list="quote-ref-list" /></div>
       <div className="col-span-2"><label className={labelClass}>{tr('common.note')}</label>
         <textarea value={f.Note} onChange={e => upd('Note', e.target.value)} rows={2} className={inputClass} /></div>
     </>
@@ -248,6 +252,52 @@ export default function Assets() {
   const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
   const [vendors, setVendors] = useState<{ id: number; Title: string; Phone?: string; Email?: string; PortalURL?: string; ContactName?: string }[]>([])
   const [portals, setPortals] = useState<{ id: number; Title: string; URL?: string; Category?: string; Username?: string }[]>([])
+  const [quoteList, setQuoteList] = useState<{ Title: string; ClientName?: string }[]>([])
+  const [showImport, setShowImport] = useState(false)
+  const [importRows, setImportRows] = useState<{ key: string; name: string; cost: number; vendor: string; category: string; quote: string; purchaseDate: string; sel: boolean }[]>([])
+  const [importing, setImporting] = useState(false)
+  const SALEPRO_SITE = '/sites/SalesQuotation'
+
+  // โหลดรายการใบเสนอราคา (ข้ามไซต์) ไว้ช่วยกรอกอ้างอิง
+  useEffect(() => {
+    spGetFromSite<{ Title: string; ClientName?: string }>(SALEPRO_SITE, 'Quotations', 'Title,ClientName')
+      .then(rows => setQuoteList(rows.filter(r => r.Title))).catch(() => {})
+  }, [])
+
+  // ข้อ 3: ดึงงานจัดซื้อที่เป็น "ทรัพย์สินบริษัท" จาก SalePro (Settings list) มาเตรียมสร้าง Asset
+  async function openImportFromPurchase() {
+    setShowImport(true); setImportRows([]); setImporting(true)
+    try {
+      const rows = await spGetFromSite<{ Title: string; Value: string }>(SALEPRO_SITE, 'Settings', 'Title,Value')
+      const get = (t: string) => rows.find(r => r.Title === t)?.Value
+      let procs: Array<{ id: number | string; quoteTitle?: string; client?: string; vendorName?: string; items?: Array<{ name: string; cost?: number }> }> = []
+      try { procs = JSON.parse(get('Procurements') || '[]') || [] } catch { procs = [] }
+      const out: typeof importRows = []
+      for (const p of procs) {
+        let ext: { assetType?: string; assetCategory?: string; closed?: boolean } = {}
+        try { ext = JSON.parse(get('Purchase_' + p.id) || '{}') || {} } catch { /* ignore */ }
+        if (ext.assetType !== 'asset') continue   // เฉพาะที่ระบุเป็นทรัพย์สินบริษัท
+        ;(p.items || []).forEach((it, i) => {
+          out.push({ key: p.id + '_' + i, name: it.name || '', cost: +(it.cost || 0), vendor: p.vendorName || '', category: ext.assetCategory || 'Other', quote: p.quoteTitle || '', purchaseDate: '', sel: true })
+        })
+      }
+      setImportRows(out)
+    } catch (e) { addToast('error', 'ดึงงานจัดซื้อไม่สำเร็จ: ' + (e as Error).message) }
+    finally { setImporting(false) }
+  }
+  async function doImportAssets() {
+    const picks = importRows.filter(r => r.sel && r.name)
+    if (!picks.length) { addToast('error', 'ยังไม่ได้เลือกรายการ'); return }
+    setImporting(true)
+    try {
+      for (const r of picks) {
+        await spCreate('IT_Assets', { Title: r.name, Category: r.category || 'Other', Status: 'Active', Vendor: r.vendor || undefined, Price: r.cost || undefined, OwnerType: 'Company', QuotationRef: r.quote || undefined, PurchaseDate: r.purchaseDate || undefined })
+      }
+      addToast('success', 'นำเข้า ' + picks.length + ' รายการเป็น Asset แล้ว')
+      setShowImport(false); load()
+    } catch (e) { addToast('error', 'นำเข้าไม่สำเร็จ: ' + (e as Error).message) }
+    finally { setImporting(false) }
+  }
 
   async function checkSSL(url: string, assetId: number | 'new', onDone?: (iso: string) => void, onNote?: (note: string) => void) {
     if (!SSL_WORKER_URL) { addToast('error', 'ยังไม่ได้ตั้งค่า VITE_SSL_WORKER_URL'); return }
@@ -445,6 +495,8 @@ export default function Assets() {
             {STATUSES.map(s => <option key={s}>{s}</option>)}
           </select>
           {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> {tr('assets.addAsset')}</Button>}
+          {canAdmin && <Button size="sm" variant="secondary" onClick={openImportFromPurchase}>📥 นำเข้าจากงานจัดซื้อ</Button>}
+          <datalist id="quote-ref-list">{quoteList.map(q => <option key={q.Title} value={q.Title}>{q.ClientName || ''}</option>)}</datalist>
           <button onClick={() => setShowRetired(s => !s)}
             className={`text-xs underline ml-1 ${showRetired ? 'text-primary-600' : 'text-gray-400'}`}>
             {showRetired ? tr('assets.hideRetired') : tr('assets.showRetired')}
@@ -638,6 +690,32 @@ export default function Assets() {
       </Modal>
 
       {/* Create Modal */}
+      {/* ข้อ 3: นำเข้า Asset จากงานจัดซื้อ (PurchasePro) */}
+      <Modal open={showImport} onClose={() => setShowImport(false)} title="นำเข้า Asset จากงานจัดซื้อ" size="lg">
+        {importing && !importRows.length ? <div className="py-8 text-center text-sm text-gray-400">กำลังดึงข้อมูล...</div> : (
+          importRows.length === 0 ? <div className="py-8 text-center text-sm text-gray-400">ไม่พบงานจัดซื้อที่ระบุเป็น "ทรัพย์สินบริษัท"<br/><span className="text-xs">(ตั้งประเภทการซื้อใน PurchasePro ขั้นที่ 1)</span></div> : (
+          <div className="max-h-[60vh] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="text-xs text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                <th className="p-2"><input type="checkbox" checked={importRows.every(r => r.sel)} onChange={e => setImportRows(rs => rs.map(r => ({ ...r, sel: e.target.checked })))} /></th>
+                <th className="p-2 text-left">รายการ</th><th className="p-2 text-left">หมวด</th><th className="p-2 text-right">ราคาทุน</th><th className="p-2 text-left">Vendor</th><th className="p-2 text-left">ใบเสนอราคา</th></tr></thead>
+              <tbody>{importRows.map((r, i) => (
+                <tr key={r.key} className="border-b border-gray-50 dark:border-gray-800/50">
+                  <td className="p-2 text-center"><input type="checkbox" checked={r.sel} onChange={e => setImportRows(rs => rs.map((x, j) => j === i ? { ...x, sel: e.target.checked } : x))} /></td>
+                  <td className="p-2"><input value={r.name} onChange={e => setImportRows(rs => rs.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} className={inputClass} /></td>
+                  <td className="p-2"><select value={r.category} onChange={e => setImportRows(rs => rs.map((x, j) => j === i ? { ...x, category: e.target.value } : x))} className={inputClass}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></td>
+                  <td className="p-2 text-right font-mono">{r.cost.toLocaleString()}</td>
+                  <td className="p-2">{r.vendor}</td><td className="p-2 font-mono text-xs">{r.quote}</td>
+                </tr>))}</tbody>
+            </table>
+          </div>)
+        )}
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+          <Button variant="secondary" size="sm" onClick={() => setShowImport(false)}>ยกเลิก</Button>
+          <Button size="sm" disabled={importing || !importRows.some(r => r.sel)} onClick={doImportAssets}>สร้าง Asset ที่เลือก</Button>
+        </div>
+      </Modal>
+
       <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreateFiles([]) }} title={tr('assets.addItAsset')} size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}

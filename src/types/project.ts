@@ -14,6 +14,7 @@ export interface Project {
   Description?: string
   Comment?: string
   ProjectGroup?: string
+  QuotationRef?: string   // อ้างอิงใบเสนอราคาจาก SalePro (เลขที่ QT)
   Modified: string
 }
 
