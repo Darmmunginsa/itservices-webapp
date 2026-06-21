@@ -287,7 +287,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             )}
             <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
               <ImagePlus size={14} /> {tr('ticket.attachImage')}
-              <input type="file" accept="image/*" multiple className="hidden"
+              <input type="file" multiple className="hidden"
                 onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
             </label>
             <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
@@ -298,7 +298,9 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             <div className="flex flex-wrap gap-2">
               {commentFiles.map((f, i) => (
                 <div key={i} className="relative">
-                  <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                  {f.type.startsWith('image/')
+                    ? <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                    : <div className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1"><span className="text-lg">📄</span><span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span></div>}
                   <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
                     className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
                 </div>
