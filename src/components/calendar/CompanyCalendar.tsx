@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameDay, isToday, getDay } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameDay, isToday, getDay, addDays } from 'date-fns'
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
 import { sendTemplateEmail } from '../../services/emailService'
@@ -130,11 +130,10 @@ export function CompanyCalendar() {
     setHolidayForm({ ...EMPTY_HOLIDAY })
     setShowModal(true)
   }
-  // เปิดฟอร์มลาแบบหลายวัน (จากวันที่เลือกไว้อิสระ)
-  function openLeaveMulti() {
-    if (pickedDays.size === 0) return
-    const first = [...pickedDays].sort()[0]
-    setSelectedDay(new Date(first))   // ใช้คำนวณผู้อนุมัติ/ปี
+  // เปิดฟอร์มลา + แถบเลือกวัน (date strip เริ่มจากวันนี้)
+  function openLeaveStrip() {
+    setPickedDays(new Set())
+    setSelectedDay(new Date())   // ใช้คำนวณผู้อนุมัติ/ปี
     setModalMode('leave')
     setLeaveMulti(true)
     setLeaveForm({ ...EMPTY_LEAVE })
@@ -283,25 +282,13 @@ export function CompanyCalendar() {
           <span className="hidden sm:inline ml-auto text-gray-400 italic">{tr('cc.tapDay')}</span>
         </div>
 
-        {/* Toolbar: เลือกหลายวันอิสระ */}
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex-wrap">
-          <button
-            onClick={() => { setPickMode(m => !m); setPickedDays(new Set()) }}
-            className={cn('text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors',
-              pickMode ? 'bg-amber-500 text-white border-amber-500' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300')}>
-            {pickMode ? tr('cc.pickModeOn') : tr('cc.pickMode')}
+        {/* Toolbar: ปุ่มขอลา (เปิดแถบเลือกวัน) */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+          <button onClick={openLeaveStrip}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700">
+            📅 {tr('cc.requestLeave')}
           </button>
-          {pickMode && (
-            <>
-              <span className="text-xs text-gray-500">{tr('cc.pickHint')}</span>
-              {pickedDays.size > 0 && (
-                <button onClick={openLeaveMulti}
-                  className="ml-auto text-xs font-semibold px-3 py-1 rounded-lg bg-primary-600 text-white hover:bg-primary-700">
-                  📅 {tr('cc.requestLeave')} ({pickedDays.size} {tr('cc.daysUnit')})
-                </button>
-              )}
-            </>
-          )}
+          <span className="text-xs text-gray-400">{tr('cc.tapDay')}</span>
         </div>
 
         {/* Grid */}
@@ -395,6 +382,31 @@ export function CompanyCalendar() {
         {/* ── Leave Form ── */}
         {modalMode === 'leave' && (
           <form onSubmit={submitLeave} className="space-y-3">
+            {leaveMulti && (
+              <div>
+                <label className={labelCx}>{tr('cc.pickHint')} {pickedDays.size > 0 && <span className="text-primary-600 font-semibold">({pickedDays.size} {tr('cc.daysUnit')})</span>}</label>
+                <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
+                  {Array.from({ length: 90 }).map((_, i) => {
+                    const d = addDays(new Date(), i)
+                    const key = format(d, 'yyyy-MM-dd')
+                    const sel = pickedDays.has(key)
+                    const dow = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'][getDay(d)]
+                    return (
+                      <button key={key} type="button"
+                        onClick={() => setPickedDays(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })}
+                        className={cn('flex-shrink-0 w-12 py-1.5 rounded-lg border text-center transition-colors',
+                          sel ? 'bg-amber-500 text-white border-amber-500'
+                              : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-amber-50 dark:hover:bg-amber-900/20',
+                          isToday(d) && !sel && 'ring-1 ring-blue-400')}>
+                        <div className="text-[10px] opacity-70">{dow}</div>
+                        <div className="text-sm font-bold leading-none">{format(d, 'd')}</div>
+                        <div className="text-[9px] opacity-60">{format(d, 'MMM', { locale: th })}</div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <div>
               <label className={labelCx}>{tr('cc.leaveType')}</label>
               <OptionSelect category="LeaveType" defaults={['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']} value={leaveForm.leaveType} onChange={v => setLeaveForm(f => ({ ...f, leaveType: v }))} className={inputCx} />
@@ -474,7 +486,7 @@ export function CompanyCalendar() {
                     {tr('cc.noApproverSet')}
                   </div>}
             </div>
-            <Button type="submit" disabled={saving || (!myApprover && !mySelfApprove)} className="w-full justify-center">
+            <Button type="submit" disabled={saving || (!myApprover && !mySelfApprove) || (leaveMulti && pickedDays.size === 0)} className="w-full justify-center">
               {saving ? tr('cc.sending') : mySelfApprove ? tr('cc.saveLeave') : tr('cc.submitLeave')}
             </Button>
           </form>
