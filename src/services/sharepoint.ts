@@ -120,10 +120,20 @@ export async function spGetAttachments(
   return (data.value ?? []) as Array<{ FileName: string; ServerRelativeUrl: string }>
 }
 
-// ทำชื่อไฟล์แนบให้ปลอดภัยกับ SharePoint: ตัดอักขระต้องห้าม + กันชื่อซ้ำ (เก็บภาษาไทย/นามสกุลไว้)
-function safeAttachmentName(name: string): string {
+// เดานามสกุลไฟล์จาก MIME type (กรณีไฟล์ต้นทางไม่มีนามสกุล เช่นรูปวางจาก clipboard)
+const MIME_EXT: Record<string, string> = {
+  'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp',
+  'image/bmp': '.bmp', 'image/svg+xml': '.svg', 'application/pdf': '.pdf', 'text/plain': '.txt',
+  'application/zip': '.zip', 'message/rfc822': '.eml',
+  'application/msword': '.doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-excel': '.xls', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+}
+
+// ทำชื่อไฟล์แนบให้ปลอดภัยกับ SharePoint: ตัดอักขระต้องห้าม + กันชื่อซ้ำ + เติมนามสกุลถ้าไม่มี
+function safeAttachmentName(name: string, mime?: string): string {
   const dot = name.lastIndexOf('.')
-  const ext = dot > 0 ? name.slice(dot).replace(/[^.\w]/g, '') : ''
+  let ext = dot > 0 ? name.slice(dot).replace(/[^.\w]/g, '') : ''
+  if (!ext && mime && MIME_EXT[mime]) ext = MIME_EXT[mime]   // เดานามสกุลจาก MIME
   let base = (dot > 0 ? name.slice(0, dot) : name)
   // อักขระต้องห้ามของ SharePoint + single quote (พัง OData) + เว้นวรรค → _
   base = base.replace(/[~"#%&*:<>?/\\{|}'\s]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
@@ -135,7 +145,7 @@ function safeAttachmentName(name: string): string {
 export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<void> {
   if (!_getToken) throw new Error('Token getter not initialized')
   const token = await _getToken()
-  const safeName = safeAttachmentName(file.name)
+  const safeName = safeAttachmentName(file.name, file.type)
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`
   const buffer = await file.arrayBuffer()
   const res = await fetch(url, {
