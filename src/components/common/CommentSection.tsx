@@ -182,7 +182,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {c.AttachmentFiles.map(f => (
-                <AttachmentThumb key={f.FileName} fileName={f.FileName} serverRelativeUrl={f.ServerRelativeUrl} />
+                <AttachmentThumb key={f.FileName} listName={listName} itemId={c.id} fileName={f.FileName} />
               ))}
             </div>
           )}

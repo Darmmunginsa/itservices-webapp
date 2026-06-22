@@ -168,13 +168,13 @@ export function spAttachmentUrl(serverRelativeUrl: string): string {
   return `${SP_HOST}${serverRelativeUrl}`
 }
 
-// ดึงไฟล์แนบด้วย bearer token แล้วคืนเป็น blob URL (img/เปิดดูได้โดยไม่ต้อง login cookie ซ้ำ)
-export async function spAttachmentBlobUrl(serverRelativeUrl: string): Promise<string> {
-  const headers = await getHeaders()
-  // ไฟล์ binary — ไม่ส่ง Content-Type json
-  const res = await fetch(`${SP_HOST}${serverRelativeUrl}`, {
-    headers: { Authorization: (headers as Record<string, string>).Authorization },
-  })
+// ดึงไฟล์แนบด้วย bearer token แล้วคืนเป็น blob URL
+// ใช้ /_api .../$value (เปิด CORS) แทน URL ไฟล์ตรงๆ (โดน CORS บล็อก) → ไม่ต้อง login cookie ซ้ำ
+export async function spAttachmentBlobUrl(listName: string, itemId: number, fileName: string): Promise<string> {
+  if (!_getToken) throw new Error('Token getter not initialized')
+  const token = await _getToken()
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')/$value`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
   if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
   const blob = await res.blob()
   return URL.createObjectURL(blob)
