@@ -103,9 +103,12 @@ function formToPayload(form: AssetForm) {
     MonitorUrl: form.MonitorUrl || undefined,
     VendorID: form.VendorID ? Number(form.VendorID) : undefined,
     PortalID: form.PortalID ? Number(form.PortalID) : undefined,
-    AlertEnabled: form.AlertEnabled === '1',
-    AlertDays: form.AlertDays ? Number(form.AlertDays) : undefined,
-    AlertEmail: form.AlertEmail || undefined,
+    // ส่ง alert fields เฉพาะตอนเปิดใช้ — ถ้ายังไม่ได้สร้าง column ใน SharePoint asset อื่นยัง save ได้
+    ...(form.AlertEnabled === '1' ? {
+      AlertEnabled: true,
+      AlertDays: form.AlertDays ? Number(form.AlertDays) : undefined,
+      AlertEmail: form.AlertEmail || undefined,
+    } : {}),
     Note: form.Note || undefined,
     QuotationRef: form.QuotationRef || undefined,
   }
