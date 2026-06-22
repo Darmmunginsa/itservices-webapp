@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide-react'
-import { spGet, spCreate, spUpdate, spUploadAttachment, spAttachmentUrl } from '../../services/sharepoint'
+import { spGet, spCreate, spUpdate, spUploadAttachment } from '../../services/sharepoint'
+import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
 import { SmartText } from './SmartText'
@@ -180,18 +181,9 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {c.AttachmentFiles.map(f => {
-                const url = spAttachmentUrl(f.ServerRelativeUrl)
-                const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.FileName)
-                return isImg ? (
-                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer" title={f.FileName}>
-                    <img src={url} alt={f.FileName} className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity" />
-                  </a>
-                ) : (
-                  <a key={f.FileName} href={url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-primary-600 hover:underline px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {f.FileName}</a>
-                )
-              })}
+              {c.AttachmentFiles.map(f => (
+                <AttachmentThumb key={f.FileName} fileName={f.FileName} serverRelativeUrl={f.ServerRelativeUrl} />
+              ))}
             </div>
           )}
           <div className="flex items-center gap-1 mt-1.5 -ml-1.5">

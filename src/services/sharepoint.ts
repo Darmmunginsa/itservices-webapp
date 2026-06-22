@@ -154,3 +154,15 @@ export async function spDeleteAttachment(listName: string, itemId: number, fileN
 export function spAttachmentUrl(serverRelativeUrl: string): string {
   return `${SP_HOST}${serverRelativeUrl}`
 }
+
+// ดึงไฟล์แนบด้วย bearer token แล้วคืนเป็น blob URL (img/เปิดดูได้โดยไม่ต้อง login cookie ซ้ำ)
+export async function spAttachmentBlobUrl(serverRelativeUrl: string): Promise<string> {
+  const headers = await getHeaders()
+  // ไฟล์ binary — ไม่ส่ง Content-Type json
+  const res = await fetch(`${SP_HOST}${serverRelativeUrl}`, {
+    headers: { Authorization: (headers as Record<string, string>).Authorization },
+  })
+  if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
+}
