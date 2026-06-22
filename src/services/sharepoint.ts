@@ -120,10 +120,23 @@ export async function spGetAttachments(
   return (data.value ?? []) as Array<{ FileName: string; ServerRelativeUrl: string }>
 }
 
+// ทำชื่อไฟล์แนบให้ปลอดภัยกับ SharePoint: ตัดอักขระต้องห้าม + กันชื่อซ้ำ (เก็บภาษาไทย/นามสกุลไว้)
+function safeAttachmentName(name: string): string {
+  const dot = name.lastIndexOf('.')
+  const ext = dot > 0 ? name.slice(dot).replace(/[^.\w]/g, '') : ''
+  let base = (dot > 0 ? name.slice(0, dot) : name)
+  // อักขระต้องห้ามของ SharePoint + single quote (พัง OData) + เว้นวรรค → _
+  base = base.replace(/[~"#%&*:<>?/\\{|}'\s]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60)
+  if (!base) base = 'file'
+  const uniq = Math.random().toString(36).slice(2, 7)
+  return `${base}_${uniq}${ext}`
+}
+
 export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<void> {
   if (!_getToken) throw new Error('Token getter not initialized')
   const token = await _getToken()
-  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${file.name}')`
+  const safeName = safeAttachmentName(file.name)
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`
   const buffer = await file.arrayBuffer()
   const res = await fetch(url, {
     method: 'POST',
