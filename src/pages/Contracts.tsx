@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, Plus, Trash2, Pencil } from 'lucide-react'
+import { Search, Plus, Trash2, Pencil, Building2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -94,27 +94,48 @@ export default function Contracts() {
           <Button size="sm" onClick={openCreate}><Plus size={14} /> {tr('contacts.addCustomer')}</Button>
         </div>
 
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          {loading
-            ? Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-            : filtered.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">{tr('contacts.noData')}</p>
-              : filtered.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{c.Title}</p>
-                      <div className="mt-0.5 text-xs text-gray-400 space-y-0.5">
-                        <p className="truncate">{c.Company}</p>
-                        <p className="truncate">{c.CustomerEmail}{c.Phone ? ` · ${c.Phone}` : ''}</p>
-                      </div>
-                    </div>
-                    <Badge className={getStatusColor(c.Status)}>{c.Status}</Badge>
-                    <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><Pencil size={14} /></button>
-                    <button onClick={() => del(c.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={14} /></button>
+        {loading ? (
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-sm text-gray-400 py-12">{tr('contacts.noData')}</p>
+        ) : (
+          <div className="space-y-4">
+            {(() => {
+              // จัดกลุ่มตามบริษัท (ไม่ระบุบริษัท → ท้ายสุด)
+              const groups = new Map<string, Contract[]>()
+              for (const c of filtered) {
+                const key = (c.Company || '').trim() || tr('contacts.noCompany')
+                if (!groups.has(key)) groups.set(key, [])
+                groups.get(key)!.push(c)
+              }
+              const noCo = tr('contacts.noCompany')
+              const names = [...groups.keys()].sort((a, b) =>
+                a === noCo ? 1 : b === noCo ? -1 : a.localeCompare(b, 'th'))
+              return names.map(company => (
+                <div key={company} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                    <Building2 size={14} className="text-primary-600 flex-shrink-0" />
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{company}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 ml-auto">{groups.get(company)!.length}</span>
                   </div>
-                ))
-          }
-        </div>
+                  {groups.get(company)!.map(c => (
+                    <div key={c.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{c.Title}</p>
+                        <p className="mt-0.5 text-xs text-gray-400 truncate">{c.CustomerEmail}{c.Phone ? ` · ${c.Phone}` : ''}</p>
+                      </div>
+                      <Badge className={getStatusColor(c.Status)}>{c.Status}</Badge>
+                      <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><Pencil size={14} /></button>
+                      <button onClick={() => del(c.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              ))
+            })()}
+          </div>
+        )}
         <p className="text-xs text-gray-400">{filtered.length} {tr('assets.items')}</p>
       </div>
 
