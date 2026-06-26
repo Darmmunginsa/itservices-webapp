@@ -87,6 +87,7 @@ export default function ProjectDetail() {
   const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [monitorStatus, setMonitorStatus] = useState<Record<number, MonitorStatusRow>>({})
   const [portals, setPortals] = useState<{ id: number; Title: string; URL?: string; Username?: string }[]>([])
+  const [board, setBoard] = useState<{ progress: number; openCards: number; boardUrl?: string } | null>(null)
 
   // Attachment panel toggle key: 'task-42' | 'note-7' | 'incident-3'
   const [attachKey, setAttachKey] = useState<string | null>(null)
@@ -189,6 +190,11 @@ export default function ProjectDetail() {
       }).catch(() => {})
     spGet<{ id: number; Title: string; URL?: string; Username?: string }>('IT_Portals', undefined, 'Id,Title,URL,Username', 'Title asc', 500)
       .then(setPortals).catch(() => {})
+    // สรุปบอร์ดลูกค้า (ClientBoard ผ่าน PM_BoardSummary)
+    spGet<{ ProjectRef?: number; Progress?: number; OpenCards?: number; BoardUrl?: string }>(
+      'PM_BoardSummary', `ProjectRef eq ${id}`, 'Id,ProjectRef,Progress,OpenCards,BoardUrl', undefined, 1)
+      .then(rows => { const r = rows[0]; if (r) setBoard({ progress: r.Progress ?? 0, openCards: r.OpenCards ?? 0, boardUrl: r.BoardUrl }) })
+      .catch(() => {})
     if (user?.email) {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`)
         .then(setFocusItems).catch(() => {})
@@ -851,6 +857,18 @@ export default function ProjectDetail() {
               <div className="bg-primary-600 h-2 rounded-full transition-all" style={{ width: `${project.Progress ?? 0}%` }} />
             </div>
           </div>
+          {board && (
+            <div className="mb-4">
+              {board.boardUrl
+                ? <a href={board.boardUrl} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-colors">
+                    🗂 {tr('board.label')} {board.progress}%{board.openCards > 0 ? ` · ${tr('board.open')} ${board.openCards}` : ''} <ExternalLink size={11} />
+                  </a>
+                : <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                    🗂 {tr('board.label')} {board.progress}%{board.openCards > 0 ? ` · ${tr('board.open')} ${board.openCards}` : ''}
+                  </span>}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div><span className="text-gray-400 text-xs">{tr('pd.start')}</span><p>{formatDate(project.StartDate)}</p></div>
             <div><span className="text-gray-400 text-xs">{tr('pd.end')}</span><p>{formatDate(project.EndDate)}</p></div>

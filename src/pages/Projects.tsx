@@ -42,6 +42,8 @@ export default function Projects() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [creating, setCreating] = useState(false)
+  // สรุปบอร์ด (จาก ClientBoard ผ่าน PM_BoardSummary) — key = ProjectRef
+  const [boards, setBoards] = useState<Record<number, { progress: number; openCards: number; boardUrl?: string }>>({})
 
   function fetchProjects() {
     setLoading(true)
@@ -49,7 +51,16 @@ export default function Projects() {
       .then(setProjects).catch(() => {}).finally(() => setLoading(false))
   }
 
-  useEffect(() => { fetchProjects() }, [])
+  useEffect(() => {
+    fetchProjects()
+    spGet<{ ProjectRef?: number; Progress?: number; OpenCards?: number; BoardUrl?: string }>(
+      'PM_BoardSummary', undefined, 'Id,ProjectRef,Progress,OpenCards,BoardUrl', undefined, 500)
+      .then(rows => {
+        const m: Record<number, { progress: number; openCards: number; boardUrl?: string }> = {}
+        for (const r of rows) if (r.ProjectRef != null) m[r.ProjectRef] = { progress: r.Progress ?? 0, openCards: r.OpenCards ?? 0, boardUrl: r.BoardUrl }
+        setBoards(m)
+      }).catch(() => {})
+  }, [])
 
   const set = (key: keyof typeof EMPTY_FORM, val: string) =>
     setForm(f => ({ ...f, [key]: val }))
@@ -193,6 +204,14 @@ export default function Projects() {
                               <div className="bg-primary-600 h-1.5 rounded-full transition-all" style={{ width: `${p.Progress ?? 0}%` }} />
                             </div>
                           </div>
+                          {boards[p.id] && (
+                            <div className="flex items-center gap-1 mb-2 text-xs">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                🗂 {tr('board.label')} {boards[p.id].progress}%
+                                {boards[p.id].openCards > 0 && <span>· {tr('board.open')} {boards[p.id].openCards}</span>}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex justify-between text-xs text-gray-400">
                             <span>{formatDate(p.StartDate)}</span>
                             <span>{formatDate(p.EndDate)}</span>
