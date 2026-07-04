@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide-react'
-import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem } from '../../services/sharepoint'
+import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem, spGetAttachments } from '../../services/sharepoint'
 import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
@@ -109,6 +109,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           addToast('error', 'แนบไฟล์ไม่สำเร็จ: ไม่พบรหัส comment')
         } else {
           const cid = created.id
+          addToast('info', `กำลังแนบ ${commentFiles.length} ไฟล์…`)
           await spWaitForItem(listName, cid)   // รอ item พร้อมก่อน (กัน race)
           let failed = 0, lastErr = ''
           for (let i = 0; i < commentFiles.length; i++) {
@@ -116,7 +117,12 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             try { await spUploadAttachment(listName, cid, commentFiles[i]) }
             catch (e) { failed++; lastErr = e instanceof Error ? e.message : String(e) }
           }
-          if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ (${lastErr})`)
+          // ตรวจซ้ำผ่าน path เดียวกับ ไฟล์แนบ tab ว่าบันทึกจริงกี่ไฟล์ (รายงานผ่าน toast)
+          let persisted = -1
+          try { persisted = (await spGetAttachments(listName, cid)).length } catch { /* ignore */ }
+          if (failed > 0) addToast('error', `แนบไม่สำเร็จ ${failed} ไฟล์ (${lastErr})`)
+          else if (persisted === 0) addToast('error', `อัปโหลดผ่านแต่บันทึก 0 ไฟล์ — ลิสต์ ${listName} อาจปิดการแนบไฟล์`)
+          else addToast('success', `แนบไฟล์แล้ว ${persisted} ไฟล์`)
         }
       }
       const snippet = comment.slice(0, 200)
