@@ -151,11 +151,14 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           message: snippet, linkPath, eventType: 'comment_added',
         })
       }
+      const hadFiles = commentFiles.length > 0
       setComment('')
       setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
+      // attachment อาจยัง index ไม่ทันตอน $expand → โหลดซ้ำให้รูปโผล่เองไม่ต้อง F5
+      if (hadFiles) { setTimeout(load, 2000); setTimeout(load, 5000) }
       addToast('success', 'บันทึก Comment แล้ว')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSending(false) }
   }
