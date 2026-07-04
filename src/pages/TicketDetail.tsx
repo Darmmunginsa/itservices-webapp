@@ -187,8 +187,9 @@ export default function TicketDetail() {
         } else {
           await spWaitForItem('HD_TicketComments', createdComment.id)   // รอ item พร้อมก่อน (กัน race)
           let failedUploads = 0, lastErr = ''
-          for (const f of commentFiles) {
-            try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) }
+          for (let i = 0; i < commentFiles.length; i++) {
+            if (i > 0) await new Promise(r => setTimeout(r, 400))   // เว้นจังหวะ กัน burst throttle
+            try { await spUploadAttachment('HD_TicketComments', createdComment.id, commentFiles[i]) }
             catch (e) { failedUploads++; lastErr = e instanceof Error ? e.message : String(e) }
           }
           if (failedUploads > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failedUploads} ไฟล์ (${lastErr})`)

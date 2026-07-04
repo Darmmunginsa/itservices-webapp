@@ -110,8 +110,9 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         } else {
           await spWaitForItem(listName, created.id)   // รอ item พร้อมก่อน (กัน race)
           let failed = 0, lastErr = ''
-          for (const f of commentFiles) {
-            try { await spUploadAttachment(listName, created.id, f) }
+          for (let i = 0; i < commentFiles.length; i++) {
+            if (i > 0) await new Promise(r => setTimeout(r, 400))   // เว้นจังหวะ กัน burst throttle
+            try { await spUploadAttachment(listName, created.id, commentFiles[i]) }
             catch (e) { failed++; lastErr = e instanceof Error ? e.message : String(e) }
           }
           if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ (${lastErr})`)
