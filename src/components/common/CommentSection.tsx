@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide-react'
-import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem } from '../../services/sharepoint'
+import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem, spGetAttachments } from '../../services/sharepoint'
 import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
@@ -108,14 +108,27 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         if (!created?.id) {
           addToast('error', 'แนบไฟล์ไม่สำเร็จ: ไม่พบรหัส comment')
         } else {
-          await spWaitForItem(listName, created.id)   // รอ item พร้อมก่อน (กัน race)
+          const cid = created.id
+          console.log('[CMT] comment created id=', cid, 'files=', commentFiles.length)
+          await spWaitForItem(listName, cid)   // รอ item พร้อมก่อน (กัน race)
+          console.log('[CMT] item ready, uploading…')
           let failed = 0, lastErr = ''
           for (let i = 0; i < commentFiles.length; i++) {
             if (i > 0) await new Promise(r => setTimeout(r, 400))   // เว้นจังหวะ กัน burst throttle
-            try { await spUploadAttachment(listName, created.id, commentFiles[i]) }
-            catch (e) { failed++; lastErr = e instanceof Error ? e.message : String(e) }
+            try {
+              await spUploadAttachment(listName, cid, commentFiles[i])
+              console.log('[CMT] uploaded', commentFiles[i].name)
+            } catch (e) {
+              failed++; lastErr = e instanceof Error ? e.message : String(e)
+              console.warn('[CMT] upload FAILED', commentFiles[i].name, lastErr)
+            }
           }
+          // ตรวจซ้ำด้วย path เดียวกับ ไฟล์แนบ tab (เชื่อถือได้) ว่าไฟล์ persist จริงกี่ไฟล์
+          let persisted = -1
+          try { persisted = (await spGetAttachments(listName, cid)).length } catch { /* ignore */ }
+          console.log('[CMT] verify persisted=', persisted)
           if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ (${lastErr})`)
+          else if (persisted === 0) addToast('error', `อัปโหลดผ่านแต่ไฟล์ไม่ถูกบันทึก (persisted 0)`)
         }
       }
       const snippet = comment.slice(0, 200)
