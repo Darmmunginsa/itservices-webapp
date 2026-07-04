@@ -195,11 +195,14 @@ export default function TicketDetail() {
           if (failedUploads > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failedUploads} ไฟล์ (${lastErr})`)
         }
       }
+      const hadFiles = commentFiles.length > 0
       setComment('')
       setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
+      // attachment อาจยัง index ไม่ทันตอน $expand → โหลดซ้ำให้รูปโผล่เองไม่ต้อง F5
+      if (hadFiles) { setTimeout(load, 2000); setTimeout(load, 5000) }
       // แจ้งเตือนภายใน (in-app) — agent + ผู้แจ้ง + สมาชิก ยกเว้นคนที่กดเอง
       if (ticket) {
         const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
