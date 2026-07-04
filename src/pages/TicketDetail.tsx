@@ -169,11 +169,11 @@ export default function TicketDetail() {
 
   async function sendComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!user || !comment.trim()) return
+    if (!user || (!comment.trim() && commentFiles.length === 0)) return
     setSending(true)
     try {
       const createdComment = await spCreate('HD_TicketComments', {
-        Title: comment.slice(0, 100),
+        Title: comment.slice(0, 100) || '(แนบไฟล์)',
         TicketID: Number(id),
         CommentText: comment,
         CommentType: isAgent ? commentType : 'External',
@@ -530,7 +530,7 @@ export default function TicketDetail() {
                 </div>
               )}
               <div className="relative">
-                <textarea ref={commentRef} id="comment-box" required value={comment} onChange={onCommentChange} rows={1}
+                <textarea ref={commentRef} id="comment-box" value={comment} onChange={onCommentChange} rows={1}
                   placeholder={tr('ticket.commentPlaceholder')}
                   onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
                   className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
@@ -563,7 +563,7 @@ export default function TicketDetail() {
                   <input type="file" multiple className="hidden"
                     onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
                 </label>
-                <Button type="submit" size="sm" disabled={sending || !comment.trim()}>
+                <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0)}>
                   <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
                 </Button>
               </div>
