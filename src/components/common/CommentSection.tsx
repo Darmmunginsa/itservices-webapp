@@ -109,7 +109,6 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           addToast('error', 'แนบไฟล์ไม่สำเร็จ: ไม่พบรหัส comment')
         } else {
           const cid = created.id
-          addToast('info', `กำลังแนบ ${commentFiles.length} ไฟล์…`)
           await spWaitForItem(listName, cid)   // รอ item พร้อมก่อน (กัน race)
           let failed = 0, lastErr = ''
           for (let i = 0; i < commentFiles.length; i++) {
@@ -301,8 +300,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               <input type="file" multiple className="hidden"
                 onChange={e => {
                   const picked = e.target.files ? Array.from(e.target.files) : []
-                  if (picked.length) { setCommentFiles(prev => [...prev, ...picked]); addToast('info', `เลือกไฟล์ ${picked.length} รายการ`) }
-                  else addToast('error', 'ไม่ได้เลือกไฟล์')
+                  if (picked.length) setCommentFiles(prev => [...prev, ...picked])
                   e.target.value = ''
                 }} />
             </label>
