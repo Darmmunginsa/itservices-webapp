@@ -146,12 +146,14 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // รอให้ item ที่เพิ่งสร้าง GET ได้จริง (SharePoint read-after-write lag) ก่อนแนบไฟล์
 export async function spWaitForItem(listName: string, id: number, tries = 5): Promise<void> {
-  const headers = await getHeaders()
+  if (!_getToken) return
+  const url = `${SHAREPOINT_API}('${listName}')/items(${id})?$select=Id`
   for (let i = 0; i < tries; i++) {
     try {
-      const res = await fetch(`${SHAREPOINT_API}('${listName}')/items(${id})?$select=Id`, { headers })
+      const token = await _getToken()
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' } })
       if (res.ok) return
-    } catch { /* network hiccup — ลองใหม่ */ }
+    } catch { /* network/CORS hiccup — ลองใหม่ */ }
     await sleep(500 + i * 400)   // 0.5, 0.9, 1.3, 1.7, 2.1s
   }
 }
@@ -161,24 +163,30 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
   const safeName = safeAttachmentName(file.name, file.type)
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`
   const buffer = await file.arrayBuffer()
-  // retry: item ที่เพิ่งสร้างอาจยัง sync ไม่เสร็จ (404 ชั่วคราว) / transient 5xx/429 → ลองซ้ำ
+  // retry: item ที่เพิ่งสร้างอาจยัง sync ไม่เสร็จ (404/CORS ชั่วคราว) / throttle 429/5xx → ลองซ้ำ
   let lastStatus = 0, lastBody = ''
-  for (let attempt = 1; attempt <= 4; attempt++) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
     const token = await _getToken()
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' },
-      body: buffer,
-    })
-    if (res.ok) return
-    lastStatus = res.status
-    try { lastBody = await res.text() } catch { /* ignore */ }
-    // เฉพาะ error ชั่วคราวถึงจะ retry (404 = ยัง sync ไม่เสร็จ, 429/503 = throttle/busy, 500)
-    if (![404, 429, 500, 503].includes(res.status) || attempt === 4) break
-    await sleep(attempt * 600)   // 0.6s, 1.2s, 1.8s
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' },
+        body: buffer,
+      })
+      if (res.ok) return
+      lastStatus = res.status
+      try { lastBody = await res.text() } catch { /* ignore */ }
+      // error ถาวร (403 สิทธิ์, 400 ข้อมูลผิด) ไม่ต้อง retry
+      if (![404, 408, 429, 500, 502, 503].includes(res.status) || attempt === 5) break
+    } catch (e) {
+      // fetch reject = network/CORS (มักเพราะ SP ตอบ error ชั่วคราวโดยไม่มี CORS header) → retry
+      lastStatus = -1; lastBody = e instanceof Error ? e.message : String(e)
+      if (attempt === 5) break
+    }
+    await sleep(attempt * 700)   // 0.7, 1.4, 2.1, 2.8s
   }
-  console.error(`[SP] UPLOAD attachment ${listName}(${itemId}) → HTTP ${lastStatus}`, lastBody)
-  throw new Error(`SharePoint attachment upload failed: ${lastStatus}`)
+  console.error(`[SP] UPLOAD attachment ${listName}(${itemId}) → ${lastStatus}`, lastBody)
+  throw new Error(`SharePoint attachment upload failed: ${lastStatus === -1 ? 'network/CORS' : lastStatus}`)
 }
 
 export async function spDeleteAttachment(listName: string, itemId: number, fileName: string): Promise<void> {
