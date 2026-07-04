@@ -73,6 +73,13 @@ export default function TicketDetail() {
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
+  // โหลดเฉพาะคอมเมนต์ (เบา + isolated เหมือนฝั่ง Project) — ใช้ refresh หลังแนบไฟล์ ไม่พึ่ง fetch ก้อน ticket
+  function loadComments() {
+    if (!id || !/^\d+$/.test(id)) return
+    spGet<TicketComment>('HD_TicketComments', `TicketID eq ${id}`, 'Id,TicketID,CommentText,CommentType,CommentDate,LikedBy,ParentID,Author/Title,AttachmentFiles/FileName,AttachmentFiles/ServerRelativeUrl', 'CommentDate asc', 500, 'Author,AttachmentFiles')
+      .then(setComments).catch(() => {})
+  }
+
   function loadMembers() {
     if (!id) return
     spGet<TicketMember>('HD_TicketMembers', `TicketID eq ${id}`)
@@ -200,9 +207,9 @@ export default function TicketDetail() {
       setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
-      load()
+      loadComments()
       // attachment อาจยัง index ไม่ทันตอน $expand → โหลดซ้ำให้รูปโผล่เองไม่ต้อง F5
-      if (hadFiles) { setTimeout(load, 2000); setTimeout(load, 5000) }
+      if (hadFiles) { setTimeout(loadComments, 2000); setTimeout(loadComments, 5000) }
       // แจ้งเตือนภายใน (in-app) — agent + ผู้แจ้ง + สมาชิก ยกเว้นคนที่กดเอง
       if (ticket) {
         const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
