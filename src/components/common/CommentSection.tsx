@@ -299,7 +299,12 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
               <ImagePlus size={14} /> {tr('ticket.attachImage')}
               <input type="file" multiple className="hidden"
-                onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+                onChange={e => {
+                  const picked = e.target.files ? Array.from(e.target.files) : []
+                  if (picked.length) { setCommentFiles(prev => [...prev, ...picked]); addToast('info', `เลือกไฟล์ ${picked.length} รายการ`) }
+                  else addToast('error', 'ไม่ได้เลือกไฟล์')
+                  e.target.value = ''
+                }} />
             </label>
             <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0)}>
               <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
