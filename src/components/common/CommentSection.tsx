@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide-react'
-import { spGet, spCreate, spUpdate, spUploadAttachment } from '../../services/sharepoint'
+import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem } from '../../services/sharepoint'
 import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
@@ -104,13 +104,19 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         ParentID: replyTo?.id ?? 0,
       })
       // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
-      let failed = 0
-      if (commentFiles.length && created?.id) {
-        for (const f of commentFiles) {
-          try { await spUploadAttachment(listName, created.id, f) } catch { failed++ }
+      if (commentFiles.length) {
+        if (!created?.id) {
+          addToast('error', 'แนบไฟล์ไม่สำเร็จ: ไม่พบรหัส comment')
+        } else {
+          await spWaitForItem(listName, created.id)   // รอ item พร้อมก่อน (กัน race)
+          let failed = 0, lastErr = ''
+          for (const f of commentFiles) {
+            try { await spUploadAttachment(listName, created.id, f) }
+            catch (e) { failed++; lastErr = e instanceof Error ? e.message : String(e) }
+          }
+          if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ (${lastErr})`)
         }
       }
-      if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ — ลองใหม่อีกครั้ง`)
       const snippet = comment.slice(0, 200)
       const mentioned = mentionCandidates.filter(c =>
         comment.includes(`@${c.name}`) && c.email.toLowerCase() !== user.email.toLowerCase())

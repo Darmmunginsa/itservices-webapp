@@ -144,6 +144,18 @@ function safeAttachmentName(name: string, mime?: string): string {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+// รอให้ item ที่เพิ่งสร้าง GET ได้จริง (SharePoint read-after-write lag) ก่อนแนบไฟล์
+export async function spWaitForItem(listName: string, id: number, tries = 5): Promise<void> {
+  const headers = await getHeaders()
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(`${SHAREPOINT_API}('${listName}')/items(${id})?$select=Id`, { headers })
+      if (res.ok) return
+    } catch { /* network hiccup — ลองใหม่ */ }
+    await sleep(500 + i * 400)   // 0.5, 0.9, 1.3, 1.7, 2.1s
+  }
+}
+
 export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<void> {
   if (!_getToken) throw new Error('Token getter not initialized')
   const safeName = safeAttachmentName(file.name, file.type)

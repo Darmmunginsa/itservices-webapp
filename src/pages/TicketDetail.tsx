@@ -9,7 +9,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
-import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
 import { useAppStore } from '../store/useAppStore'
@@ -181,13 +181,19 @@ export default function TicketDetail() {
         ParentID: replyTo?.id ?? 0,
       })
       // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
-      let failedUploads = 0
-      if (commentFiles.length && createdComment?.id) {
-        for (const f of commentFiles) {
-          try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) } catch { failedUploads++ }
+      if (commentFiles.length) {
+        if (!createdComment?.id) {
+          addToast('error', 'แนบไฟล์ไม่สำเร็จ: ไม่พบรหัส comment')
+        } else {
+          await spWaitForItem('HD_TicketComments', createdComment.id)   // รอ item พร้อมก่อน (กัน race)
+          let failedUploads = 0, lastErr = ''
+          for (const f of commentFiles) {
+            try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) }
+            catch (e) { failedUploads++; lastErr = e instanceof Error ? e.message : String(e) }
+          }
+          if (failedUploads > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failedUploads} ไฟล์ (${lastErr})`)
         }
       }
-      if (failedUploads > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failedUploads} ไฟล์ — ลองใหม่อีกครั้ง`)
       setComment('')
       setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
