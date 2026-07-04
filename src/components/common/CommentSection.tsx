@@ -104,11 +104,13 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
         ParentID: replyTo?.id ?? 0,
       })
       // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
+      let failed = 0
       if (commentFiles.length && created?.id) {
         for (const f of commentFiles) {
-          try { await spUploadAttachment(listName, created.id, f) } catch { /* ignore */ }
+          try { await spUploadAttachment(listName, created.id, f) } catch { failed++ }
         }
       }
+      if (failed > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failed} ไฟล์ — ลองใหม่อีกครั้ง`)
       const snippet = comment.slice(0, 200)
       const mentioned = mentionCandidates.filter(c =>
         comment.includes(`@${c.name}`) && c.email.toLowerCase() !== user.email.toLowerCase())

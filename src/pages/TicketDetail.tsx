@@ -181,11 +181,13 @@ export default function TicketDetail() {
         ParentID: replyTo?.id ?? 0,
       })
       // อัปโหลดรูปแนบของ comment นี้ (ผูกกับ comment item โดยตรง)
+      let failedUploads = 0
       if (commentFiles.length && createdComment?.id) {
         for (const f of commentFiles) {
-          try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) } catch { /* ignore */ }
+          try { await spUploadAttachment('HD_TicketComments', createdComment.id, f) } catch { failedUploads++ }
         }
       }
+      if (failedUploads > 0) addToast('error', `แนบไฟล์ไม่สำเร็จ ${failedUploads} ไฟล์ — ลองใหม่อีกครั้ง`)
       setComment('')
       setCommentFiles([])
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
