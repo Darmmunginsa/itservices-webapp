@@ -18,6 +18,15 @@ export interface Project {
   Modified: string
 }
 
+// สมาชิกโปรเจกต์ (PM_ProjectMembers) — invite เพื่อให้สิทธิ์เข้าดู Project Detail
+export interface ProjectMember {
+  id: number
+  Title: string              // ชื่อสมาชิก
+  ProjectID: number          // Number field in SP — no quotes in filter
+  AgentEmail: string
+  AddedBy?: string
+}
+
 export interface Task {
   id: number
   Title: string

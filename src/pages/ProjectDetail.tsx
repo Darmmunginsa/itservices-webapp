@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SmartText } from '../components/common/SmartText'
@@ -15,7 +15,7 @@ import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
 import { CommentSection } from '../components/common/CommentSection'
-import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset } from '../types/project'
+import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset, ProjectMember } from '../types/project'
 import type { AgentProfile, FocusItem } from '../types/common'
 import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
@@ -75,6 +75,11 @@ export default function ProjectDetail() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [loading, setLoading] = useState(true)
+  // ทีมโปรเจกต์ (PM_ProjectMembers)
+  const [members, setMembers] = useState<ProjectMember[]>([])
+  const [membersLoaded, setMembersLoaded] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
   const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'assets' | 'comments' | 'files'>('tasks')
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
@@ -134,6 +139,12 @@ export default function ProjectDetail() {
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
 
+  // ── สิทธิ์เข้าดูโปรเจกต์: Admin/Boss ∪ ผู้สร้าง ∪ สมาชิกที่ถูก invite (PM_ProjectMembers) ──
+  const isOwner = !!project?.CreatedByEmail && project.CreatedByEmail.toLowerCase() === user?.email?.toLowerCase()
+  const isMember = members.some(m => m.AgentEmail?.toLowerCase() === user?.email?.toLowerCase())
+  const canView = isBossAdmin || isOwner || isMember
+  const canManageTeam = isBossAdmin || isOwner || isMember   // สมาชิกทุกคนเชิญเพื่อนร่วมทีมต่อได้
+
   // Agent options for SearchSelect
   const agentOptions = agents.map(a => ({
     value: a.EmailText ?? '',
@@ -174,8 +185,54 @@ export default function ProjectDetail() {
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
+  // โหลดสมาชิกโปรเจกต์ — ลิสต์ยังไม่มี/โหลดพลาด → ถือว่าไม่มีสมาชิก (ผู้สร้าง/Admin ยังเข้าได้)
+  function loadMembers() {
+    if (!id || !/^\d+$/.test(id)) return
+    spGet<ProjectMember>('PM_ProjectMembers', `ProjectID eq ${Number(id)}`)
+      .then(setMembers).catch(() => setMembers([]))
+      .finally(() => setMembersLoaded(true))
+  }
+
+  async function inviteMember() {
+    if (!project || !inviteEmail || !user) return
+    const agent = agents.find(a => a.EmailText === inviteEmail)
+    if (!agent) return
+    if (members.some(m => m.AgentEmail === inviteEmail)) {
+      addToast('info', 'สมาชิกนี้อยู่ในทีมแล้ว'); return
+    }
+    setInviting(true)
+    try {
+      await spCreate('PM_ProjectMembers', {
+        Title: agent.Title,
+        ProjectID: project.id,
+        AgentEmail: inviteEmail,
+        AddedBy: user.displayName,
+      })
+      // แจ้งเตือนในแอป (กระดิ่ง) ให้คนที่ถูกเชิญ
+      createNotification({
+        recipients: [inviteEmail],
+        title: `👥 ${user.displayName} เชิญคุณเข้าโปรเจกต์ ${project.Title}`,
+        message: project.Company ?? '',
+        linkPath: `/projects/${project.id}`,
+        eventType: 'project_invite',
+      })
+      setInviteEmail('')
+      loadMembers()
+      addToast('success', `เพิ่ม ${agent.Title} เข้าทีมแล้ว`)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setInviting(false) }
+  }
+
+  async function removeMember(member: ProjectMember) {
+    try {
+      await spDelete('PM_ProjectMembers', member.id)
+      setMembers(prev => prev.filter(m => m.id !== member.id))
+      addToast('success', `ลบ ${member.Title} ออกจากทีมแล้ว`)
+    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
+  }
+
   useEffect(() => {
     load()
+    loadMembers()
     spGet<AgentProfile>('HD_AgentProfiles', undefined, undefined, 'Title asc')
       .then(setAgents).catch(() => {})
     spGet<Asset>('IT_Assets', undefined, undefined, 'Title asc')
@@ -791,8 +848,26 @@ export default function ProjectDetail() {
   const pf = (key: keyof typeof EMPTY_PROJECT_FORM, val: string) =>
     setProjectForm(f => ({ ...f, [key]: val }))
 
-  if (loading) return <div className="p-6"><Skeleton className="h-64" /></div>
+  if (loading || !membersLoaded) return <div className="p-6"><Skeleton className="h-64" /></div>
   if (!project) return <div className="p-6 text-gray-400">{tr('pd.notFound')}</div>
+
+  // ── ไม่ใช่ Admin/Boss/ผู้สร้าง/สมาชิก → มองเห็นแค่ชื่อ + วิธีขอสิทธิ์ ──
+  if (!canView) {
+    return (
+      <div>
+        <Header title={project.Title} backTo="/projects" backLabel={tr('pd.backLabel')} />
+        <div className="p-6 flex justify-center">
+          <Card className="max-w-md w-full text-center py-10">
+            <Lock size={36} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-1">{project.Title}</h2>
+            {project.Company && <p className="text-sm text-gray-500 mb-4">{project.Company}</p>}
+            <p className="text-sm text-gray-500">โปรเจกต์นี้เปิดให้เฉพาะสมาชิกที่ถูกเชิญ</p>
+            <p className="text-xs text-gray-400 mt-2">ติดต่อผู้สร้างโปรเจกต์เพื่อขอเข้าร่วมทีม</p>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   const projectEndDate = projectForm.daysCount && Number(projectForm.daysCount) > 0 && projectForm.startDate
     ? (() => { const d = new Date(projectForm.startDate); d.setDate(d.getDate() + Number(projectForm.daysCount)); return d.toISOString().slice(0, 10) })()
@@ -901,6 +976,49 @@ export default function ProjectDetail() {
             }
           </div>
           </>)}
+        </Card>
+
+        {/* ── Team Members (สิทธิ์เข้าดูโปรเจกต์) ── */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <UserPlus size={15} className="text-primary-600" /> {tr('ticket.team')}
+          </h3>
+          {members.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {members.map(m => (
+                <div key={m.id} className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 rounded-full pl-1 pr-2 py-1">
+                  <div className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {m.Title.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.Title}</span>
+                  {canManageTeam && (
+                    <button onClick={() => removeMember(m)}
+                      className="text-gray-400 hover:text-red-500 transition-colors ml-0.5">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {canManageTeam && (
+            <div className="flex gap-2">
+              <SearchSelect
+                options={agentOptions.filter(o => !members.some(m => m.AgentEmail === o.value) && o.value !== project.CreatedByEmail)}
+                value={inviteEmail}
+                onChange={setInviteEmail}
+                placeholder={tr('ticket.searchAgentAdd')}
+                emptyLabel={tr('ticket.selectAgent')}
+                className="flex-1"
+              />
+              <Button size="sm" onClick={inviteMember} disabled={inviting || !inviteEmail}>
+                {inviting ? '...' : '+ Invite'}
+              </Button>
+            </div>
+          )}
+          {members.length === 0 && !canManageTeam && (
+            <p className="text-sm text-gray-400">{tr('ticket.noMembers')}</p>
+          )}
         </Card>
 
         {/* Tabs */}
@@ -1029,7 +1147,7 @@ export default function ProjectDetail() {
             titleLabel={project.Title}
             linkPath={`/projects/${id}?tab=comments`}
             mentionCandidates={agents.map(a => ({ name: a.Title, email: a.EmailText })).filter(c => c.email)}
-            notifyEmails={[...new Set([project.CreatedByEmail, ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
+            notifyEmails={[...new Set([project.CreatedByEmail, ...members.map(m => m.AgentEmail), ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
           />
         )}
 
