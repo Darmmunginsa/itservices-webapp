@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon } from 'lucide-react'
+import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon, Users } from 'lucide-react'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { FloatingVideo } from '../components/common/FloatingVideo'
 
@@ -50,6 +50,8 @@ export default function Home() {
   const [dragOverId, setDragOverId] = useState<number | null>(null)
   const [myTickets, setMyTickets] = useState<Ticket[]>([])
   const [videoEmbed, setVideoEmbed] = useState('')
+  // โปรเจกต์ที่ถูกเชิญเข้าร่วมทีม (PM_ProjectMembers) — ช่องทางลัดเข้าไปทำงาน
+  const [invitedProjects, setInvitedProjects] = useState<Project[]>([])
 
   // Load Home video URL from HD_Options (Category = HomeVideo)
   useEffect(() => {
@@ -85,6 +87,16 @@ export default function Home() {
           undefined, 'Created asc')
       )
     }
+
+    // โปรเจกต์ที่ฉันถูกเชิญ → ดึงชื่อโปรเจกต์มาแสดงเป็นทางลัด (ลิสต์ยังไม่มี/พลาด → เงียบ)
+    spGet<{ id: number; ProjectID: number }>('PM_ProjectMembers', `AgentEmail eq '${user.email}'`, 'Id,ProjectID', undefined, 100)
+      .then(rows => {
+        const ids = [...new Set(rows.map(r => r.ProjectID).filter(Boolean))].slice(0, 20)
+        if (!ids.length) { setInvitedProjects([]); return }
+        const filter = ids.map(i => `Id eq ${i}`).join(' or ')
+        return spGet<Project>('PM_Projects', filter, 'Id,Title,Company,Status', 'Title asc', 50)
+          .then(setInvitedProjects)
+      }).catch(() => {})
 
     Promise.all(promises).then(results => {
       const [tickets, projects, focus, assets, incidents, leaves] = results as [
@@ -214,6 +226,27 @@ export default function Home() {
             ))
           }
         </div>
+
+        {/* ── โปรเจกต์ที่ฉันร่วมทีม (ถูก Invite) ── */}
+        {invitedProjects.length > 0 && (
+          <Card>
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+              <Users size={15} className="text-primary-600" /> {t('home.invitedProjects')}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {invitedProjects.map(p => (
+                <Link key={p.id} to={`/projects/${p.id}`}
+                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
+                  <span className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                    {p.Title.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="text-xs font-medium text-primary-700 dark:text-primary-300">{p.Title}</span>
+                  {p.Status && <Badge className={`${getStatusColor(p.Status)} !text-[10px] !px-1.5 !py-0`}>{p.Status}</Badge>}
+                </Link>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Leave Approval — Boss/Admin only */}
         {pendingLeaves.length > 0 && (
