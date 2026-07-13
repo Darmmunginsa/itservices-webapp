@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Calendar, ChevronDown } from 'lucide-react'
 import { OutlookCalendar } from './OutlookCalendar'
 import { CompanyCalendar } from './CompanyCalendar'
+import { AssetCalendar } from './AssetCalendar'
 import { useT } from '../../i18n/useT'
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 
 export function CalendarDrawer({ open, onClose }: Props) {
   const tr = useT()
-  const [calTab, setCalTab] = useState<'outlook' | 'company'>('outlook')
+  const [calTab, setCalTab] = useState<'outlook' | 'company' | 'asset'>('outlook')
 
   return (
     <>
@@ -67,11 +68,21 @@ export function CalendarDrawer({ open, onClose }: Props) {
             >
               {tr('cal.company')}
             </button>
+            <button
+              onClick={() => setCalTab('asset')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                calTab === 'asset'
+                  ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100'
+                  : 'text-gray-500'
+              }`}
+            >
+              🖥 Asset
+            </button>
           </div>
 
           {/* Scrollable calendar content */}
           <div className="flex-1 overflow-y-auto px-4 pb-safe pb-6">
-            {calTab === 'outlook' ? <OutlookCalendar /> : <CompanyCalendar />}
+            {calTab === 'outlook' ? <OutlookCalendar /> : calTab === 'company' ? <CompanyCalendar /> : <AssetCalendar />}
           </div>
         </div>
       </div>
