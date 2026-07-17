@@ -84,6 +84,8 @@ export default function MonitorWall() {
     e.preventDefault()
     const name = form.name.trim(), url = form.url.trim()
     if (!name || !/^https?:\/\//.test(url)) { addToast('error', tr('mon.badUrl')); return }
+    // หน้า SharePoint/M365 ต้อง login Microsoft ซึ่งทำใน iframe ไม่ได้ → จะวน redirect จนแอปช้า
+    if (/sharepoint\.com|microsoftonline\.com|office\.com/i.test(url)) { addToast('error', tr('mon.msUrl')); return }
     setSaving(true)
     try {
       await spCreate('HD_Options', { Title: `${name}|${url}`, Category: 'MonitorWall', SortOrder: tiles.length + 1 })
@@ -201,7 +203,7 @@ export default function MonitorWall() {
                   </div>
                   {/* iframe + zoom (scale แล้วขยาย canvas ชดเชย เพื่อให้เต็มพื้นที่ tile) */}
                   <div className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
-                    <iframe key={reloadKey[t.id] ?? 0} src={t.url} title={t.name}
+                    <iframe key={reloadKey[t.id] ?? 0} src={t.url} title={t.name} loading="lazy"
                       style={{
                         width: `${100 / z}%`, height: `${100 / z}%`,
                         transform: `scale(${z})`, transformOrigin: 'top left',

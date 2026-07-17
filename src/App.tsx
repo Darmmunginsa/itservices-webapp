@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Calendar } from 'lucide-react'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
@@ -31,7 +31,8 @@ import Reports from './pages/Reports'
 import Assets from './pages/Assets'
 import Vendors from './pages/Vendors'
 import Portals from './pages/Portals'
-import MonitorWall from './pages/MonitorWall'
+// หน้า Monitor Wall หนัก (react-grid-layout + iframe) → code-split ไม่ให้ถ่วง bundle หลัก
+const MonitorWall = lazy(() => import('./pages/MonitorWall'))
 import Tracking from './pages/Tracking'
 import Skills from './pages/Skills'
 import Contracts from './pages/Contracts'
@@ -161,7 +162,9 @@ function AppContent() {
             <Route path="/assets" element={<Assets />} />
             <Route path="/vendors" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Vendors /> : <Navigate to="/" />} />
             <Route path="/portals" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Portals /> : <Navigate to="/" />} />
-            <Route path="/monitor" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <MonitorWall /> : <Navigate to="/" />} />
+            <Route path="/monitor" element={['Agent','Supervisor','Boss','Admin'].includes(user.role)
+              ? <Suspense fallback={<div className="p-6 text-sm text-gray-400">Loading…</div>}><MonitorWall /></Suspense>
+              : <Navigate to="/" />} />
             <Route path="/tracking" element={<Tracking />} />
             <Route path="/skills" element={<Skills />} />
             <Route path="/contracts" element={user.role === 'Admin' ? <Contracts /> : <Navigate to="/" />} />
