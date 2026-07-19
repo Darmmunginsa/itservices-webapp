@@ -3,7 +3,7 @@ import { NavLink, Link } from 'react-router-dom'
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2,
   Monitor, BookOpen, FileText, Pin, Briefcase, Globe,
-  ChevronRight, ChevronDown, Bug, Settings, Notebook, X, PieChart, Activity
+  ChevronRight, ChevronDown, Bug, Settings, Notebook, X, PieChart
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useT } from '../../i18n/useT'
@@ -31,7 +31,6 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/assets',    icon: Monitor,   key: 'nav.assets',   roles: ['Agent','Supervisor','Boss','Admin'] },
     { to: '/vendors',   icon: Briefcase, key: 'nav.vendors',  roles: ['Agent','Supervisor','Boss','Admin'] },
     { to: '/portals',   icon: Globe,     key: 'nav.portals',  roles: ['Agent','Supervisor','Boss','Admin'] },
-    { to: '/monitor',   icon: Activity,  key: 'nav.monitor',  roles: ['Agent','Supervisor','Boss','Admin'] },
     { to: '/tools',     icon: Notebook,  key: 'nav.tools',    roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
     { to: '/skills',    icon: BookOpen,  key: 'nav.skills',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
     { to: '/contracts', icon: FileText,  key: 'nav.contacts', roles: ['Admin'] },

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SmartText } from '../components/common/SmartText'
@@ -23,6 +23,9 @@ import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
 import { useT } from '../i18n/useT'
+
+// จอ Monitor ประจำโปรเจกต์หนัก (react-grid-layout + iframe) → lazy ไม่ให้ถ่วง bundle หลัก
+const ProjectMonitor = lazy(() => import('../components/monitor/ProjectMonitor'))
 
 const LINK_TYPES = ['GitHub', 'Docs', 'Drive', 'Jira', 'Confluence', 'Dashboard', 'Other']
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
@@ -81,9 +84,6 @@ export default function ProjectDetail() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
-  // แท็บ Monitor: reload/zoom ต่อ tile (dashboard มาจาก PM_Links LinkType='Dashboard')
-  const [monReload, setMonReload] = useState<Record<number, number>>({})
-  const [monZoom, setMonZoom] = useState<Record<number, number>>({})
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
 
@@ -1151,38 +1151,17 @@ export default function ProjectDetail() {
                   <Plus size={14} /> {tr('pd.addDashboard')}
                 </Button>
                 <p className="text-xs text-gray-400">{tr('mon.vpnHint')}</p>
+                <p className="text-xs text-gray-400 hidden md:block">· {tr('mon.dragHint')}</p>
               </div>
               {dashes.length === 0
                 ? <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noDashboard')}</p>
-                : <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    {dashes.map(link => {
-                      const url = resolveUrl(link.URL)
-                      const z = monZoom[link.id] ?? 1
-                      const setZ = (delta: number) => setMonZoom(p => ({ ...p, [link.id]: Math.min(2, Math.max(0.4, Math.round(((p[link.id] ?? 1) + delta) * 100) / 100)) }))
-                      return (
-                        <div key={link.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden flex flex-col">
-                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-gray-100 dark:border-gray-800">
-                            <Monitor size={13} className="text-emerald-500 flex-shrink-0" />
-                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate flex-1">{link.Title || url}</span>
-                            <span className="text-[10px] text-gray-400 w-9 text-center tabular-nums">{Math.round(z * 100)}%</span>
-                            <button onClick={() => setZ(-0.15)} title={tr('mon.zoomOut')} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><ZoomOut size={13} /></button>
-                            <button onClick={() => setZ(0.15)} title={tr('mon.zoomIn')} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><ZoomIn size={13} /></button>
-                            <button onClick={() => setMonReload(k => ({ ...k, [link.id]: (k[link.id] ?? 0) + 1 }))} title={tr('mon.refresh')}
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><RefreshCw size={13} /></button>
-                            <a href={url} target="_blank" rel="noopener noreferrer" title={tr('mon.openTab')}
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><ExternalLink size={13} /></a>
-                            <button onClick={() => openEditLink(link)} title={tr('common.edit')}
-                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><Edit2 size={13} /></button>
-                          </div>
-                          <div className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950" style={{ minHeight: 420 }}>
-                            <iframe key={monReload[link.id] ?? 0} src={url} title={link.Title} loading="lazy"
-                              style={{ width: `${100 / z}%`, height: `${100 / z}%`, minHeight: 420 / z, transform: `scale(${z})`, transformOrigin: 'top left', border: 0 }}
-                              sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                : <Suspense fallback={<p className="text-sm text-gray-400">{tr('comp.loading')}</p>}>
+                    <ProjectMonitor
+                      projectId={project.id}
+                      tiles={dashes.map(l => ({ id: l.id, name: l.Title || resolveUrl(l.URL), url: resolveUrl(l.URL) })).filter(t => t.url)}
+                      onEdit={(lid) => { const lnk = links.find(x => x.id === lid); if (lnk) openEditLink(lnk) }}
+                    />
+                  </Suspense>
               }
             </div>
           )
