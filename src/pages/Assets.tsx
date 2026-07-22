@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive, Paperclip } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive, Paperclip, Download } from 'lucide-react'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -457,6 +457,47 @@ export default function Assets() {
 
   const canAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
 
+  // export asset ที่ผ่าน filter ปัจจุบัน → .xlsx (โหลด lib แบบ dynamic ไม่ถ่วง bundle หลัก)
+  // หมายเหตุ: ไม่ export รหัสผ่าน (Password) เพื่อความปลอดภัย — ไม่กระจายลง Excel ที่ส่งต่อกันได้
+  const [exporting, setExporting] = useState(false)
+  async function exportExcel() {
+    if (filtered.length === 0) { addToast('info', tr('assets.exportEmpty')); return }
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const rows = filtered.map(a => ({
+        'รหัส': a.AssetCode ?? '',
+        'ชื่อ': a.Title,
+        'หมวดหมู่': a.Category ?? '',
+        'สถานะ': a.Status ?? '',
+        'OS': a.OS ?? '',
+        'IP': a.IPAddress ?? '',
+        'Serial': a.SerialNumber ?? '',
+        'Spec': a.Spec ?? '',
+        'Vendor': a.Vendor ?? '',
+        'ผู้ถือครอง': a.AssignedTo ?? '',
+        'อีเมลผู้ถือครอง': a.AssignedEmail ?? '',
+        'วันที่ซื้อ': a.PurchaseDate ? a.PurchaseDate.slice(0, 10) : '',
+        'ราคา': a.Price ?? '',
+        'หมดประกัน': a.WarrantyDate ? a.WarrantyDate.slice(0, 10) : '',
+        'หมดอายุ (License/Cert)': a.ExpiryDate ? a.ExpiryDate.slice(0, 10) : '',
+        'Application': a.AppName ?? '',
+        'License Type': a.LicenseType ?? '',
+        'อ้างอิงใบเสนอราคา': a.QuotationRef ?? '',
+        'หมายเหตุ': a.Note ?? '',
+      }))
+      const ws = XLSX.utils.json_to_sheet(rows)
+      // ตั้งความกว้างคอลัมน์คร่าวๆ ให้อ่านง่าย
+      ws['!cols'] = Object.keys(rows[0]).map(k => ({ wch: Math.min(40, Math.max(10, k.length + 4)) }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Assets')
+      const today = new Date().toISOString().slice(0, 10)
+      const tag = [categoryFilter, statusFilter].filter(Boolean).join('-')
+      XLSX.writeFile(wb, `assets${tag ? '-' + tag : ''}-${today}.xlsx`)
+      addToast('success', `${tr('assets.exported')} ${filtered.length}`)
+    } catch { addToast('error', tr('common.error')) } finally { setExporting(false) }
+  }
+
   // จัดกลุ่มเป็นคอลัมน์ Kanban ตาม Category (เรียงตาม CATEGORIES ก่อน แล้วต่อด้วยหมวดอื่นที่พบ)
   const assetColumns = (() => {
     const map = new Map<string, Asset[]>()
@@ -500,6 +541,9 @@ export default function Assets() {
           {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> {tr('assets.addAsset')}</Button>}
           {canAdmin && <Button size="sm" variant="secondary" onClick={openImportFromPurchase}>📥 นำเข้าจากงานจัดซื้อ</Button>}
           <datalist id="quote-ref-list">{quoteList.map(q => <option key={q.Title} value={q.Title}>{q.ClientName || ''}</option>)}</datalist>
+          <Button size="sm" variant="secondary" onClick={exportExcel} disabled={exporting}>
+            <Download size={14} /> {exporting ? tr('common.saving') : `Excel (${filtered.length})`}
+          </Button>
           <button onClick={() => setShowRetired(s => !s)}
             className={`text-xs underline ml-1 ${showRetired ? 'text-primary-600' : 'text-gray-400'}`}>
             {showRetired ? tr('assets.hideRetired') : tr('assets.showRetired')}
