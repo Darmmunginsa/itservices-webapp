@@ -210,6 +210,8 @@ export const TRANSLATIONS: Record<Lang, Dict> = {
     'portals.username': 'บัญชี / Username (อ้างอิง)',
     'portals.usernamePlaceholder': 'เช่น admin@itservices.co.th',
     'portals.loadErr': 'โหลด Portal ไม่ได้',
+    'portals.noCategory': 'ไม่ระบุหมวดหมู่',
+    'portals.linkedAssets': 'อุปกรณ์ที่ผูก',
     'portals.linkLabel': '🌐 Portal (เลือกจากรายการ)',
     'portals.none': '-- ไม่ผูก Portal --',
     // ── Tools ──
@@ -825,6 +827,8 @@ export const TRANSLATIONS: Record<Lang, Dict> = {
     'portals.username': 'Account / Username (reference)',
     'portals.usernamePlaceholder': 'e.g. admin@itservices.co.th',
     'portals.loadErr': 'Failed to load portals',
+    'portals.noCategory': 'Uncategorized',
+    'portals.linkedAssets': 'Linked assets',
     'portals.linkLabel': '🌐 Portal (pick from list)',
     'portals.none': '-- No Portal --',
     // ── Tools ──
