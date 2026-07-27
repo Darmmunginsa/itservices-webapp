@@ -8,6 +8,8 @@ import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter } from './services/graph'
 import { spGet } from './services/sharepoint'
+import { resolvePages } from './services/permissions'
+import { PAGES, ALWAYS_KEYS } from './config/pages'
 import type { AgentProfile } from './types/common'
 
 import { Sidebar } from './components/layout/Sidebar'
@@ -39,6 +41,24 @@ import Admin from './pages/Admin'
 import Tools from './pages/Tools'
 import './index.css'
 
+// map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
+const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
+  submit: <Submit />,
+  'my-work': <MyWork />,
+  tracking: <Tracking />,
+  projects: <Projects />,
+  dashboard: <AgentDashboard />,
+  reports: <Reports />,
+  assets: <Assets />,
+  vendors: <Vendors />,
+  portals: <Portals />,
+  tools: <Tools />,
+  skills: <Skills />,
+  contracts: <Contracts />,
+  admin: <Admin />,
+  debug: <Diagnostic />,
+}
+
 // Set active account after redirect — runs once at startup
 msalInstance.addEventCallback((event) => {
   if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
@@ -52,7 +72,7 @@ msalInstance.addEventCallback((event) => {
 function AppContent() {
   const isAuthenticated = useIsAuthenticated()
   const { instance, accounts } = useMsal()
-  const { user, setUser, isDarkMode } = useAppStore()
+  const { user, setUser, isDarkMode, allowedPages, setPermissions } = useAppStore()
   const [calendarOpen, setCalendarOpen] = useState(false)
 
   useEffect(() => {
@@ -129,9 +149,17 @@ function AppContent() {
       })
   }, [isAuthenticated, accounts, instance, setUser])
 
+  // โหลดสิทธิ์การเข้าถึงหน้า (กำหนดรายคนโดย Admin ใน HD_PagePermissions)
+  useEffect(() => {
+    if (!user?.email) return
+    resolvePages(user.email, user.role)
+      .then(r => setPermissions(r.pages, r.source))
+      .catch(() => setPermissions(new Set(ALWAYS_KEYS), 'none'))
+  }, [user?.email, user?.role, setPermissions])
+
   if (!isAuthenticated) return <Login />
 
-  if (!user) {
+  if (!user || !allowedPages) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
@@ -149,23 +177,16 @@ function AppContent() {
         <Ticker />
         <main className="flex-1 pb-16 md:pb-0">
           <Routes>
+            {/* หน้าหลัก — เข้าได้เสมอ (เป็นที่ลงจอดเมื่อไม่มีสิทธิ์หน้าอื่น) */}
             <Route path="/" element={<Home />} />
-            <Route path="/submit" element={<Submit />} />
-            <Route path="/my-work" element={<MyWork />} />
-            <Route path="/projects" element={<Projects />} />
+            {/* หน้ารายละเอียด — ไม่ผูกกับสิทธิ์หน้า (มีการคุมสิทธิ์ในตัวเอง) */}
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
-            <Route path="/dashboard" element={<AgentDashboard />} />
-            <Route path="/reports" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Reports /> : <Navigate to="/" />} />
-            <Route path="/assets" element={<Assets />} />
-            <Route path="/vendors" element={<Vendors />} />
-            <Route path="/portals" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Portals /> : <Navigate to="/" />} />
-            <Route path="/tracking" element={<Tracking />} />
-            <Route path="/skills" element={<Skills />} />
-            <Route path="/contracts" element={<Contracts />} />
-            <Route path="/tools" element={<Tools />} />
-            <Route path="/admin" element={['Supervisor', 'Boss', 'Admin'].includes(user.role) ? <Admin /> : <Navigate to="/" />} />
-            <Route path="/debug" element={<Diagnostic />} />
+            {/* หน้าที่คุมด้วยสิทธิ์รายคน — สร้างจาก PAGES registry */}
+            {PAGES.filter(p => !p.always).map(p => (
+              <Route key={p.key} path={p.path}
+                element={allowedPages.has(p.key) ? PAGE_ELEMENTS[p.key] : <Navigate to="/" replace />} />
+            ))}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>

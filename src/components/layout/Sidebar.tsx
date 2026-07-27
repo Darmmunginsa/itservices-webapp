@@ -1,50 +1,22 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
-import {
-  Home, Send, ClipboardList, FolderOpen, BarChart2,
-  Monitor, BookOpen, FileText, Pin, Briefcase, Globe,
-  ChevronRight, ChevronDown, Bug, Settings, Notebook, X, PieChart
-} from 'lucide-react'
+import { FolderOpen, ChevronRight, ChevronDown, X } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useT } from '../../i18n/useT'
 import { spGet } from '../../services/sharepoint'
+import { PAGES, GROUP_TITLE } from '../../config/pages'
 import type { FocusItem } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 
-type Role = 'EndUser' | 'Agent' | 'Supervisor' | 'Boss' | 'Admin'
-interface NavItem { to: string; icon: typeof Home; key: string; roles: Role[] }
-interface NavGroup { titleKey: string; items: NavItem[] }
-
-const NAV_GROUPS: NavGroup[] = [
-  { titleKey: 'group.main', items: [
-    { to: '/',         icon: Home,          key: 'nav.home',     roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/submit',   icon: Send,          key: 'nav.submit',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/my-work',  icon: ClipboardList, key: 'nav.myWork',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/tracking', icon: Pin,           key: 'nav.tracking', roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  ]},
-  { titleKey: 'group.work', items: [
-    { to: '/projects',  icon: FolderOpen, key: 'nav.projects',  roles: ['Agent','Supervisor','Boss','Admin'] },
-    { to: '/dashboard', icon: BarChart2,  key: 'nav.dashboard', roles: ['Agent','Supervisor','Boss','Admin'] },
-    { to: '/reports',   icon: PieChart,   key: 'nav.reports',   roles: ['Agent','Supervisor','Boss','Admin'] },
-  ]},
-  { titleKey: 'group.resources', items: [
-    { to: '/assets',    icon: Monitor,   key: 'nav.assets',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/vendors',   icon: Briefcase, key: 'nav.vendors',  roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/portals',   icon: Globe,     key: 'nav.portals',  roles: ['Agent','Supervisor','Boss','Admin'] },
-    { to: '/tools',     icon: Notebook,  key: 'nav.tools',    roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/skills',    icon: BookOpen,  key: 'nav.skills',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/contracts', icon: FileText,  key: 'nav.contacts', roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-  ]},
-  { titleKey: 'group.system', items: [
-    { to: '/admin', icon: Settings, key: 'nav.admin',      roles: ['Supervisor','Boss','Admin'] },
-    { to: '/debug', icon: Bug,      key: 'nav.diagnostic', roles: ['Boss','Admin'] },
-  ]},
-]
-
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { user } = useAppStore()
+  const { user, allowedPages } = useAppStore()
   const t = useT()
-  const role = (user?.role ?? 'EndUser') as Role
+
+  // เมนูสร้างจาก PAGES registry + กรองด้วยสิทธิ์รายคน (Admin กำหนดใน HD_PagePermissions)
+  const navGroups = (['main', 'work', 'resources', 'system'] as const).map(g => ({
+    titleKey: GROUP_TITLE[g],
+    items: PAGES.filter(p => p.group === g && (allowedPages?.has(p.key) ?? false)),
+  })).filter(g => g.items.length > 0)
 
   // กลุ่มที่ย่อ (เก็บใน localStorage)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -79,9 +51,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 py-2 overflow-y-auto">
-        {NAV_GROUPS.map(group => {
-          const items = group.items.filter(n => n.roles.includes(role))
-          if (items.length === 0) return null
+        {navGroups.map(group => {
+          const items = group.items
           const isCol = collapsed[group.titleKey]
           return (
             <div key={group.titleKey} className="mb-1">
@@ -91,9 +62,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 <ChevronDown size={12} className={`transition-transform ${isCol ? '-rotate-90' : ''}`} />
               </button>
               {!isCol && items.map(item => (
-                <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={onNavigate} className={linkCls}>
+                <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={onNavigate} className={linkCls}>
                   <item.icon size={16} />
-                  <span className="flex-1">{t(item.key)}</span>
+                  <span className="flex-1">{t(item.labelKey)}</span>
                   <ChevronRight size={12} className="opacity-0 group-hover:opacity-50 transition-opacity" />
                 </NavLink>
               ))}

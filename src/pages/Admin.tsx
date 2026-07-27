@@ -6,6 +6,7 @@ import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
+import { PagePermissionsPanel } from '../components/admin/PagePermissionsPanel'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
 import type { EmailTemplate } from '../services/emailService'
@@ -508,6 +509,9 @@ export default function Admin() {
     <div>
       <Header title={tr('admin.title')} />
       <div className="p-4 md:p-6 space-y-6 max-w-3xl">
+
+        {/* สิทธิ์การเข้าถึงหน้า รายคน (Admin เท่านั้น) */}
+        <PagePermissionsPanel />
 
         {/* Announcements Management */}
         <Card>

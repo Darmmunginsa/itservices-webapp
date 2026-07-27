@@ -13,6 +13,10 @@ interface Toast {
 
 interface AppState {
   user: UserProfile | null
+  /** หน้าที่ผู้ใช้ปัจจุบันเข้าได้ (null = ยังโหลดไม่เสร็จ) */
+  allowedPages: Set<string> | null
+  permSource: 'admin' | 'user' | 'none' | 'fallback' | null
+  setPermissions: (pages: Set<string>, source: 'admin' | 'user' | 'none' | 'fallback') => void
   lang: 'th' | 'en'
   setLang: (l: 'th' | 'en') => void
   isDarkMode: boolean
@@ -132,6 +136,9 @@ function syncTheme(get: () => AppState) {
 
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
+  allowedPages: null,
+  permSource: null,
+  setPermissions: (pages, source) => set({ allowedPages: pages, permSource: source }),
   lang: (localStorage.getItem('lang') as 'th' | 'en') || 'th',
   setLang: (l) => { localStorage.setItem('lang', l); set({ lang: l }) },
   isDarkMode: localStorage.getItem('darkMode') === 'true',

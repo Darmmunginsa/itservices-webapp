@@ -1,25 +1,28 @@
 import { NavLink } from 'react-router-dom'
-import { Home, Send, ClipboardList, FolderOpen, BarChart2 } from 'lucide-react'
 import { cn } from '../../utils/colorUtils'
 import { useT } from '../../i18n/useT'
+import { useAppStore } from '../../store/useAppStore'
+import { PAGE_BY_KEY } from '../../config/pages'
 
-const items = [
-  { to: '/',         icon: Home,          key: 'nav.home' },
-  { to: '/submit',   icon: Send,          key: 'nav.submit' },
-  { to: '/my-work',  icon: ClipboardList, key: 'nav.myWork' },
-  { to: '/projects', icon: FolderOpen,    key: 'nav.projects' },
-  { to: '/dashboard',icon: BarChart2,     key: 'nav.dashboard' },
-]
+// เมนูล่าง (มือถือ) — แสดงตามลำดับนี้ เฉพาะหน้าที่ผู้ใช้มีสิทธิ์
+const BOTTOM_KEYS = ['home', 'submit', 'my-work', 'projects', 'dashboard']
 
 export function BottomNav() {
   const tr = useT()
+  const { allowedPages } = useAppStore()
+  const items = BOTTOM_KEYS
+    .map(k => PAGE_BY_KEY.get(k))
+    .filter((p): p is NonNullable<typeof p> => !!p && (allowedPages?.has(p.key) ?? false))
+
+  if (items.length === 0) return null
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex md:hidden z-40">
       {items.map(item => (
         <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/'}
+          key={item.path}
+          to={item.path}
+          end={item.path === '/'}
           className={({ isActive }) => cn(
             'flex-1 flex flex-col items-center py-2 text-xs transition-colors',
             isActive
@@ -28,7 +31,7 @@ export function BottomNav() {
           )}
         >
           <item.icon size={20} />
-          <span className="mt-0.5">{tr(item.key)}</span>
+          <span className="mt-0.5">{tr(item.labelKey)}</span>
         </NavLink>
       ))}
     </nav>

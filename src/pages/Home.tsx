@@ -38,7 +38,7 @@ interface Stats {
 }
 
 export default function Home() {
-  const { user, addToast } = useAppStore()
+  const { user, addToast, permSource } = useAppStore()
   const t = useT()
   const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, openIncidents: 0 })
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
@@ -204,6 +204,17 @@ export default function Home() {
               {warningAssets.length} {t('home.warranty')}
               <Link to="/assets" className="ml-1 underline font-medium">{t('home.viewList')}</Link>
             </p>
+          </div>
+        )}
+
+        {/* ยังไม่ถูกกำหนดสิทธิ์เข้าถึงหน้า — แจ้งให้ติดต่อ Admin (กันงงว่าทำไมเมนูว่าง) */}
+        {permSource === 'none' && (
+          <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4">
+            <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-800 dark:text-amber-300">
+              <p className="font-medium">บัญชีของคุณยังไม่ได้รับสิทธิ์เข้าถึงเมนูใดๆ</p>
+              <p className="text-xs mt-0.5 text-amber-700 dark:text-amber-400">กรุณาติดต่อผู้ดูแลระบบเพื่อขอเปิดสิทธิ์การใช้งาน</p>
+            </div>
           </div>
         )}
 
