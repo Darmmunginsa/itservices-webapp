@@ -28,15 +28,15 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/reports',   icon: PieChart,   key: 'nav.reports',   roles: ['Agent','Supervisor','Boss','Admin'] },
   ]},
   { titleKey: 'group.resources', items: [
-    { to: '/assets',    icon: Monitor,   key: 'nav.assets',   roles: ['Agent','Supervisor','Boss','Admin'] },
-    { to: '/vendors',   icon: Briefcase, key: 'nav.vendors',  roles: ['Agent','Supervisor','Boss','Admin'] },
+    { to: '/assets',    icon: Monitor,   key: 'nav.assets',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
+    { to: '/vendors',   icon: Briefcase, key: 'nav.vendors',  roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
     { to: '/portals',   icon: Globe,     key: 'nav.portals',  roles: ['Agent','Supervisor','Boss','Admin'] },
     { to: '/tools',     icon: Notebook,  key: 'nav.tools',    roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
     { to: '/skills',    icon: BookOpen,  key: 'nav.skills',   roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
-    { to: '/contracts', icon: FileText,  key: 'nav.contacts', roles: ['Admin'] },
+    { to: '/contracts', icon: FileText,  key: 'nav.contacts', roles: ['EndUser','Agent','Supervisor','Boss','Admin'] },
   ]},
   { titleKey: 'group.system', items: [
-    { to: '/admin', icon: Settings, key: 'nav.admin',      roles: ['Boss','Admin'] },
+    { to: '/admin', icon: Settings, key: 'nav.admin',      roles: ['Supervisor','Boss','Admin'] },
     { to: '/debug', icon: Bug,      key: 'nav.diagnostic', roles: ['Boss','Admin'] },
   ]},
 ]

@@ -12,7 +12,9 @@ import { getStatusColor } from '../utils/colorUtils'
 import { useT } from '../i18n/useT'
 
 export default function Contracts() {
-  const { addToast } = useAppStore()
+  const { user, addToast } = useAppStore()
+  // ทุก role เปิดดูรายชื่อผู้ติดต่อได้ แต่เพิ่ม/แก้/ลบ สงวนไว้ให้ Supervisor ขึ้นไป
+  const canEdit = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const tr = useT()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,7 +93,7 @@ export default function Contracts() {
             <option value="">{tr('common.allStatus')}</option>
             {['Active', 'Inactive', 'Expired'].map(s => <option key={s}>{s}</option>)}
           </select>
-          <Button size="sm" onClick={openCreate}><Plus size={14} /> {tr('contacts.addCustomer')}</Button>
+          {canEdit && <Button size="sm" onClick={openCreate}><Plus size={14} /> {tr('contacts.addCustomer')}</Button>}
         </div>
 
         {loading ? (
@@ -127,8 +129,10 @@ export default function Contracts() {
                         <p className="mt-0.5 text-xs text-gray-400 truncate">{c.CustomerEmail}{c.Phone ? ` · ${c.Phone}` : ''}</p>
                       </div>
                       <Badge className={getStatusColor(c.Status)}>{c.Status}</Badge>
-                      <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><Pencil size={14} /></button>
-                      <button onClick={() => del(c.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={14} /></button>
+                      {canEdit && <>
+                        <button onClick={() => openEdit(c)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><Pencil size={14} /></button>
+                        <button onClick={() => del(c.id)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400"><Trash2 size={14} /></button>
+                      </>}
                     </div>
                   ))}
                 </div>

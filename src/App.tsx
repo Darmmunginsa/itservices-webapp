@@ -158,13 +158,13 @@ function AppContent() {
             <Route path="/dashboard" element={<AgentDashboard />} />
             <Route path="/reports" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Reports /> : <Navigate to="/" />} />
             <Route path="/assets" element={<Assets />} />
-            <Route path="/vendors" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Vendors /> : <Navigate to="/" />} />
+            <Route path="/vendors" element={<Vendors />} />
             <Route path="/portals" element={['Agent','Supervisor','Boss','Admin'].includes(user.role) ? <Portals /> : <Navigate to="/" />} />
             <Route path="/tracking" element={<Tracking />} />
             <Route path="/skills" element={<Skills />} />
-            <Route path="/contracts" element={user.role === 'Admin' ? <Contracts /> : <Navigate to="/" />} />
+            <Route path="/contracts" element={<Contracts />} />
             <Route path="/tools" element={<Tools />} />
-            <Route path="/admin" element={['Admin', 'Boss'].includes(user.role) ? <Admin /> : <Navigate to="/" />} />
+            <Route path="/admin" element={['Supervisor', 'Boss', 'Admin'].includes(user.role) ? <Admin /> : <Navigate to="/" />} />
             <Route path="/debug" element={<Diagnostic />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>

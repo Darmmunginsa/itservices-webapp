@@ -45,11 +45,23 @@ export default function Projects() {
   // สรุปบอร์ด (จาก ClientBoard ผ่าน PM_BoardSummary) — key = ProjectRef
   const [boards, setBoards] = useState<Record<number, { progress: number; openCards: number; boardUrl?: string }>>({})
 
+  // โครงการที่ฉันถูก Invite (PM_ProjectMembers) — ใช้กรองรายการให้เห็นเฉพาะที่เกี่ยวข้อง
+  const [myProjectIds, setMyProjectIds] = useState<Set<number>>(new Set())
+  const [membersLoaded, setMembersLoaded] = useState(false)
+
   function fetchProjects() {
     setLoading(true)
     spGet<Project>('PM_Projects', undefined, undefined, 'Modified desc')
       .then(setProjects).catch(() => {}).finally(() => setLoading(false))
   }
+
+  useEffect(() => {
+    if (!user?.email) return
+    spGet<{ ProjectID: number }>('PM_ProjectMembers', `AgentEmail eq '${user.email}'`, 'Id,ProjectID', undefined, 500)
+      .then(rows => setMyProjectIds(new Set(rows.map(r => r.ProjectID).filter(Boolean))))
+      .catch(() => setMyProjectIds(new Set()))
+      .finally(() => setMembersLoaded(true))
+  }, [user?.email])
 
   useEffect(() => {
     fetchProjects()
@@ -101,7 +113,14 @@ export default function Projects() {
     }
   }
 
-  const baseFiltered = projects.filter(p =>
+  // Boss/Admin เห็นทุกโครงการ ; role อื่นเห็นเฉพาะที่ตัวเองสร้าง หรือถูก Invite เข้าทีม
+  const seesAll = ['Boss', 'Admin'].includes(user?.role ?? '')
+  const myEmail = (user?.email ?? '').toLowerCase()
+  const visibleProjects = seesAll
+    ? projects
+    : projects.filter(p => (p.CreatedByEmail ?? '').toLowerCase() === myEmail || myProjectIds.has(p.id))
+
+  const baseFiltered = visibleProjects.filter(p =>
     (!search || p.Title.toLowerCase().includes(search.toLowerCase()) || p.Company?.toLowerCase().includes(search.toLowerCase())) &&
     (!groupFilter || p.ProjectGroup === groupFilter)
   )
@@ -150,8 +169,8 @@ export default function Projects() {
           )}
         </div>
 
-        {/* Kanban columns */}
-        {loading ? (
+        {/* Kanban columns — รอรายชื่อสมาชิกด้วย กันรายการกะพริบตอนกรอง */}
+        {(loading || (!seesAll && !membersLoaded)) ? (
           <div className="flex gap-4 overflow-x-auto pb-4">
             {ACTIVE_STATUSES.map(s => (
               <div key={s} className="flex-shrink-0 w-72 space-y-3">
