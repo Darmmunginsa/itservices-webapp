@@ -15,6 +15,7 @@ export interface Project {
   Comment?: string
   ProjectGroup?: string
   QuotationRef?: string   // อ้างอิงใบเสนอราคาจาก SalePro (เลขที่ QT)
+  Author?: { Title: string; EMail?: string }  // SP Created By — ผู้สร้างโครงการ (expand via $expand=Author)
   Modified: string
 }
 

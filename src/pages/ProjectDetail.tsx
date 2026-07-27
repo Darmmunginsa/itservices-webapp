@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -11,6 +11,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
@@ -67,6 +68,7 @@ function resolveUrl(raw: unknown): string {
 
 export default function ProjectDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, addToast } = useAppStore()
   const tr = useT()
@@ -143,9 +145,32 @@ export default function ProjectDetail() {
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
 
   // ── สิทธิ์เข้าดูโปรเจกต์: Admin/Boss ∪ ผู้สร้าง ∪ สมาชิกที่ถูก invite (PM_ProjectMembers) ──
-  const isOwner = !!project?.CreatedByEmail && project.CreatedByEmail.toLowerCase() === user?.email?.toLowerCase()
+  // ผู้สร้าง = CreatedByEmail หรือ SP Author (โครงการเก่าอาจไม่มี CreatedByEmail)
+  const isOwner = !!user?.email && (
+    (project?.CreatedByEmail ?? '').toLowerCase() === user.email.toLowerCase() ||
+    (project?.Author?.EMail ?? '').toLowerCase() === user.email.toLowerCase()
+  )
   const isMember = members.some(m => m.AgentEmail?.toLowerCase() === user?.email?.toLowerCase())
   const canView = isBossAdmin || isOwner || isMember
+  const canDeleteProject = isBossAdmin || isOwner   // ผู้สร้าง หรือ Boss/Admin เท่านั้น
+
+  // ลบโครงการ + ข้อมูลลูกทั้งหมด
+  const [deletingProject, setDeletingProject] = useState(false)
+  async function handleDeleteProject() {
+    if (!project) return
+    setDeletingProject(true)
+    try {
+      const children = await countProjectChildren(project.id)
+      const detail = children.length
+        ? '\n\nข้อมูลที่จะถูกลบไปด้วย:\n' + children.map(c => `• ${c.list}: ${c.count} รายการ`).join('\n')
+        : ''
+      if (!window.confirm(`ลบโครงการ "${project.Title}" ?${detail}\n\n⚠ การลบนี้กู้คืนไม่ได้`)) { setDeletingProject(false); return }
+      const n = await deleteProjectCascade(project.id)
+      addToast('success', `ลบโครงการแล้ว${n ? ` (พร้อมข้อมูลย่อย ${n} รายการ)` : ''}`)
+      navigate('/projects')
+    } catch { addToast('error', 'ลบไม่สำเร็จ — อาจไม่มีสิทธิ์ลบใน SharePoint') }
+    finally { setDeletingProject(false) }
+  }
   const canManageTeam = isBossAdmin || isOwner || isMember   // สมาชิกทุกคนเชิญเพื่อนร่วมทีมต่อได้
 
   // Agent options for SearchSelect
@@ -172,7 +197,8 @@ export default function ProjectDetail() {
     const numId = Number(id)
     setLoading(true)
     Promise.all([
-      spGet<Project>('PM_Projects', `Id eq ${numId}`),
+      spGet<Project>('PM_Projects', `Id eq ${numId}`, '*,Author/Title,Author/EMail', undefined, 1, 'Author')
+        .catch(() => spGet<Project>('PM_Projects', `Id eq ${numId}`)),
       spGet<Task>('PM_Tasks', `ProjectID eq ${numId}`, undefined, 'DueDate asc'),
       spGet<Note>('PM_Notes', `ProjectID eq ${numId}`, undefined, 'Created desc'),
       spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`, '*,Author/Title,Author/EMail', undefined, 500, 'Author'),
@@ -887,6 +913,13 @@ export default function ProjectDetail() {
             <div className="flex-1 min-w-0 mr-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{project.Title}</h2>
               {project.Company && <p className="text-sm text-gray-500 mt-1">{project.Company}</p>}
+              {/* ผู้สร้างโครงการ */}
+              <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-1.5">
+                <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                  {(project.Author?.Title || project.CreatedByEmail || '—').charAt(0).toUpperCase()}
+                </span>
+                สร้างโดย {project.Author?.Title || project.CreatedByEmail || '—'}
+              </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <Badge className={getStatusColor(project.Status)}>{project.Status}</Badge>
@@ -918,6 +951,12 @@ export default function ProjectDetail() {
                 <button onClick={openEditProject} title={tr('pd.editProject')}
                   className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                   <Edit2 size={14} />
+                </button>
+              )}
+              {canDeleteProject && (
+                <button onClick={handleDeleteProject} disabled={deletingProject} title="ลบโครงการ"
+                  className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40">
+                  <Trash2 size={14} />
                 </button>
               )}
               <button onClick={() => setInfoOpen(o => !o)} title={infoOpen ? tr('pd.hideDetail') : tr('pd.showDetail')}

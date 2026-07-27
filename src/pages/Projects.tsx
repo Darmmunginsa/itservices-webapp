@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, FolderOpen, Plus } from 'lucide-react'
+import { Search, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useT } from '../i18n/useT'
 import { Button } from '../components/common/Button'
@@ -8,6 +8,7 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { Modal } from '../components/common/Modal'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { spGet, spCreate } from '../services/sharepoint'
+import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, ProjectStatus } from '../types/project'
 import { formatDate } from '../utils/dateUtils'
@@ -51,8 +52,11 @@ export default function Projects() {
 
   function fetchProjects() {
     setLoading(true)
-    spGet<Project>('PM_Projects', undefined, undefined, 'Modified desc')
-      .then(setProjects).catch(() => {}).finally(() => setLoading(false))
+    // ดึง Author (SP Created By) มาด้วย เพื่อแสดงชื่อผู้สร้างและตัดสินสิทธิ์ลบ
+    spGet<Project>('PM_Projects', undefined, '*,Author/Title,Author/EMail', 'Modified desc', 500, 'Author')
+      .then(setProjects)
+      .catch(() => spGet<Project>('PM_Projects', undefined, undefined, 'Modified desc').then(setProjects).catch(() => {}))
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {
@@ -116,9 +120,33 @@ export default function Projects() {
   // Boss/Admin เห็นทุกโครงการ ; role อื่นเห็นเฉพาะที่ตัวเองสร้าง หรือถูก Invite เข้าทีม
   const seesAll = ['Boss', 'Admin'].includes(user?.role ?? '')
   const myEmail = (user?.email ?? '').toLowerCase()
+  // ผู้สร้าง = CreatedByEmail หรือ SP Author (โครงการเก่าบางรายการอาจไม่มี CreatedByEmail)
+  const isCreator = (p: Project) =>
+    (p.CreatedByEmail ?? '').toLowerCase() === myEmail ||
+    (p.Author?.EMail ?? '').toLowerCase() === myEmail
+  const creatorName = (p: Project) => p.Author?.Title || p.CreatedByEmail || '—'
+
   const visibleProjects = seesAll
     ? projects
-    : projects.filter(p => (p.CreatedByEmail ?? '').toLowerCase() === myEmail || myProjectIds.has(p.id))
+    : projects.filter(p => isCreator(p) || myProjectIds.has(p.id))
+
+  // ลบโครงการ — ผู้สร้าง หรือ Boss/Admin เท่านั้น (ลบข้อมูลลูกทั้งหมดด้วย)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  async function handleDelete(e: React.MouseEvent, p: Project) {
+    e.preventDefault(); e.stopPropagation()   // อยู่ใน <Link> — กันเด้งเข้าโครงการ
+    setDeletingId(p.id)
+    try {
+      const children = await countProjectChildren(p.id)
+      const detail = children.length
+        ? '\n\nข้อมูลที่จะถูกลบไปด้วย:\n' + children.map(c => `• ${c.list}: ${c.count} รายการ`).join('\n')
+        : ''
+      if (!window.confirm(`ลบโครงการ "${p.Title}" ?${detail}\n\n⚠ การลบนี้กู้คืนไม่ได้`)) { setDeletingId(null); return }
+      const n = await deleteProjectCascade(p.id)
+      setProjects(prev => prev.filter(x => x.id !== p.id))
+      addToast('success', `ลบโครงการแล้ว${n ? ` (พร้อมข้อมูลย่อย ${n} รายการ)` : ''}`)
+    } catch { addToast('error', 'ลบไม่สำเร็จ — อาจไม่มีสิทธิ์ลบใน SharePoint') }
+    finally { setDeletingId(null) }
+  }
 
   const baseFiltered = visibleProjects.filter(p =>
     (!search || p.Title.toLowerCase().includes(search.toLowerCase()) || p.Company?.toLowerCase().includes(search.toLowerCase())) &&
@@ -206,6 +234,13 @@ export default function Projects() {
                             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 flex-1 group-hover:text-primary-600 transition-colors">
                               {p.Title}
                             </h3>
+                            {(isCreator(p) || seesAll) && (
+                              <button onClick={e => handleDelete(e, p)} disabled={deletingId === p.id}
+                                title="ลบโครงการ"
+                                className="flex-shrink-0 p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-40">
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                           {p.Company && <p className="text-xs text-gray-400 mb-1 truncate">{p.Company}</p>}
                           {p.ProjectGroup && (
@@ -234,6 +269,13 @@ export default function Projects() {
                           <div className="flex justify-between text-xs text-gray-400">
                             <span>{formatDate(p.StartDate)}</span>
                             <span>{formatDate(p.EndDate)}</span>
+                          </div>
+                          {/* ผู้สร้างโครงการ */}
+                          <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                            <span className="w-5 h-5 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                              {creatorName(p).charAt(0).toUpperCase()}
+                            </span>
+                            <span className="text-[11px] text-gray-400 truncate">{creatorName(p)}</span>
                           </div>
                         </Link>
                       ))
