@@ -1,4 +1,5 @@
 import { SHAREPOINT_API, SHAREPOINT_URL } from '../config/msal'
+import { logActivity } from './activityLog'
 
 const SP_HOST = SHAREPOINT_URL.replace(/\/sites\/.*/, '')
 
@@ -76,7 +77,9 @@ export async function spCreate(listName: string, data: Record<string, unknown>):
     throw new Error(`SharePoint POST failed: ${res.status} ${listName}`)
   }
   const item = await res.json() as Record<string, unknown>
-  return { ...item, id: (item['ID'] ?? item['Id']) as number } as { id: number }
+  const created = { ...item, id: (item['ID'] ?? item['Id']) as number } as { id: number }
+  logActivity({ action: 'create', listName, itemId: created.id, data })
+  return created
 }
 
 export async function spUpdate(listName: string, id: number, data: Record<string, unknown>): Promise<void> {
@@ -92,16 +95,26 @@ export async function spUpdate(listName: string, id: number, data: Record<string
     console.error(`[SP] PATCH ${listName}(${id}) → HTTP ${res.status}`, body)
     throw new Error(`SharePoint PATCH failed: ${res.status} ${listName}`)
   }
+  logActivity({ action: 'update', listName, itemId: id, data })
 }
 
 export async function spDelete(listName: string, id: number): Promise<void> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${id})`
+  // ดึงชื่อรายการก่อนลบ — หลังลบแล้วจะเหลือแค่เลข ID ทำให้ log อ่านไม่รู้เรื่อง
+  let snapshot: Record<string, unknown> | undefined
+  try { snapshot = await spGetById<Record<string, unknown>>(listName, id) } catch { /* best-effort */ }
+
   const res = await fetch(url, { method: 'DELETE', headers: { ...headers, 'IF-MATCH': '*' } })
   if (!res.ok) {
     console.error(`[SP] DELETE ${listName}(${id}) → HTTP ${res.status}`)
     throw new Error(`SharePoint DELETE failed: ${res.status} ${listName}`)
   }
+  logActivity({
+    action: 'delete', listName, itemId: id,
+    itemTitle: typeof snapshot?.['Title'] === 'string' ? snapshot['Title'] as string : '',
+    data: snapshot, note: 'ลบรายการ (ข้อมูลก่อนลบ)',
+  })
 }
 
 export async function spGetAttachments(
@@ -173,7 +186,10 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' },
         body: buffer,
       })
-      if (res.ok) return
+      if (res.ok) {
+        logActivity({ action: 'attach', listName, itemId, itemTitle: file.name, note: `แนบไฟล์ (${Math.round(file.size / 1024)} KB)` })
+        return
+      }
       lastStatus = res.status
       try { lastBody = await res.text() } catch { /* ignore */ }
       // error ถาวร (403 สิทธิ์, 400 ข้อมูลผิด) ไม่ต้อง retry
@@ -198,6 +214,7 @@ export async function spDeleteAttachment(listName: string, itemId: number, fileN
     console.error(`[SP] DELETE attachment ${listName}(${itemId})/${fileName} → HTTP ${res.status}`, body)
     throw new Error(`SharePoint attachment delete failed: ${res.status}`)
   }
+  logActivity({ action: 'detach', listName, itemId, itemTitle: fileName, note: 'ลบไฟล์แนบ' })
 }
 
 export function spAttachmentUrl(serverRelativeUrl: string): string {

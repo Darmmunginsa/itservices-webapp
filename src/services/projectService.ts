@@ -1,4 +1,5 @@
 import { spGet, spDelete } from './sharepoint'
+import { logActivity, setActivityEnabled } from './activityLog'
 
 // ── ลบโครงการพร้อมข้อมูลลูกทั้งหมด (cascade) ──
 // SharePoint ไม่มี FK cascade → ต้องไล่ลบเอง ไม่งั้นเหลือข้อมูลกำพร้าค้างในลิสต์
@@ -28,16 +29,32 @@ export async function countProjectChildren(projectId: number): Promise<ProjectCh
 
 /** ลบโครงการ + ข้อมูลลูกทั้งหมด ; คืนจำนวนรายการลูกที่ลบไป */
 export async function deleteProjectCascade(projectId: number): Promise<number> {
+  const perList: Record<string, number> = {}
   let deleted = 0
-  for (const list of CHILD_LISTS) {
-    let rows: { id: number }[] = []
-    try { rows = await spGet<{ id: number }>(list, `ProjectID eq ${projectId}`, 'Id', undefined, 2000) }
-    catch { continue }   // ลิสต์ยังไม่ถูกสร้าง → ข้าม
-    for (const r of rows) {
-      try { await spDelete(list, r.id); deleted++ } catch { /* ลบไม่ได้ทีละรายการ — ข้ามไป ไม่ให้ค้างทั้งชุด */ }
+
+  // ปิด activity log ระหว่างลบลูก — ไม่งั้นได้ log เป็นร้อยแถวต่อการลบ 1 โครงการ (และเสี่ยง SP throttle)
+  // สรุปเป็นแถวเดียวหลังลบเสร็จแทน โดยยังเก็บรายละเอียดครบว่าอะไรถูกลบไปเท่าไร
+  setActivityEnabled(false)
+  try {
+    for (const list of CHILD_LISTS) {
+      let rows: { id: number }[] = []
+      try { rows = await spGet<{ id: number }>(list, `ProjectID eq ${projectId}`, 'Id', undefined, 2000) }
+      catch { continue }   // ลิสต์ยังไม่ถูกสร้าง → ข้าม
+      for (const r of rows) {
+        try { await spDelete(list, r.id); deleted++; perList[list] = (perList[list] ?? 0) + 1 }
+        catch { /* ลบไม่ได้ทีละรายการ — ข้ามไป ไม่ให้ค้างทั้งชุด */ }
+      }
     }
+  } finally {
+    setActivityEnabled(true)
   }
-  // ลบตัวโครงการเป็นลำดับสุดท้าย (ถ้าพลาดตรงนี้จะ throw ให้ UI แจ้ง)
+
+  // ลบตัวโครงการเป็นลำดับสุดท้าย (ลบ log อัตโนมัติจาก spDelete พร้อม snapshot ข้อมูลก่อนลบ)
   await spDelete('PM_Projects', projectId)
+  logActivity({
+    action: 'delete', listName: 'PM_Projects', itemId: projectId,
+    note: `ลบโครงการแบบ cascade — ลบข้อมูลย่อยรวม ${deleted} รายการ`,
+    data: perList,
+  })
   return deleted
 }

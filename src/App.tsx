@@ -9,6 +9,7 @@ import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter } from './services/graph'
 import { spGet } from './services/sharepoint'
 import { resolvePages } from './services/permissions'
+import { setActivityUser, logActivity } from './services/activityLog'
 import { PAGES, ALWAYS_KEYS } from './config/pages'
 import type { AgentProfile } from './types/common'
 
@@ -39,6 +40,7 @@ import Contracts from './pages/Contracts'
 import Diagnostic from './pages/Diagnostic'
 import Admin from './pages/Admin'
 import Tools from './pages/Tools'
+import ActivityLog from './pages/ActivityLog'
 import './index.css'
 
 // map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
@@ -56,6 +58,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   skills: <Skills />,
   contracts: <Contracts />,
   admin: <Admin />,
+  activity: <ActivityLog />,
   debug: <Diagnostic />,
 }
 
@@ -148,6 +151,17 @@ function AppContent() {
         })
       })
   }, [isAuthenticated, accounts, instance, setUser])
+
+  // ผูกผู้ใช้เข้ากับ activity log + บันทึกการเข้าใช้งาน (ครั้งเดียวต่อ session)
+  useEffect(() => {
+    if (!user?.email) return
+    setActivityUser({ email: user.email, name: user.displayName })
+    const k = `activityLoginLogged_${user.email}`
+    if (!sessionStorage.getItem(k)) {
+      sessionStorage.setItem(k, '1')
+      logActivity({ action: 'login', listName: 'Session', itemTitle: user.displayName, note: `เข้าใช้งานระบบ (role: ${user.role})` })
+    }
+  }, [user?.email, user?.displayName, user?.role])
 
   // โหลดสิทธิ์การเข้าถึงหน้า (กำหนดรายคนโดย Admin ใน HD_PagePermissions)
   useEffect(() => {
