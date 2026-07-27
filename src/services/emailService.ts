@@ -5,6 +5,9 @@
 import { spGet } from './sharepoint'
 import { sendMail } from './graph'
 
+// CC ทุกครั้งที่เปิด Ticket ใหม่ (ทีมวิศวกรต้องรับรู้ทุกเคส)
+export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
+
 export interface EmailTemplate {
   id: number
   Title: string
@@ -90,7 +93,9 @@ export async function sendTemplateEmail(
     const to = [...new Map(recipients.filter(Boolean).map(e => [norm(e), e])).values()]
     if (to.length === 0) return
     const toSet = new Set(to.map(norm))
-    const ccFinal = [...new Map(cc.filter(Boolean).map(e => [norm(e), e])).values()]
+    // เปิด Ticket ใหม่ → CC ทีมวิศวกรเสมอ (ทำที่ service layer เพื่อครอบคลุมทุกจุดที่สร้าง ticket)
+    const ccAll = eventKey === 'ticket_created' ? [...cc, ALWAYS_CC_TICKET] : cc
+    const ccFinal = [...new Map(ccAll.filter(Boolean).map(e => [norm(e), e])).values()]
       .filter(e => !toSet.has(norm(e)))
 
     const from = await getSender()
