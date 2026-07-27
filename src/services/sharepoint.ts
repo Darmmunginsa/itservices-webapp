@@ -171,7 +171,12 @@ export async function spWaitForItem(listName: string, id: number, tries = 5): Pr
   }
 }
 
-export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<void> {
+/**
+ * แนบไฟล์เข้า item — คืน "ชื่อไฟล์จริงที่ถูกบันทึก"
+ * (สำคัญ: ชื่อถูก sanitize + เติมสุ่มกันซ้ำ จึงไม่เท่ากับ file.name เดิม
+ *  ผู้เรียกที่ต้องอ้างอิงไฟล์ทีหลังต้องใช้ค่าที่คืนกลับนี้เท่านั้น)
+ */
+export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<string> {
   if (!_getToken) throw new Error('Token getter not initialized')
   const safeName = safeAttachmentName(file.name, file.type)
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`
@@ -187,8 +192,8 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
         body: buffer,
       })
       if (res.ok) {
-        logActivity({ action: 'attach', listName, itemId, itemTitle: file.name, note: `แนบไฟล์ (${Math.round(file.size / 1024)} KB)` })
-        return
+        logActivity({ action: 'attach', listName, itemId, itemTitle: safeName, note: `แนบไฟล์ (${Math.round(file.size / 1024)} KB)` })
+        return safeName
       }
       lastStatus = res.status
       try { lastBody = await res.text() } catch { /* ignore */ }

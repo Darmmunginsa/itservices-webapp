@@ -18,7 +18,9 @@ export const DEFAULT_PROJECT_ICON = '📁'
 //   '🚀'               → อีโมจิ
 //   'img:__icon_x.png' → รูปที่อัปโหลดไว้ (เก็บเป็น attachment ของ item โครงการนั้น)
 export const IMG_PREFIX = 'img:'
-export const ICON_FILE_PREFIX = '__icon_'
+// ห้ามขึ้นต้นด้วย '_' — SharePoint ปฏิเสธ (ArgumentOutOfRangeException: fileName)
+// และ safeAttachmentName() ก็ตัด '_' นำหน้าทิ้งอยู่แล้ว ทำให้ชื่อไม่ตรงกัน
+export const ICON_FILE_PREFIX = 'icon-'
 
 export function isImageIcon(icon?: string): boolean {
   return !!icon?.trim().startsWith(IMG_PREFIX)

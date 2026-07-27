@@ -10,7 +10,7 @@ import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
-import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
@@ -343,13 +343,18 @@ export default function ProjectDetail() {
     setIconUploading(true)
     try {
       const iconFile = await makeIconFile(file, 64)
-      await spUploadAttachment('PM_Projects', project.id, iconFile)
-      // ลบไอคอนเก่าทิ้ง ไม่ให้ไฟล์ค้างสะสมใน item
-      const old = iconFileName(project.Icon)
-      if (old && old !== iconFile.name) {
-        try { await spDeleteAttachment('PM_Projects', project.id, old) } catch { /* ไม่มีไฟล์เก่า — ข้าม */ }
-      }
-      pf('icon', `${IMG_PREFIX}${iconFile.name}`)
+      // ต้องใช้ชื่อที่ SharePoint บันทึกจริง (ถูก sanitize + เติมสุ่มกันซ้ำ) ไม่ใช่ iconFile.name
+      const storedName = await spUploadAttachment('PM_Projects', project.id, iconFile)
+      // เก็บกวาดไฟล์ไอคอนเก่าทุกอันที่ค้างอยู่ (รวมไฟล์กำพร้าจากการอัปโหลดที่เคยพลาด)
+      try {
+        const existing = await spGetAttachments('PM_Projects', project.id)
+        for (const f of existing) {
+          if (f.FileName !== storedName && /^_*icon[-_]/i.test(f.FileName)) {
+            try { await spDeleteAttachment('PM_Projects', project.id, f.FileName) } catch { /* ข้าม */ }
+          }
+        }
+      } catch { /* อ่านรายการไฟล์ไม่ได้ — ไม่เป็นไร ไอคอนใหม่ใช้ได้อยู่ */ }
+      pf('icon', `${IMG_PREFIX}${storedName}`)
       clearProjectIconCache(project.id)
       addToast('success', 'อัปโหลดไอคอนแล้ว — กดบันทึกเพื่อยืนยัน')
     } catch { addToast('error', 'อัปโหลดไอคอนไม่สำเร็จ') }
