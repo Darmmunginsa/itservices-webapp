@@ -12,7 +12,7 @@ import { countProjectChildren, deleteProjectCascade } from '../services/projectS
 import { useAppStore } from '../store/useAppStore'
 import type { Project, ProjectStatus } from '../types/project'
 import { formatDate } from '../utils/dateUtils'
-import { projectIcon } from '../utils/projectIcon'
+import { ProjectIcon } from '../components/common/ProjectIcon'
 
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
 const PROJECT_STATUSES: ProjectStatus[] = ['Planning', 'Active', 'On Hold', 'Completed', 'Cancelled']
@@ -232,10 +232,7 @@ export default function Projects() {
                         <Link key={p.id} to={`/projects/${p.id}`}
                           className="block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-primary-300 dark:hover:border-primary-700 transition-all hover:shadow-md group">
                           <div className="flex items-start gap-2 mb-1.5">
-                            <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base leading-none select-none"
-                              title={p.ProjectGroup || ''}>
-                              {projectIcon(p)}
-                            </span>
+                            <ProjectIcon project={p} size={32} />
                             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 flex-1 group-hover:text-primary-600 transition-colors">
                               {p.Title}
                             </h3>

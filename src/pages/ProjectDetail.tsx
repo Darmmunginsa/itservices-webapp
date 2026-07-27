@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SmartText } from '../components/common/SmartText'
@@ -10,7 +10,7 @@ import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
-import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment } from '../services/sharepoint'
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
@@ -22,7 +22,8 @@ import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
-import { projectIcon, ICON_CHOICES } from '../utils/projectIcon'
+import { projectIcon, ICON_CHOICES, IMG_PREFIX, isImageIcon, iconFileName, makeIconFile } from '../utils/projectIcon'
+import { ProjectIcon, clearProjectIconCache } from '../components/common/ProjectIcon'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
 import { useT } from '../i18n/useT'
 
@@ -335,6 +336,26 @@ export default function ProjectDetail() {
     setShowEditProject(true)
   }
 
+  // อัปโหลดรูปเป็นไอคอนโครงการ — ย่อ 64px → แนบกับ item โครงการ → ตั้ง Icon = 'img:<ไฟล์>'
+  const [iconUploading, setIconUploading] = useState(false)
+  async function uploadIcon(file: File) {
+    if (!project) return
+    setIconUploading(true)
+    try {
+      const iconFile = await makeIconFile(file, 64)
+      await spUploadAttachment('PM_Projects', project.id, iconFile)
+      // ลบไอคอนเก่าทิ้ง ไม่ให้ไฟล์ค้างสะสมใน item
+      const old = iconFileName(project.Icon)
+      if (old && old !== iconFile.name) {
+        try { await spDeleteAttachment('PM_Projects', project.id, old) } catch { /* ไม่มีไฟล์เก่า — ข้าม */ }
+      }
+      pf('icon', `${IMG_PREFIX}${iconFile.name}`)
+      clearProjectIconCache(project.id)
+      addToast('success', 'อัปโหลดไอคอนแล้ว — กดบันทึกเพื่อยืนยัน')
+    } catch { addToast('error', 'อัปโหลดไอคอนไม่สำเร็จ') }
+    finally { setIconUploading(false) }
+  }
+
   async function saveProject(e: React.FormEvent) {
     e.preventDefault()
     if (!project) return
@@ -363,8 +384,14 @@ export default function ProjectDetail() {
       // บันทึก Icon แยก — ถ้ายังไม่มีคอลัมน์ Icon ใน PM_Projects จะพลาดเฉพาะส่วนนี้
       // (ไม่ทำให้การบันทึกข้อมูลหลักล้มทั้งฟอร์ม)
       if ((projectForm.icon ?? '') !== (project.Icon ?? '')) {
+        // เปลี่ยนจากรูปเป็นอีโมจิ/อัตโนมัติ → ลบไฟล์รูปเดิมทิ้ง ไม่ให้ค้างใน item
+        const oldFile = iconFileName(project.Icon)
+        if (oldFile && oldFile !== iconFileName(projectForm.icon)) {
+          try { await spDeleteAttachment('PM_Projects', project.id, oldFile) } catch { /* ไม่มีไฟล์เดิม — ข้าม */ }
+        }
         try { await spUpdate('PM_Projects', project.id, { Icon: projectForm.icon || null }) }
         catch { addToast('info', 'บันทึกไอคอนไม่ได้ — ต้องเพิ่มคอลัมน์ Icon (Single line of text) ใน PM_Projects ก่อน') }
+        clearProjectIconCache(project.id)
       }
       addToast('success', 'อัปเดตโครงการแล้ว')
       setShowEditProject(false)
@@ -920,9 +947,7 @@ export default function ProjectDetail() {
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1 min-w-0 mr-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                <span className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xl leading-none flex-shrink-0 select-none">
-                  {projectIcon(project)}
-                </span>
+                <ProjectIcon project={project} size={36} />
                 <span className="min-w-0">{project.Title}</span>
               </h2>
               {project.Company && <p className="text-sm text-gray-500 mt-1">{project.Company}</p>}
@@ -1415,10 +1440,21 @@ export default function ProjectDetail() {
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">
-              ตัวอย่าง: <span className="text-base align-middle">{projectForm.icon || projectIcon({ ProjectGroup: projectForm.projectGroup })}</span>
-              {!projectForm.icon && ' (อัตโนมัติจากกลุ่มโครงการ)'}
-            </p>
+            {/* อัปโหลดรูปเป็นไอคอน (เช่น โลโก้ Grafana) — ย่อเป็น 64px อัตโนมัติ */}
+            <div className="flex items-center gap-2 mt-2">
+              <label className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-xs cursor-pointer hover:border-primary-300 transition-colors ${iconUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <ImagePlus size={13} /> {iconUploading ? 'กำลังอัปโหลด…' : 'อัปโหลดรูป'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadIcon(f) }} />
+              </label>
+              <span className="text-[11px] text-gray-400">
+                ตัวอย่าง:&nbsp;
+                {isImageIcon(projectForm.icon)
+                  ? <span className="inline-block align-middle"><ProjectIcon project={{ id: project.id, ProjectGroup: projectForm.projectGroup, Icon: projectForm.icon }} size={24} /></span>
+                  : <span className="text-base align-middle">{projectForm.icon || projectIcon({ ProjectGroup: projectForm.projectGroup })}</span>}
+                {!projectForm.icon && ' (อัตโนมัติจากกลุ่มโครงการ)'}
+              </span>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
