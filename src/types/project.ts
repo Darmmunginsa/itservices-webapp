@@ -15,6 +15,7 @@ export interface Project {
   Comment?: string
   ProjectGroup?: string
   QuotationRef?: string   // อ้างอิงใบเสนอราคาจาก SalePro (เลขที่ QT)
+  Icon?: string           // อีโมจิประจำโครงการ (optional — ต้องมีคอลัมน์ Icon ใน PM_Projects ถึงจะตั้งเองได้)
   Author?: { Title: string; EMail?: string }  // SP Created By — ผู้สร้างโครงการ (expand via $expand=Author)
   Modified: string
 }

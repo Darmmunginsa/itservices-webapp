@@ -22,6 +22,7 @@ import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { getStatusColor } from '../utils/colorUtils'
+import { projectIcon, ICON_CHOICES } from '../utils/projectIcon'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
 import { useT } from '../i18n/useT'
 
@@ -56,7 +57,7 @@ const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
 const EMPTY_PROJECT_FORM = {
   title: '', company: '', projectGroup: 'Internal', status: 'Planning',
   startDate: '', endDate: '', daysCount: '', progress: '0',
-  comment: '', secureNote: '', quotationRef: '',
+  comment: '', secureNote: '', quotationRef: '', icon: '',
 }
 
 /** Resolve a SharePoint Hyperlink field to a plain URL string */
@@ -329,6 +330,7 @@ export default function ProjectDetail() {
       comment: project.Comment ?? '',
       secureNote: canSeeSecure ? (project.SecureNote ?? '') : '',
       quotationRef: project.QuotationRef ?? '',
+      icon: project.Icon ?? '',
     })
     setShowEditProject(true)
   }
@@ -358,6 +360,12 @@ export default function ProjectDetail() {
         QuotationRef: projectForm.quotationRef || undefined,
         ...(canSeeSecure ? { SecureNote: projectForm.secureNote || undefined } : {}),
       })
+      // บันทึก Icon แยก — ถ้ายังไม่มีคอลัมน์ Icon ใน PM_Projects จะพลาดเฉพาะส่วนนี้
+      // (ไม่ทำให้การบันทึกข้อมูลหลักล้มทั้งฟอร์ม)
+      if ((projectForm.icon ?? '') !== (project.Icon ?? '')) {
+        try { await spUpdate('PM_Projects', project.id, { Icon: projectForm.icon || null }) }
+        catch { addToast('info', 'บันทึกไอคอนไม่ได้ — ต้องเพิ่มคอลัมน์ Icon (Single line of text) ใน PM_Projects ก่อน') }
+      }
       addToast('success', 'อัปเดตโครงการแล้ว')
       setShowEditProject(false)
       load()
@@ -911,7 +919,12 @@ export default function ProjectDetail() {
         <Card>
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1 min-w-0 mr-3">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{project.Title}</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <span className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-xl leading-none flex-shrink-0 select-none">
+                  {projectIcon(project)}
+                </span>
+                <span className="min-w-0">{project.Title}</span>
+              </h2>
               {project.Company && <p className="text-sm text-gray-500 mt-1">{project.Company}</p>}
               {/* ผู้สร้างโครงการ */}
               <p className="flex items-center gap-1.5 text-xs text-gray-400 mt-1.5">
@@ -1379,6 +1392,33 @@ export default function ProjectDetail() {
             <label className={lc}>{tr('pd.projectName')} *</label>
             <input required value={projectForm.title} onChange={e => pf('title', e.target.value)}
               className={ic} placeholder={tr('pd.projectNamePlaceholder')} />
+          </div>
+          {/* ไอคอนโครงการ — ไม่เลือก = ใช้ไอคอนอัตโนมัติตามกลุ่มโครงการ */}
+          <div>
+            <label className={lc}>ไอคอน</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => pf('icon', '')}
+                title="อัตโนมัติตามกลุ่มโครงการ"
+                className={`w-9 h-9 rounded-lg border text-[10px] font-medium flex items-center justify-center transition-colors ${
+                  !projectForm.icon
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-600'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-400 hover:border-primary-300'}`}>
+                อัตโน
+              </button>
+              {ICON_CHOICES.map(em => (
+                <button key={em} type="button" onClick={() => pf('icon', em)}
+                  className={`w-9 h-9 rounded-lg border text-lg leading-none flex items-center justify-center transition-colors ${
+                    projectForm.icon === em
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'}`}>
+                  {em}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ตัวอย่าง: <span className="text-base align-middle">{projectForm.icon || projectIcon({ ProjectGroup: projectForm.projectGroup })}</span>
+              {!projectForm.icon && ' (อัตโนมัติจากกลุ่มโครงการ)'}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
