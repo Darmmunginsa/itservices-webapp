@@ -8,6 +8,19 @@ import { sendMail } from './graph'
 // CC ทุกครั้งที่เปิด Ticket ใหม่ (ทีมวิศวกรต้องรับรู้ทุกเคส)
 export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
 
+// เมลที่เกี่ยวกับ Ticket — ใช้ชื่อเรื่องของลูกค้าเป็นหัวข้อ (ไม่ใช่เลข Ticket)
+// ปัจจุบันมีแค่ ticket_created ที่ส่งอีเมลจริง (comment/status เป็น in-app notification)
+// ถ้าภายหลังเพิ่มเมลของ ticket ให้ใส่ event ที่นี่ — จะได้หัวข้อเดียวกัน = อยู่เธรดเดียวกันฝั่งลูกค้า
+const TICKET_EVENTS = new Set(['ticket_created'])
+
+/** แถบเลข Ticket บนหัวเนื้อเมล (รูปแบบเดียวกับ Add-in) */
+function ticketBanner(ticketNo: string): string {
+  return `<div style="border-left:4px solid #2563eb;background:#eff6ff;padding:10px 14px;margin:0 0 14px;font-family:Segoe UI,sans-serif">
+    <div style="font-size:15px;font-weight:700;color:#1e40af">Ticket No. ${ticketNo}</div>
+    <div style="font-size:12px;color:#475569;margin-top:2px">กรุณาตอบกลับในอีเมลฉบับนี้เพื่อให้ข้อมูลอยู่ใน Ticket เดียวกัน</div>
+  </div>`
+}
+
 export interface EmailTemplate {
   id: number
   Title: string
@@ -84,9 +97,17 @@ export async function sendTemplateEmail(
     const tpl = templates.find(t => t.EventKey === eventKey && t.IsEnabled)
     if (!tpl) return  // ไม่มี template หรือ disabled
 
-    const subject = render(tpl.Subject || '', vars)
-    const body    = render(tpl.Body    || '', vars)
+    let subject = render(tpl.Subject || '', vars)
+    let body    = render(tpl.Body    || '', vars)
     if (!subject || !body) return
+
+    // ── เมลของ Ticket: ใช้ "ชื่อเรื่องของลูกค้า" เป็นหัวข้อ ไม่ใช่เลข Ticket ──
+    // (หลักการเดียวกับ Add-in) เลข Ticket ย้ายไปเป็นแถบบนเนื้อเมลแทน
+    // ผลพลอยได้: ทุกเมลของ ticket เดียวกันใช้หัวข้อเดียวกัน → ไคลเอนต์อีเมลจัดเป็นเธรดเดียว
+    if (TICKET_EVENTS.has(eventKey) && vars.ticket_title?.trim()) {
+      subject = vars.ticket_title.trim()
+      if (vars.ticket_number?.trim()) body = ticketBanner(vars.ticket_number.trim()) + body
+    }
 
     // dedupe (case-insensitive) + ตัด CC ที่ซ้ำกับ To
     const norm = (e: string) => e.trim().toLowerCase()
