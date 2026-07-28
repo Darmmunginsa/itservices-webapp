@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Search, FolderOpen, Plus, Trash2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useT } from '../i18n/useT'
@@ -13,6 +13,10 @@ import { useAppStore } from '../store/useAppStore'
 import type { Project, ProjectStatus } from '../types/project'
 import { formatDate } from '../utils/dateUtils'
 import { ProjectIcon } from '../components/common/ProjectIcon'
+import { DataTable } from '../components/common/DataTable'
+import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
+import { Badge } from '../components/common/Badge'
+import { getStatusColor } from '../utils/colorUtils'
 
 const PROJECT_GROUPS = ['Internal', 'External', 'R&D', 'Maintenance', 'อื่นๆ']
 const PROJECT_STATUSES: ProjectStatus[] = ['Planning', 'Active', 'On Hold', 'Completed', 'Cancelled']
@@ -36,6 +40,8 @@ const STATUS_COLUMNS: { status: ProjectStatus; color: string; dot: string }[] = 
 export default function Projects() {
   const { user, addToast } = useAppStore()
   const tr = useT()
+  const navigate = useNavigate()
+  const [view, setView] = useViewMode('projects')
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -191,6 +197,7 @@ export default function Projects() {
           >
             {showCompleted ? `ซ่อน Completed/Cancelled` : `ดูทั้งหมด (+${totalDone} รายการ)`}
           </button>
+          <ViewToggle mode={view} onChange={setView} />
           {canCreate && (
             <Button onClick={() => setShowCreate(true)} size="sm">
               <Plus size={14} /> สร้างโครงการ
@@ -208,6 +215,46 @@ export default function Projects() {
               </div>
             ))}
           </div>
+        ) : view === 'table' ? (
+          <DataTable
+            rows={baseFiltered.filter(p => showCompleted || ACTIVE_STATUSES.includes(p.Status))}
+            rowKey={p => p.id}
+            onRowClick={p => navigate(`/projects/${p.id}`)}
+            emptyText={tr('projects.none')}
+            columns={[
+              { key: 'icon', label: '', render: p => <ProjectIcon project={p} size={26} /> },
+              { key: 'title', label: tr('pd.projectName'), sortValue: p => p.Title,
+                render: p => <span className="font-medium text-gray-900 dark:text-gray-100">{p.Title}</span> },
+              { key: 'company', label: tr('pd.company'), sortValue: p => p.Company ?? '',
+                render: p => <span className="text-gray-500">{p.Company || '—'}</span> },
+              { key: 'group', label: tr('pd.group'), sortValue: p => p.ProjectGroup ?? '',
+                render: p => p.ProjectGroup
+                  ? <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded">{p.ProjectGroup}</span>
+                  : <span className="text-gray-300">—</span> },
+              { key: 'status', label: tr('common.status'), sortValue: p => p.Status,
+                render: p => <Badge className={getStatusColor(p.Status)}>{p.Status}</Badge> },
+              { key: 'progress', label: tr('projects.progress'), sortValue: p => p.Progress ?? 0, align: 'right',
+                render: p => (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-16 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                      <span className="block bg-primary-600 h-full rounded-full" style={{ width: `${p.Progress ?? 0}%` }} />
+                    </span>
+                    <span className="text-xs text-gray-500 tabular-nums w-9 text-right">{p.Progress ?? 0}%</span>
+                  </span>
+                ) },
+              { key: 'start', label: tr('pd.start'), sortValue: p => p.StartDate ?? '',
+                render: p => <span className="text-xs text-gray-500">{formatDate(p.StartDate)}</span> },
+              { key: 'end', label: tr('pd.end'), sortValue: p => p.EndDate ?? '',
+                render: p => <span className="text-xs text-gray-500">{formatDate(p.EndDate)}</span> },
+              { key: 'creator', label: 'ผู้สร้าง', sortValue: p => creatorName(p),
+                render: p => <span className="text-xs text-gray-500">{creatorName(p)}</span> },
+              { key: 'del', label: '', align: 'right',
+                render: p => (isCreator(p) || seesAll)
+                  ? <button onClick={e => handleDelete(e, p)} disabled={deletingId === p.id} title="ลบโครงการ"
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40"><Trash2 size={13} /></button>
+                  : null },
+            ]}
+          />
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
             {columns.map(col => (

@@ -1,17 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Search, Pin, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useT } from '../i18n/useT'
 import { Badge } from '../components/common/Badge'
 import { SkeletonRow } from '../components/common/Skeleton'
+import { DataTable, type Column } from '../components/common/DataTable'
+import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketMember } from '../types/ticket'
 import type { Task, ProjectIncident } from '../types/project'
 import type { FocusItem } from '../types/common'
 import { getDueDateColor, getDueDateRowClass, getDueDateBadgeClass, getDueDateEmoji, formatDate } from '../utils/dateUtils'
-import { getPriorityColor, getSeverityColor } from '../utils/colorUtils'
+import { getPriorityColor, getSeverityColor, getStatusColor } from '../utils/colorUtils'
 
 type TabType = 'tickets' | 'tasks' | 'incidents'
 
@@ -20,6 +22,8 @@ const DONE_TICKET_STATUSES = new Set(['Resolved', 'Closed'])
 export default function MyWork() {
   const { user, addToast } = useAppStore()
   const tr = useT()
+  const navigate = useNavigate()
+  const [view, setView] = useViewMode('mywork')
   const [tab, setTab] = useState<TabType>('tickets')
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
@@ -234,6 +238,66 @@ export default function MyWork() {
     )
   }
 
+  // ── Table columns (มุมมองตาราง) ──
+  const dueCell = (date?: string, done?: boolean) => {
+    if (!date) return <span className="text-gray-300">—</span>
+    const color = getDueDateColor(date, done)
+    return <span className={`text-xs px-1.5 py-0.5 rounded ${getDueDateBadgeClass(color)}`}>{getDueDateEmoji(color)} {formatDate(date)}</span>
+  }
+  const pinCell = (type: string, item: { id: number; Title: string }, onPin: () => void) => (
+    <button onClick={e => { e.stopPropagation(); onPin() }} title="Pin"
+      className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 ${pinnedSet.has(`${type}|${item.Title}`) ? 'text-primary-600' : 'text-gray-300 hover:text-primary-600'}`}>
+      <Pin size={13} />
+    </button>
+  )
+
+  const ticketTableCols: Column<Ticket>[] = [
+    { key: 'no', label: 'Ticket', sortValue: t => t.TicketNumber ?? '',
+      render: t => <span className="text-xs font-mono text-gray-500">{t.TicketNumber || '—'}</span> },
+    { key: 'title', label: tr('pd.projectName'), sortValue: t => t.Title,
+      render: t => <span className="font-medium text-gray-900 dark:text-gray-100">{t.Title}</span> },
+    { key: 'status', label: tr('common.status'), sortValue: t => t.Status,
+      render: t => <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge> },
+    { key: 'priority', label: tr('common.priority'), sortValue: t => t.Priority ?? '',
+      render: t => <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge> },
+    { key: 'due', label: tr('common.dueDate'), sortValue: t => t.DueDate ?? '',
+      render: t => dueCell(t.DueDate, t.Status === 'Closed') },
+    { key: 'ack', label: '', align: 'right', render: t =>
+      !t.IsAcknowledged && ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+        ? <button onClick={e => { e.stopPropagation(); acknowledgeTicket(t) }} title={tr('common.acknowledge')}
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-green-600"><CheckCircle2 size={14} /></button>
+        : <CheckCircle2 size={14} className="text-green-500 inline" /> },
+    { key: 'pin', label: '', align: 'right', render: t => pinCell('Ticket', t, () => pinFocus('Ticket', t)) },
+  ]
+
+  const taskTableCols: Column<Task>[] = [
+    { key: 'title', label: tr('pd.projectName'), sortValue: t => t.Title,
+      render: t => <span className={`font-medium ${t.IsCompleted ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>{t.Title}</span> },
+    { key: 'note', label: tr('common.note'), sortValue: t => t.TaskNote ?? '',
+      render: t => <span className="text-xs text-gray-500 italic line-clamp-1 max-w-xs">{t.TaskNote || '—'}</span> },
+    { key: 'status', label: tr('common.status'), sortValue: t => (t.IsCompleted ? 1 : 0),
+      render: t => t.IsCompleted
+        ? <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">เสร็จแล้ว</Badge>
+        : <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">กำลังทำ</Badge> },
+    { key: 'due', label: tr('common.dueDate'), sortValue: t => t.DueDate ?? '',
+      render: t => dueCell(t.DueDate, t.IsCompleted) },
+    { key: 'pin', label: '', align: 'right', render: t => pinCell('Task', t, () => pinFocus('Task', t)) },
+  ]
+
+  const incidentTableCols: Column<ProjectIncident>[] = [
+    { key: 'title', label: tr('pd.projectName'), sortValue: i => i.Title,
+      render: i => <span className="font-medium text-gray-900 dark:text-gray-100">{i.Title}</span> },
+    { key: 'desc', label: tr('common.note'), sortValue: i => i.Description ?? '',
+      render: i => <span className="text-xs text-gray-500 line-clamp-1 max-w-xs">{i.Description || '—'}</span> },
+    { key: 'severity', label: 'Severity', sortValue: i => i.Severity ?? '',
+      render: i => <Badge className={getSeverityColor(i.Severity)}>{i.Severity}</Badge> },
+    { key: 'status', label: tr('common.status'), sortValue: i => i.Status ?? '',
+      render: i => <Badge className={getStatusColor(i.Status)}>{i.Status}</Badge> },
+    { key: 'date', label: tr('common.dueDate'), sortValue: i => i.IncidentDate ?? '',
+      render: i => <span className="text-xs text-gray-500">{i.IncidentDate ? formatDate(i.IncidentDate) : '—'}</span> },
+    { key: 'pin', label: '', align: 'right', render: i => pinCell('Incident', i, () => pinFocus('Incident', i)) },
+  ]
+
   const TICKET_COLS = [
     { key: 'Open', label: 'Open', color: 'bg-blue-500' },
     { key: 'In Progress', label: 'In Progress', color: 'bg-amber-500' },
@@ -321,33 +385,45 @@ export default function MyWork() {
               {showAllIncidents ? 'ซ่อนที่เสร็จแล้ว' : `ดูทั้งหมด (${incidents.length})`}
             </button>
           )}
+          <div className="ml-auto"><ViewToggle mode={view} onChange={setView} /></div>
         </div>
 
-        {/* Tickets — columns by status */}
+        {/* Tickets */}
         {tab === 'tickets' && (
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredTickets.length === 0
               ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noTickets')}</p>
-              : <Columns cols={TICKET_COLS.filter(c => showAllTickets || !DONE_TICKET_STATUSES.has(c.key))} items={filteredTickets} keyOf={t => t.Status} render={t => ticketCard(t)} />
+              : view === 'table'
+                ? <DataTable rows={filteredTickets} columns={ticketTableCols} rowKey={t => t.id}
+                    onRowClick={t => navigate(`/tickets/${t.id}`)} emptyText={tr('mywork.noTickets')}
+                    rowClass={t => getDueDateRowClass(getDueDateColor(t.DueDate, t.Status === 'Closed'))} />
+                : <Columns cols={TICKET_COLS.filter(c => showAllTickets || !DONE_TICKET_STATUSES.has(c.key))} items={filteredTickets} keyOf={t => t.Status} render={t => ticketCard(t)} />
         )}
 
-        {/* Tasks — columns by open/closed */}
+        {/* Tasks */}
         {tab === 'tasks' && (
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredTasks.length === 0
               ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noTasks')}</p>
-              : <Columns cols={TASK_COLS} items={filteredTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => taskCard(t)} />
+              : view === 'table'
+                ? <DataTable rows={filteredTasks} columns={taskTableCols} rowKey={t => t.id}
+                    onRowClick={t => t.ProjectID && navigate(`/projects/${t.ProjectID}`)} emptyText={tr('mywork.noTasks')}
+                    rowClass={t => getDueDateRowClass(getDueDateColor(t.DueDate, t.IsCompleted))} />
+                : <Columns cols={TASK_COLS} items={filteredTasks} keyOf={t => t.IsCompleted ? 'done' : 'open'} render={t => taskCard(t)} />
         )}
 
-        {/* Incidents — columns by status */}
+        {/* Incidents */}
         {tab === 'incidents' && (
           loading
             ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}</div>
             : filteredIncidents.length === 0
               ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noIncidents')}</p>
-              : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
+              : view === 'table'
+                ? <DataTable rows={filteredIncidents} columns={incidentTableCols} rowKey={i => i.id}
+                    onRowClick={i => i.ProjectID > 0 && navigate(`/projects/${i.ProjectID}`)} emptyText={tr('mywork.noIncidents')} />
+                : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
         )}
       </div>
     </div>

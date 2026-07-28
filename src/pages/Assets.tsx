@@ -7,6 +7,8 @@ import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
+import { DataTable } from '../components/common/DataTable'
+import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spGetFromSite } from '../services/sharepoint'
@@ -456,6 +458,7 @@ export default function Assets() {
   )
 
   const canAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
+  const [view, setView] = useViewMode('assets')
 
   // export asset ที่ผ่าน filter ปัจจุบัน → .xlsx (โหลด lib แบบ dynamic ไม่ถ่วง bundle หลัก)
   // หมายเหตุ: ไม่ export รหัสผ่าน (Password) เพื่อความปลอดภัย — ไม่กระจายลง Excel ที่ส่งต่อกันได้
@@ -541,6 +544,7 @@ export default function Assets() {
           {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> {tr('assets.addAsset')}</Button>}
           {canAdmin && <Button size="sm" variant="secondary" onClick={openImportFromPurchase}>📥 นำเข้าจากงานจัดซื้อ</Button>}
           <datalist id="quote-ref-list">{quoteList.map(q => <option key={q.Title} value={q.Title}>{q.ClientName || ''}</option>)}</datalist>
+          <ViewToggle mode={view} onChange={setView} />
           <Button size="sm" variant="secondary" onClick={exportExcel} disabled={exporting}>
             <Download size={14} /> {exporting ? tr('common.saving') : `Excel (${filtered.length})`}
           </Button>
@@ -554,6 +558,50 @@ export default function Assets() {
           <div className="flex gap-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-72 flex-shrink-0 space-y-3"><SkeletonRow /><SkeletonRow /></div>)}</div>
         ) : filtered.length === 0 ? (
           <p className="text-center text-sm text-gray-400 py-12">{tr('assets.noAsset')}</p>
+        ) : view === 'table' ? (
+          <DataTable
+            rows={filtered}
+            rowKey={a => a.id}
+            onRowClick={a => setViewAsset(a)}
+            emptyText={tr('assets.noAsset')}
+            rowClass={a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate) ? 'bg-orange-50/50 dark:bg-orange-900/10' : ''}
+            columns={[
+              { key: 'status_dot', label: '', render: a => {
+                  const mid = monitorIdFromUrl(a.MonitorUrl)
+                  const st = mid != null ? monitorStatus[mid] : undefined
+                  if (!st) return null
+                  const up = st.Status === 'up' || st.Status === '1'
+                  return <span className={`inline-block w-2.5 h-2.5 rounded-full ${up ? 'bg-green-500' : st.Status === 'pending' ? 'bg-amber-400' : 'bg-red-500'}`}
+                    title={up ? tr('assets.up') : st.Status === 'pending' ? tr('assets.waitingData') : tr('assets.down')} />
+                } },
+              { key: 'code', label: tr('assets.assetCode'), sortValue: a => a.AssetCode ?? '',
+                render: a => <span className="text-xs font-mono text-gray-500">{a.AssetCode || '—'}</span> },
+              { key: 'title', label: tr('assets.assetName'), sortValue: a => a.Title,
+                render: a => <span className="font-medium text-gray-900 dark:text-gray-100">{a.Title}</span> },
+              { key: 'category', label: tr('common.category'), sortValue: a => a.Category ?? '',
+                render: a => <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded">{a.Category}</span> },
+              { key: 'status', label: tr('common.status'), sortValue: a => a.Status ?? '',
+                render: a => <Badge className={getStatusColor(a.Status)}>{a.Status}</Badge> },
+              { key: 'ip', label: 'IP', sortValue: a => a.IPAddress ?? '',
+                render: a => <span className="text-xs font-mono text-gray-500">{a.IPAddress || '—'}</span> },
+              { key: 'assigned', label: tr('assets.assignedTo'), sortValue: a => a.AssignedTo ?? '',
+                render: a => <span className="text-xs text-gray-500">{a.AssignedTo || '—'}</span> },
+              { key: 'warranty', label: tr('assets.warranty'), sortValue: a => a.WarrantyDate || a.ExpiryDate || '',
+                render: a => {
+                  const d = a.WarrantyDate || a.ExpiryDate
+                  if (!d) return <span className="text-gray-300">—</span>
+                  const soon = isWarrantyExpiringSoon(d)
+                  const left = daysUntil(d)
+                  return (
+                    <span className={`text-xs inline-flex items-center gap-1 ${soon ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+                      {soon && <AlertTriangle size={11} />}
+                      {formatDate(d)}
+                      {left !== null && left < 0 && <span className="text-red-600">({tr('assets.expired')})</span>}
+                    </span>
+                  )
+                } },
+            ]}
+          />
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1">
             {assetColumns.map(col => (
