@@ -49,16 +49,18 @@ export function PersonPhoto({ itemId, fileName, name, size = 36, className = '' 
     return () => { alive = false }
   }, [key, fileName, itemId])
 
+  // ต้องมี inline-flex: <span> เป็น display:inline โดยปริยาย ซึ่ง "ไม่รับ" width/height
+  // ถ้าไม่ใส่ รูปจะแสดงที่ขนาดจริง (128px) ทะลุกรอบและดัน layout ของการ์ดพัง
   const style = { width: size, height: size }
   if (url) {
     return (
-      <span className={`rounded-full overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-800 ${className}`} style={style}>
+      <span className={`inline-flex rounded-full overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-800 ${className}`} style={style}>
         <img src={url} alt={name} className="w-full h-full object-cover" />
       </span>
     )
   }
   return (
-    <span className={`rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 select-none ${className}`}
+    <span className={`inline-flex rounded-full items-center justify-center text-white font-bold flex-shrink-0 select-none ${className}`}
       style={{ ...style, backgroundColor: avatarColor(name || String(itemId)), fontSize: Math.round(size * 0.42) }}>
       {(name || '?').charAt(0).toUpperCase()}
     </span>
