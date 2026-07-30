@@ -1,4 +1,5 @@
 import type { Project } from '../types/project'
+import { makeSquareImageFile } from './imageFile'
 
 // ── ไอคอนโครงการ ──
 // 1) ถ้าตั้งไอคอนเองไว้ (คอลัมน์ Icon ใน PM_Projects) → ใช้อันนั้น
@@ -36,23 +37,9 @@ export function projectIcon(p: Pick<Project, 'ProjectGroup'> & { Icon?: string }
   return GROUP_ICON[p.ProjectGroup ?? ''] ?? DEFAULT_PROJECT_ICON
 }
 
-/**
- * ย่อรูปเป็นสี่เหลี่ยมจัตุรัสขนาด size px แล้วคืนเป็น PNG File
- * (ผู้ใช้มักตัดรูปจาก screenshot ขนาดใหญ่ — ย่อก่อนอัปโหลดให้โหลดไว ไม่กิน SharePoint)
- */
+/** ย่อรูปเป็นไอคอนโครงการ (จัตุรัส 64px) — ใช้ตัวช่วยกลางใน utils/imageFile */
 export async function makeIconFile(src: File, size = 64): Promise<File> {
-  const bitmap = await createImageBitmap(src)
-  const canvas = document.createElement('canvas')
-  canvas.width = size; canvas.height = size
-  const ctx = canvas.getContext('2d')!
-  // crop กลางภาพให้เป็นจัตุรัส แล้วค่อยย่อ (ไม่ให้รูปยืด)
-  const side = Math.min(bitmap.width, bitmap.height)
-  const sx = (bitmap.width - side) / 2
-  const sy = (bitmap.height - side) / 2
-  ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
-  bitmap.close?.()
-  const blob: Blob = await new Promise(res => canvas.toBlob(b => res(b!), 'image/png'))
-  return new File([blob], `${ICON_FILE_PREFIX}${Date.now()}.png`, { type: 'image/png' })
+  return makeSquareImageFile(src, size, ICON_FILE_PREFIX)
 }
 
 // ชุดไอคอนให้เลือกในฟอร์มแก้ไขโครงการ

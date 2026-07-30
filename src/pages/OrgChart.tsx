@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle } from 'lucide-react'
+import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle, Camera, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Button } from '../components/common/Button'
-import { spGet } from '../services/sharepoint'
+import { PersonPhoto, PHOTO_PREFIX, isPhotoFile, clearPhotoCache } from '../components/common/PersonPhoto'
+import { makeSquareImageFile } from '../utils/imageFile'
+import { spGet, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
@@ -22,27 +24,73 @@ const ROLE_STYLE: Record<string, string> = {
   EndUser:    'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
 }
 
-const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
-function avatarColor(s: string): string {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = s.charCodeAt(i) + ((h << 5) - h)
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
-}
+// รายชื่อ + ชื่อไฟล์แนบ (ใช้หารูปพนักงาน)
+type AgentRow = AgentProfile & { AttachmentFiles?: { FileName: string }[] }
 
 export default function OrgChart() {
-  const { user } = useAppStore()
+  const { user, addToast } = useAppStore()
   const tr = useT()
-  const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [agents, setAgents] = useState<AgentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [zoom, setZoom] = useState(1)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    spGet<AgentProfile>('HD_AgentProfiles', undefined,
-      'Id,Title,EmailText,Role,SupportGroup,SpecialtyCategory,IsAvailable,ApproverEmail', 'Title asc', 500)
-      .then(setAgents).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  // ดึงชื่อไฟล์รูปมาพร้อมรายชื่อในคำขอเดียว ($expand) — ไม่ต้องยิงถามไฟล์แนบทีละคน
+  function loadAgents() {
+    spGet<AgentRow>('HD_AgentProfiles', undefined,
+      'Id,Title,EmailText,Role,SupportGroup,SpecialtyCategory,IsAvailable,ApproverEmail,AttachmentFiles/FileName',
+      'Title asc', 500, 'AttachmentFiles')
+      .then(setAgents)
+      .catch(() => {
+        // เผื่อ $expand ใช้ไม่ได้ → โหลดแบบไม่มีรูป ยังเห็นผังปกติ
+        spGet<AgentRow>('HD_AgentProfiles', undefined,
+          'Id,Title,EmailText,Role,SupportGroup,SpecialtyCategory,IsAvailable,ApproverEmail', 'Title asc', 500)
+          .then(setAgents).catch(() => {})
+      })
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { loadAgents() }, [])
+
+  const photoOf = (a?: AgentRow) => a?.AttachmentFiles?.find(f => isPhotoFile(f.FileName))?.FileName
+
+  /** อัปโหลดรูปได้: ของตัวเอง หรือ Admin/Boss (แก้ให้คนอื่นได้) */
+  const canEditPhoto = (a: AgentRow) =>
+    norm(a.EmailText) === norm(user?.email) || ['Admin', 'Boss'].includes(user?.role ?? '')
+
+  const [uploadingId, setUploadingId] = useState<number | null>(null)
+  async function uploadPhoto(a: AgentRow, file: File) {
+    setUploadingId(a.id)
+    try {
+      const photo = await makeSquareImageFile(file, 128, PHOTO_PREFIX)
+      // ต้องใช้ชื่อที่ SharePoint บันทึกจริง (ถูก sanitize + เติมสุ่มกันซ้ำ)
+      const storedName = await spUploadAttachment('HD_AgentProfiles', a.id, photo)
+      // ลบรูปเก่าทุกไฟล์ ไม่ให้เหลือหลายรูปแล้วเลือกผิดใบ
+      try {
+        const files = await spGetAttachments('HD_AgentProfiles', a.id)
+        for (const f of files) {
+          if (f.FileName !== storedName && isPhotoFile(f.FileName)) {
+            try { await spDeleteAttachment('HD_AgentProfiles', a.id, f.FileName) } catch { /* ข้าม */ }
+          }
+        }
+      } catch { /* อ่านรายการไฟล์ไม่ได้ — รูปใหม่ยังใช้ได้ */ }
+      clearPhotoCache(a.id)
+      addToast('success', `อัปเดตรูปของ ${a.Title} แล้ว`)
+      loadAgents()
+    } catch { addToast('error', 'อัปโหลดรูปไม่สำเร็จ') }
+    finally { setUploadingId(null) }
+  }
+
+  async function removePhoto(a: AgentRow) {
+    const f = photoOf(a)
+    if (!f || !window.confirm(`ลบรูปของ ${a.Title}?`)) return
+    try {
+      await spDeleteAttachment('HD_AgentProfiles', a.id, f)
+      clearPhotoCache(a.id)
+      addToast('success', 'ลบรูปแล้ว')
+      loadAgents()
+    } catch { addToast('error', 'ลบรูปไม่สำเร็จ') }
+  }
 
   // ── สร้างโครงต้นไม้จาก ApproverEmail ──
   const { roots, childrenOf, byEmail, orphans } = useMemo(() => {
@@ -122,9 +170,24 @@ export default function OrgChart() {
         : hit ? 'border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900/50'
         : 'border-gray-200 dark:border-gray-700'}`}>
         <div className="flex items-start gap-2">
-          <span className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-            style={{ backgroundColor: avatarColor(a.Title || email) }}>
-            {(a.Title || email).charAt(0).toUpperCase()}
+          <span className="relative flex-shrink-0 group">
+            <PersonPhoto itemId={a.id} fileName={photoOf(a)} name={a.Title || email} size={38} />
+            {canEditPhoto(a) && (
+              <>
+                <label title="เปลี่ยนรูป"
+                  className={`no-print absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:text-primary-600 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity ${uploadingId === a.id ? 'opacity-100 pointer-events-none' : ''}`}>
+                  <Camera size={10} />
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(a, f) }} />
+                </label>
+                {photoOf(a) && uploadingId !== a.id && (
+                  <button onClick={() => removePhoto(a)} title="ลบรูป"
+                    className="no-print absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <X size={8} />
+                  </button>
+                )}
+              </>
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={a.Title}>{a.Title}</p>
