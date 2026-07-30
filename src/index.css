@@ -96,3 +96,39 @@
 
 /* Sub-card panels follow custom card theme (transparent / bg color) */
 .subpanel { background: var(--card-bg); backdrop-filter: var(--card-blur); }
+
+/* ── Print / Export PDF ──────────────────────────────────────────────────────
+   ใช้ browser print engine (Save as PDF) — ข้อความไทยคมชัด กราฟ SVG เป็น vector
+   ไฟล์เล็ก และไม่ต้องฝังฟอนต์ไทยเองเหมือนการ generate PDF ฝั่ง JS         */
+.print-only { display: none; }
+
+@media print {
+  /* บังคับพื้นหลังขาว/ตัวอักษรดำ — ธีมมืดจะกินหมึกและอ่านไม่ออกบนกระดาษ */
+  html, body, #root {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  /* ซ่อนส่วนที่ไม่ใช่เนื้อรายงาน (เมนู, ปุ่ม, popup ฯลฯ) */
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+
+  /* คืนพื้นที่ที่เดิมเว้นไว้ให้ sidebar */
+  .md\:ml-56 { margin-left: 0 !important; }
+
+  /* การ์ด: ขอบบาง ไม่มีเงา และห้ามฉีกกลางการ์ดข้ามหน้า */
+  .subpanel, [class*="rounded-xl"], [class*="rounded-2xl"] {
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* ตารางไม่ต้อง scroll ตอนพิมพ์ ให้แสดงครบทั้งหมด */
+  [class*="overflow-x-auto"], [class*="overflow-y-auto"] {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  table { break-inside: auto; }
+  tr, thead { break-inside: avoid; }
+  thead { display: table-header-group; }   /* หัวตารางซ้ำทุกหน้า */
+
+  @page { size: A4; margin: 12mm 10mm; }
+}

@@ -103,13 +103,13 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-40 hidden md:flex flex-col">
+      <aside className="no-print fixed left-0 top-0 h-full w-56 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 z-40 hidden md:flex flex-col">
         <SidebarContent />
       </aside>
 
       {/* Mobile overlay */}
       {mobileNavOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex">
+        <div className="no-print fixed inset-0 z-50 md:hidden flex">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"

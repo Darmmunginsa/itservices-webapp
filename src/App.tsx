@@ -205,23 +205,25 @@ function AppContent() {
           </Routes>
         </main>
         <BottomNav />
-        <ToastContainer />
-        <DateTaskModal />
-        <FloatingFocus />
-        <TaskPlanner />
+        <div className="no-print">
+          <ToastContainer />
+          <DateTaskModal />
+          <FloatingFocus />
+          <TaskPlanner />
+        </div>
 
         {/* Floating calendar toggle — above BottomNav on mobile, bottom-right on desktop */}
         {!calendarOpen && (
           <button
             onClick={() => setCalendarOpen(true)}
-            className="fixed bottom-[4.75rem] right-3 md:bottom-4 md:right-4 z-40 flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full px-3.5 py-2 shadow-lg hover:shadow-xl transition-shadow text-sm font-medium text-gray-700 dark:text-gray-300"
+            className="no-print fixed bottom-[4.75rem] right-3 md:bottom-4 md:right-4 z-40 flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-full px-3.5 py-2 shadow-lg hover:shadow-xl transition-shadow text-sm font-medium text-gray-700 dark:text-gray-300"
             title="เปิดปฏิทิน"
           >
             <Calendar size={15} className="text-primary-600" />
             <span className="hidden sm:inline">ปฏิทิน</span>
           </button>
         )}
-        <CalendarDrawer open={calendarOpen} onClose={() => setCalendarOpen(false)} />
+        <div className="no-print"><CalendarDrawer open={calendarOpen} onClose={() => setCalendarOpen(false)} /></div>
       </div>
     </div>
   )

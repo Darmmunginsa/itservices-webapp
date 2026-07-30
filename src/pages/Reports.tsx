@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, Ticket as TicketIcon, Clock, Users, TrendingUp, Award, Building2, CalendarDays } from 'lucide-react'
+import { BarChart3, Ticket as TicketIcon, Clock, Users, TrendingUp, Award, Building2, CalendarDays, FileDown } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useT } from '../i18n/useT'
 import { Card } from '../components/common/Card'
+import { Button } from '../components/common/Button'
 import { Skeleton } from '../components/common/Skeleton'
 import { Donut, BarChart, Columns } from '../components/common/Charts'
 import { spGet } from '../services/sharepoint'
@@ -52,6 +53,25 @@ export default function Reports() {
     ]).then(([t, l]) => { setTickets(t); setLeaves(l) })
       .catch(() => {}).finally(() => setLoading(false))
   }, [mine, user?.email, leaveYear])
+
+  /**
+   * Export PDF ผ่าน print dialog ของเบราว์เซอร์ (เลือก "Save as PDF")
+   * ธีมมืดต้องถอด class 'dark' ชั่วคราว ไม่งั้นการ์ดพิมพ์ออกมาเป็นพื้นดำ กินหมึกและอ่านไม่ออก
+   * — วิธีนี้คงสีของ badge/กราฟไว้ครบ (ต่างจากการ force สีทั้งหน้าเป็นขาว-ดำ)
+   */
+  function exportPdf() {
+    const root = document.documentElement
+    const wasDark = root.classList.contains('dark')
+    if (wasDark) root.classList.remove('dark')
+    const restore = () => {
+      if (wasDark) root.classList.add('dark')
+      window.removeEventListener('afterprint', restore)
+    }
+    window.addEventListener('afterprint', restore)
+    // เผื่อบางเบราว์เซอร์ไม่ยิง afterprint — กันธีมค้างเป็นสว่าง
+    setTimeout(restore, 60_000)
+    window.print()
+  }
 
   const now = new Date()
 
@@ -194,8 +214,19 @@ export default function Reports() {
       <Header title={tr('reports.header')} />
       <div className="p-4 md:p-6 space-y-6">
 
+        {/* หัวรายงาน — แสดงเฉพาะตอนพิมพ์/บันทึก PDF (บนจอปกติมี Header อยู่แล้ว) */}
+        <div className="print-only mb-4 pb-3" style={{ borderBottom: '2px solid #111' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
+            รายงานสรุป Helpdesk — {scopeAll ? 'ทั้งองค์กร' : 'เฉพาะของฉัน'}
+          </h1>
+          <p style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+            iT Services · ออกรายงานโดย {user?.displayName ?? '-'} · {new Date().toLocaleString('th-TH')}
+            {' · '}ข้อมูลวันลาปี {leaveYear}
+          </p>
+        </div>
+
         {/* Scope toggle */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 no-print">
           <span className="text-xs text-gray-500">{tr('reports.scope')}</span>
           {isBoss ? (
             <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
@@ -207,6 +238,10 @@ export default function Reports() {
           ) : (
             <span className="text-xs font-medium text-primary-600">{tr('reports.onlyMine')}</span>
           )}
+          {/* Export PDF — ใช้ print dialog ของเบราว์เซอร์ เลือก "Save as PDF" */}
+          <Button size="sm" variant="secondary" className="ml-auto" onClick={exportPdf} disabled={loading}>
+            <FileDown size={14} /> Export PDF
+          </Button>
         </div>
 
         {/* KPI cards */}
