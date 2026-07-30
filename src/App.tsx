@@ -41,6 +41,7 @@ import Diagnostic from './pages/Diagnostic'
 import Admin from './pages/Admin'
 import Tools from './pages/Tools'
 import ActivityLog from './pages/ActivityLog'
+import OrgChart from './pages/OrgChart'
 import './index.css'
 
 // map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
@@ -57,6 +58,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   tools: <Tools />,
   skills: <Skills />,
   contracts: <Contracts />,
+  orgchart: <OrgChart />,
   admin: <Admin />,
   activity: <ActivityLog />,
   debug: <Diagnostic />,
