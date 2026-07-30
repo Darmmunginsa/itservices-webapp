@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { Search, UserCheck } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
@@ -7,6 +7,7 @@ import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonCard, SkeletonRow } from '../components/common/Skeleton'
+import { DataTable, type Column } from '../components/common/DataTable'
 import { spGet, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
@@ -16,6 +17,7 @@ import { formatDate, getDueDateColor, getDueDateRowClass, getDueDateEmoji } from
 
 export default function AgentDashboard() {
   const { user, addToast } = useAppStore()
+  const navigate = useNavigate()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,6 +90,43 @@ export default function AgentDashboard() {
 
   const canAssign = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
 
+  // เรียงตามลำดับความเร่งด่วน/ขั้นตอนจริง ไม่ใช่ตามตัวอักษร (กด asc = ด่วนสุด/ค้างสุดขึ้นก่อน)
+  const PRIORITY_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
+  const STATUS_ORDER: Record<string, number> = { Open: 0, 'In Progress': 1, Pending: 2, Resolved: 3, Closed: 4 }
+
+  const ticketColumns: Column<Ticket>[] = [
+    { key: 'due_icon', label: '', align: 'center',
+      render: t => <span>{getDueDateEmoji(getDueDateColor(t.DueDate, t.Status === 'Closed'))}</span> },
+    { key: 'number', label: 'Ticket No.', sortValue: t => t.TicketNumber ?? '',
+      render: t => <span className="text-xs font-mono text-gray-500">{t.TicketNumber || '—'}</span> },
+    { key: 'title', label: 'หัวข้อ', sortValue: t => t.Title,
+      render: t => <span className="font-medium text-gray-900 dark:text-gray-100">{t.Title}</span> },
+    { key: 'priority', label: 'Priority', sortValue: t => PRIORITY_ORDER[t.Priority ?? ''] ?? 9,
+      render: t => <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge> },
+    { key: 'status', label: 'สถานะ', sortValue: t => STATUS_ORDER[t.Status ?? ''] ?? 9,
+      render: t => <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge> },
+    { key: 'assigned', label: 'ผู้รับผิดชอบ', sortValue: t => t.AssignedToName || t.AssignedEmail || 'zzz',
+      render: t => t.AssignedToName || t.AssignedEmail
+        ? <span className="text-xs text-gray-600 dark:text-gray-300">{t.AssignedToName || t.AssignedEmail}</span>
+        : <span className="text-xs text-orange-500 italic">ยังไม่ assign</span> },
+    { key: 'customer', label: 'ผู้แจ้ง', sortValue: t => t.CustomerName || t.CustomerEmail || '',
+      render: t => <span className="text-xs text-gray-500">{t.CustomerName || t.CustomerEmail || '—'}</span> },
+    { key: 'due', label: 'กำหนดส่ง', sortValue: t => t.DueDate ?? '',
+      render: t => <span className="text-xs text-gray-500">{t.DueDate ? formatDate(t.DueDate) : '—'}</span> },
+    { key: 'modified', label: 'อัปเดตล่าสุด', sortValue: t => t.Modified ?? '',
+      render: t => <span className="text-xs text-gray-400">{t.Modified ? formatDate(t.Modified) : '—'}</span> },
+    ...(canAssign ? [{
+      key: 'assign', label: 'Assign', align: 'center' as const,
+      render: (t: Ticket) => (
+        <button onClick={e => { e.stopPropagation(); setAssignTarget(t); setSelectedAgentEmail(t.AssignedEmail ?? '') }}
+          className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-gray-400 hover:text-primary-600 transition-colors"
+          title="Assign Agent">
+          <UserCheck size={15} />
+        </button>
+      ),
+    }] : []),
+  ]
+
   return (
     <div>
       <Header title="Agent Dashboard" />
@@ -129,53 +168,21 @@ export default function AgentDashboard() {
           )}
         </div>
 
-        {/* Table */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 text-xs font-medium text-gray-500 flex items-center gap-3">
-            <span className="w-5" />
-            <span className="flex-1">Ticket</span>
-            <span className="hidden sm:block w-20">Priority</span>
-            <span className="w-24">Status</span>
-            <span className="w-32 hidden md:block">Assigned</span>
-            <span className="w-24 hidden md:block">Due Date</span>
-            {canAssign && <span className="w-20 text-center">Assign</span>}
+        {/* Table — เรียงได้ทุกคอลัมน์ (คลิกหัวคอลัมน์) */}
+        {loading ? (
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)}
           </div>
-
-          {loading
-            ? Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
-            : filtered.length === 0
-              ? <p className="text-center text-sm text-gray-400 py-12">ไม่มี Ticket</p>
-              : filtered.map(t => {
-                  const color = getDueDateColor(t.DueDate, t.Status === 'Closed')
-                  return (
-                    <div key={t.id} className={`flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm ${getDueDateRowClass(color)}`}>
-                      <span className="w-5 text-center flex-shrink-0">{getDueDateEmoji(color)}</span>
-                      <div className="flex-1 min-w-0">
-                        <Link to={`/tickets/${t.id}`} className="font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block">{t.Title}</Link>
-                        <span className="text-xs text-gray-400">{t.TicketNumber}</span>
-                      </div>
-                      <span className="hidden sm:block w-20 flex-shrink-0"><Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge></span>
-                      <span className="w-24 flex-shrink-0"><Badge className={getStatusColor(t.Status)}>{t.Status}</Badge></span>
-                      <span className="w-32 hidden md:block text-xs text-gray-500 truncate flex-shrink-0">
-                        {t.AssignedToName || t.AssignedEmail || <span className="text-orange-400 italic">ยังไม่ assign</span>}
-                      </span>
-                      <span className="w-24 hidden md:block text-xs text-gray-500 flex-shrink-0">{formatDate(t.DueDate)}</span>
-                      {canAssign && (
-                        <span className="w-20 flex-shrink-0 flex justify-center">
-                          <button
-                            onClick={() => { setAssignTarget(t); setSelectedAgentEmail(t.AssignedEmail ?? '') }}
-                            className="p-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 text-gray-400 hover:text-primary-600 transition-colors"
-                            title="Assign Agent"
-                          >
-                            <UserCheck size={15} />
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                  )
-                })
-          }
-        </div>
+        ) : (
+          <DataTable
+            rows={filtered}
+            rowKey={t => t.id}
+            onRowClick={t => navigate(`/tickets/${t.id}`)}
+            emptyText="ไม่มี Ticket"
+            rowClass={t => getDueDateRowClass(getDueDateColor(t.DueDate, t.Status === 'Closed'))}
+            columns={ticketColumns}
+          />
+        )}
         <p className="text-xs text-gray-400">แสดง {filtered.length} จาก {tickets.length} Ticket</p>
       </div>
 
