@@ -20,6 +20,7 @@ export interface AgentProfile {
   IsAvailable: boolean
   ThemeJSON?: string         // การตั้งค่าธีมส่วนตัว (JSON) — sync ข้ามเครื่อง
   ApproverEmail?: string     // ผู้อนุมัติการลา (Admin กำหนด)
+  Position?: string          // ตำแหน่งงาน เช่น 'IT Manager' — ต้องมีคอลัมน์ Position ใน HD_AgentProfiles
 }
 
 export interface Announcement {

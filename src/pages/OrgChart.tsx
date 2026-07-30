@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle, Camera, X } from 'lucide-react'
+import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle, Camera, X, Pencil } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Button } from '../components/common/Button'
 import { PersonPhoto, PHOTO_PREFIX, isPhotoFile, clearPhotoCache } from '../components/common/PersonPhoto'
 import { makeSquareImageFile } from '../utils/imageFile'
-import { spGet, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
+import { spGet, spUpdate, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
@@ -38,14 +38,13 @@ export default function OrgChart() {
 
   // ดึงชื่อไฟล์รูปมาพร้อมรายชื่อในคำขอเดียว ($expand) — ไม่ต้องยิงถามไฟล์แนบทีละคน
   function loadAgents() {
-    spGet<AgentRow>('HD_AgentProfiles', undefined,
-      'Id,Title,EmailText,Role,SupportGroup,SpecialtyCategory,IsAvailable,ApproverEmail,AttachmentFiles/FileName',
-      'Title asc', 500, 'AttachmentFiles')
+    // ใช้ '*' ไม่ระบุชื่อคอลัมน์ทีละตัว — ทนต่อ schema ที่ยังไม่มีคอลัมน์ Position
+    // (ถ้า $select ระบุคอลัมน์ที่ไม่มีอยู่ SharePoint จะตอบ 400 ทำให้ทั้งหน้าโหลดไม่ขึ้น)
+    spGet<AgentRow>('HD_AgentProfiles', undefined, '*,AttachmentFiles/FileName', 'Title asc', 500, 'AttachmentFiles')
       .then(setAgents)
       .catch(() => {
         // เผื่อ $expand ใช้ไม่ได้ → โหลดแบบไม่มีรูป ยังเห็นผังปกติ
-        spGet<AgentRow>('HD_AgentProfiles', undefined,
-          'Id,Title,EmailText,Role,SupportGroup,SpecialtyCategory,IsAvailable,ApproverEmail', 'Title asc', 500)
+        spGet<AgentRow>('HD_AgentProfiles', undefined, undefined, 'Title asc', 500)
           .then(setAgents).catch(() => {})
       })
       .finally(() => setLoading(false))
@@ -79,6 +78,30 @@ export default function OrgChart() {
       loadAgents()
     } catch { addToast('error', 'อัปโหลดรูปไม่สำเร็จ') }
     finally { setUploadingId(null) }
+  }
+
+  // ── แก้ตำแหน่งงาน (inline) — สิทธิ์เดียวกับการเปลี่ยนรูป ──
+  const [editPosId, setEditPosId] = useState<number | null>(null)
+  const [posDraft, setPosDraft] = useState('')
+  const [savingPos, setSavingPos] = useState(false)
+
+  function startEditPos(a: AgentRow) {
+    setEditPosId(a.id)
+    setPosDraft(a.Position ?? '')
+  }
+  async function savePosition(a: AgentRow) {
+    const value = posDraft.trim()
+    if (value === (a.Position ?? '')) { setEditPosId(null); return }
+    setSavingPos(true)
+    try {
+      await spUpdate('HD_AgentProfiles', a.id, { Position: value || null })
+      addToast('success', `อัปเดตตำแหน่งของ ${a.Title} แล้ว`)
+      setEditPosId(null)
+      loadAgents()
+    } catch {
+      // ยังไม่มีคอลัมน์ Position → บอกให้ชัดว่าต้องไปสร้างก่อน (ไม่ใช่ error ลอยๆ)
+      addToast('error', 'บันทึกไม่ได้ — ต้องเพิ่มคอลัมน์ Position (Single line of text) ใน HD_AgentProfiles ก่อน')
+    } finally { setSavingPos(false) }
   }
 
   async function removePhoto(a: AgentRow) {
@@ -134,7 +157,7 @@ export default function OrgChart() {
   const matches = (email: string) => {
     if (!search.trim()) return false
     const a = byEmail.get(email)
-    return [a?.Title, a?.EmailText, a?.SupportGroup, a?.SpecialtyCategory]
+    return [a?.Title, a?.EmailText, a?.SupportGroup, a?.SpecialtyCategory, a?.Position]
       .some(s => (s ?? '').toLowerCase().includes(search.toLowerCase()))
   }
 
@@ -165,12 +188,12 @@ export default function OrgChart() {
     const hit = matches(email)
     const isCollapsed = collapsed.has(email)
     return (
-      <div className={`relative w-52 rounded-xl border px-3 py-2.5 bg-white dark:bg-gray-900 transition-colors ${
+      <div className={`group relative w-52 rounded-xl border px-3 py-2.5 bg-white dark:bg-gray-900 transition-colors ${
         isMe ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900'
         : hit ? 'border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900/50'
         : 'border-gray-200 dark:border-gray-700'}`}>
         <div className="flex items-start gap-2">
-          <span className="relative flex-shrink-0 group">
+          <span className="relative flex-shrink-0">
             <PersonPhoto itemId={a.id} fileName={photoOf(a)} name={a.Title || email} size={38} />
             {canEditPhoto(a) && (
               <>
@@ -191,6 +214,31 @@ export default function OrgChart() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={a.Title}>{a.Title}</p>
+            {/* ตำแหน่งงาน — คลิกดินสอเพื่อแก้ (เจ้าตัว หรือ Admin/Boss) */}
+            {editPosId === a.id ? (
+              <input autoFocus value={posDraft} disabled={savingPos}
+                onChange={e => setPosDraft(e.target.value)}
+                onBlur={() => savePosition(a)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); savePosition(a) }
+                  if (e.key === 'Escape') setEditPosId(null)
+                }}
+                placeholder="เช่น IT Manager"
+                className="no-print w-full mt-0.5 px-1 py-0.5 text-[11px] border border-primary-400 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 outline-none" />
+            ) : (
+              <p className="flex items-center gap-1 mt-0.5">
+                <span className={`text-[11px] truncate ${a.Position ? 'text-gray-600 dark:text-gray-300 font-medium' : 'text-gray-300 dark:text-gray-600 italic'}`}
+                  title={a.Position || ''}>
+                  {a.Position || 'ยังไม่ระบุตำแหน่ง'}
+                </span>
+                {canEditPhoto(a) && (
+                  <button onClick={() => startEditPos(a)} title="แก้ตำแหน่งงาน"
+                    className="no-print flex-shrink-0 text-gray-300 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Pencil size={9} />
+                  </button>
+                )}
+              </p>
+            )}
             <p className="text-[10px] text-gray-400 truncate" title={a.EmailText}>{a.EmailText}</p>
           </div>
         </div>
