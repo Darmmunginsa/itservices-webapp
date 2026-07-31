@@ -42,6 +42,7 @@ import Admin from './pages/Admin'
 import Tools from './pages/Tools'
 import ActivityLog from './pages/ActivityLog'
 import OrgChart from './pages/OrgChart'
+import PhishReports from './pages/PhishReports'
 import './index.css'
 
 // map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
@@ -61,6 +62,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   orgchart: <OrgChart />,
   admin: <Admin />,
   activity: <ActivityLog />,
+  phish: <PhishReports />,
   debug: <Diagnostic />,
 }
 

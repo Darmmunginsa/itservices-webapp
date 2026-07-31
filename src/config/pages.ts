@@ -1,6 +1,6 @@
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2, PieChart,
-  Monitor, Briefcase, Globe, Notebook, BookOpen, FileText, Pin, Settings, Bug, Activity, Users,
+  Monitor, Briefcase, Globe, Notebook, BookOpen, FileText, Pin, Settings, Bug, Activity, Users, ShieldAlert,
 } from 'lucide-react'
 import type { Role } from '../types/common'
 
@@ -39,6 +39,7 @@ export const PAGES: PageDef[] = [
   { key: 'skills',    path: '/skills',    labelKey: 'nav.skills',     icon: BookOpen,      group: 'resources', defaultRoles: ALL },
   { key: 'contracts', path: '/contracts', labelKey: 'nav.contacts',   icon: FileText,      group: 'resources', defaultRoles: ALL },
   { key: 'orgchart',  path: '/orgchart',  labelKey: 'nav.orgchart',   icon: Users,         group: 'resources', defaultRoles: ALL },
+  { key: 'phish',     path: '/phish',     labelKey: 'nav.phish',      icon: ShieldAlert,   group: 'resources', defaultRoles: AGENT_UP },
 
   { key: 'admin',     path: '/admin',     labelKey: 'nav.admin',      icon: Settings,      group: 'system',    defaultRoles: SUP_UP },
   { key: 'activity',  path: '/activity',  labelKey: 'nav.activity',   icon: Activity,      group: 'system',    defaultRoles: ['Boss', 'Admin'] },
