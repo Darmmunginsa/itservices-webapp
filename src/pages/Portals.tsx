@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Pencil, Trash2, Search, Globe, ExternalLink, User, Server } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, Globe, ExternalLink, User, Server, Copy, Check, Tag, Clock } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { SkeletonCard } from '../components/common/Skeleton'
+import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Portal } from '../types/portal'
@@ -37,6 +38,8 @@ export default function Portals() {
   const [editing, setEditing] = useState<Portal | null>(null)
   const [form, setForm] = useState<Form>({ ...EMPTY })
   const [saving, setSaving] = useState(false)
+  const [detail, setDetail] = useState<Portal | null>(null)   // การ์ดที่กดเปิดดู
+  const [copied, setCopied] = useState('')
 
   function load() {
     setLoading(true)
@@ -63,6 +66,19 @@ export default function Portals() {
 
   function openCreate() { setEditing(null); setForm({ ...EMPTY }); setShowModal(true) }
   function openEdit(p: Portal) { setEditing(p); setForm(toForm(p)); setShowModal(true) }
+
+  // คัดลอกค่า (URL / username) — fallback ให้ browser ที่ไม่มี clipboard API
+  async function copy(text: string, key: string) {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text)
+      else {
+        const ta = document.createElement('textarea')
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove()
+      }
+      setCopied(key); setTimeout(() => setCopied(''), 1500)
+    } catch { addToast('error', tr('common.error')) }
+  }
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -103,6 +119,10 @@ export default function Portals() {
     })
   }, [filtered])
 
+  // ใช้ข้อมูลล่าสุดจากรายการ เผื่อแก้ไขระหว่างเปิดดูอยู่
+  const view = detail ? portals.find(p => p.id === detail.id) ?? detail : null
+  const viewAssets = view ? assetsByPortal.get(view.id) ?? [] : []
+
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
@@ -141,20 +161,23 @@ export default function Portals() {
                   {items.map(p => {
                     const linked = assetsByPortal.get(p.id) ?? []
                     return (
-                      <div key={p.id} className="subpanel bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                      <div key={p.id} onClick={() => setDetail(p)} role="button" tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetail(p) } }}
+                        title={tr('portals.openDetail')}
+                        className="subpanel bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer hover:border-primary-400 dark:hover:border-primary-600 hover:shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-primary-500">
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="min-w-0">
                             <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{p.Title}</h3>
                           </div>
                           {isAdmin && (
                             <div className="flex gap-1 flex-shrink-0">
-                              <button onClick={() => openEdit(p)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><Pencil size={13} /></button>
-                              <button onClick={() => remove(p)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
+                              <button onClick={e => { e.stopPropagation(); openEdit(p) }} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600"><Pencil size={13} /></button>
+                              <button onClick={e => { e.stopPropagation(); remove(p) }} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
                             </div>
                           )}
                         </div>
                         <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                          {p.URL && <p className="flex items-center gap-1.5"><ExternalLink size={12} className="text-gray-400" /> <a href={p.URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline truncate">{p.URL}</a></p>}
+                          {p.URL && <p className="flex items-center gap-1.5"><ExternalLink size={12} className="text-gray-400" /> <a href={p.URL} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-primary-600 hover:underline truncate">{p.URL}</a></p>}
                           {p.Username && <p className="flex items-center gap-1.5"><User size={12} className="text-gray-400" /> <span className="truncate">{p.Username}</span></p>}
                           {p.Note && <p className="text-gray-500 line-clamp-2 pt-1">{p.Note}</p>}
                         </div>
@@ -164,7 +187,7 @@ export default function Portals() {
                             <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">{tr('portals.linkedAssets')} ({linked.length})</p>
                             <div className="flex flex-wrap gap-1.5">
                               {linked.map(a => (
-                                <Link key={a.id} to={`/assets?id=${a.id}`}
+                                <Link key={a.id} to={`/assets?id=${a.id}`} onClick={e => e.stopPropagation()}
                                   className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
                                   <Server size={10} /> {a.Title}
                                   {a.Category && <span className="text-primary-400">· {a.Category}</span>}
@@ -182,6 +205,97 @@ export default function Portals() {
           </div>
         )}
       </div>
+
+      {/* รายละเอียด Portal — กดที่การ์ดเพื่อเปิด */}
+      <Modal open={!!view} onClose={() => setDetail(null)} title={view?.Title} size="lg">
+        {view && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {view.Category && (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                  <Tag size={11} /> {view.Category}
+                </span>
+              )}
+              {view.URL && (
+                <a href={view.URL} target="_blank" rel="noopener noreferrer"
+                  className="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white">
+                  <ExternalLink size={13} /> {tr('portals.openSite')}
+                </a>
+              )}
+              {isAdmin && (
+                <button onClick={() => { setDetail(null); openEdit(view) }}
+                  className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 ${view.URL ? '' : 'ml-auto'}`}>
+                  <Pencil size={13} /> {tr('portals.edit')}
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {view.URL && (
+                <div className="flex items-center gap-2 text-sm">
+                  <ExternalLink size={14} className="text-gray-400 flex-shrink-0" />
+                  <a href={view.URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all flex-1">{view.URL}</a>
+                  <button onClick={() => copy(view.URL!, 'url')} title={tr('portals.copy')}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 flex-shrink-0">
+                    {copied === 'url' ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                  </button>
+                </div>
+              )}
+              {view.Username && (
+                <div className="flex items-center gap-2 text-sm">
+                  <User size={14} className="text-gray-400 flex-shrink-0" />
+                  <span className="flex-1 break-all text-gray-700 dark:text-gray-200">{view.Username}</span>
+                  <button onClick={() => copy(view.Username!, 'user')} title={tr('portals.copy')}
+                    className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 flex-shrink-0">
+                    {copied === 'user' ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                  </button>
+                </div>
+              )}
+              <p className="text-[11px] text-gray-400">{tr('portals.noPassword')}</p>
+            </div>
+
+            {view.Note && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{tr('common.note')}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">{view.Note}</p>
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                {tr('portals.linkedAssets')} ({viewAssets.length})
+              </p>
+              {viewAssets.length === 0 ? (
+                <p className="text-xs text-gray-400">{tr('portals.noLinkedAssets')}</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {viewAssets.map(a => (
+                    <Link key={a.id} to={`/assets?id=${a.id}`} onClick={() => setDetail(null)}
+                      className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
+                      <Server size={11} /> {a.Title}
+                      {a.Category && <span className="text-primary-400">· {a.Category}</span>}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* เอกสารแนบ เช่น คู่มือใช้งาน / ใบสัญญาของ portal */}
+            <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+              <AttachmentSection listName="IT_Portals" itemId={view.id} readOnly={!isAdmin} />
+            </div>
+
+            {(view.Created || view.Modified) && (
+              <p className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                <Clock size={11} />
+                {view.Created && `${tr('portals.created')}: ${new Date(view.Created).toLocaleString('th-TH')}`}
+                {view.Created && view.Modified && ' · '}
+                {view.Modified && `${tr('portals.modified')}: ${new Date(view.Modified).toLocaleString('th-TH')}`}
+              </p>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? tr('portals.edit') : tr('portals.add')} size="md">
         <form onSubmit={save} className="space-y-4">
