@@ -401,21 +401,37 @@ export default function Admin() {
       }).catch(() => {})
   }, [])
 
+  // ร่างเริ่มต้นของ template ที่มีรูปแบบตายตัว — สร้างแล้วใช้ได้เลย ไม่ต้องพิมพ์เอง
+  // comment_added = ข้อความที่ Agent ตอบลูกค้า (หัวข้อจะถูกแทนด้วยชื่อเรื่องของลูกค้าอัตโนมัติ
+  // เพื่อให้อยู่เธรดเดิม และเลข Ticket จะถูกแปะเป็นแถบบนเนื้อเมลให้)
+  const TPL_DEFAULTS: Record<string, { Subject: string; Body: string }> = {
+    comment_added: {
+      Subject: '{{ticket_title}}',
+      Body: `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#0f172a;line-height:1.6">
+  <p>เรียน คุณ{{customer_name}}</p>
+  <div style="border-left:3px solid #e2e8f0;padding-left:12px;margin:12px 0">{{comment_text}}</div>
+  <p style="margin-top:16px">ตอบกลับอีเมลฉบับนี้ได้เลยครับ ข้อความจะถูกบันทึกไว้ใน Ticket เดียวกัน</p>
+  <p style="color:#64748b;font-size:12px">{{assigned_name}} · iT Services Helpdesk</p>
+</div>`,
+    },
+  }
+
   // สร้าง template ที่ยังไม่มีใน HD_EmailTemplates (เช่น task_assigned ที่ขาด)
   const [creatingKey, setCreatingKey] = useState<string | null>(null)
   async function createTpl(eventKey: string) {
     setCreatingKey(eventKey)
     try {
       const title = TPL_LABELS[eventKey] ?? eventKey
+      const draft = TPL_DEFAULTS[eventKey] ?? { Subject: '', Body: '' }
       const res = await spCreate('HD_EmailTemplates', {
         Title: title,
         EventKey: eventKey,
-        Subject: '',
-        Body: '',
+        Subject: draft.Subject,
+        Body: draft.Body,
         IsEnabled: false,
         Recipients: '',
       })
-      const row: EmailTemplate = { id: res.id, Title: title, EventKey: eventKey, Subject: '', Body: '', IsEnabled: false, Recipients: '' }
+      const row: EmailTemplate = { id: res.id, Title: title, EventKey: eventKey, ...draft, IsEnabled: false, Recipients: '' }
       setEmailTemplates(prev => [...prev, row])
       clearEmailTemplateCache()
       addToast('success', `สร้าง Template "${title}" แล้ว — กดแก้ไขเพื่อตั้งค่า`)

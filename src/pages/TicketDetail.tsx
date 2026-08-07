@@ -12,6 +12,7 @@ import { SmartText } from '../components/common/SmartText'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
+import { sendTemplateEmail } from '../services/emailService'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
@@ -25,6 +26,14 @@ function avatarColor(name: string): string {
   let h = 0
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]
+}
+
+// คอมเมนต์ที่ระบบอื่นเขียนเข้ามาแทนคน (เช่น flow ที่ดึงเมลตอบกลับของลูกค้าเข้า Ticket)
+// ขึ้นต้นด้วย "จาก: ชื่อ (เวลา)" — แกะออกมาแสดงเป็นชื่อคนพูดจริง ไม่ใช่บัญชีที่เขียนแถวนั้น
+// (รูปแบบเดียวกับที่ ClientBoard ใช้ตอนนำเข้าคอมเมนต์จาก Trello)
+function parseRelayed(textIn: string): { name: string; when?: string; body: string } | null {
+  const m = textIn.match(/^จาก:\s*([^\n(]+?)\s*(?:\(([^)]*)\))?\s*\n+/)
+  return m ? { name: m[1].trim(), when: m[2]?.trim(), body: textIn.slice(m[0].length) } : null
 }
 
 export default function TicketDetail() {
@@ -178,12 +187,15 @@ export default function TicketDetail() {
     e.preventDefault()
     if (!user || (!comment.trim() && commentFiles.length === 0)) return
     setSending(true)
+    const effType: 'Internal' | 'External' = isAgent ? commentType : 'External'
+    const text = comment
+    const fileCount = commentFiles.length
     try {
       const createdComment = await spCreate('HD_TicketComments', {
         Title: comment.slice(0, 100) || '(แนบไฟล์)',
         TicketID: Number(id),
         CommentText: comment,
-        CommentType: isAgent ? commentType : 'External',
+        CommentType: effType,
         CommentDate: new Date().toISOString(),
         ParentID: replyTo?.id ?? 0,
       })
@@ -243,7 +255,36 @@ export default function TicketDetail() {
           })
         }
       }
-      addToast('success', 'บันทึก Comment แล้ว')
+
+      // ── External = คุยกับลูกค้า → ส่งเข้าเธรดอีเมลเดิม ──
+      // หัวข้อใช้ชื่อเรื่องที่ลูกค้าแจ้ง (emailService จัดให้) → ไคลเอนต์เมลจัดเป็นเธรดเดียว
+      // ทุกคนใน loop อยู่ในเมลฉบับเดียว กด Reply All ต่อกันได้ทั้งวง
+      if (effType === 'External' && ticket) {
+        const me = user.email.toLowerCase()
+        const submitter = ticket.Author?.EMail || ticket.CreatedByEmail
+        const customer = [ticket.CustomerEmail, submitter].find(e => e && e.toLowerCase() !== me)
+        if (!customer) {
+          addToast('success', 'บันทึก Comment แล้ว (ไม่ได้ส่งเมล — ไม่พบอีเมลลูกค้า)')
+        } else {
+          const cc = [ticket.AssignedEmail, submitter, ...members.map(m => m.AgentEmail)]
+            .filter((e): e is string => !!e && e.toLowerCase() !== me && e.toLowerCase() !== customer.toLowerCase())
+          const bodyText = (text || '(แนบไฟล์)').replace(/\n/g, '<br>')
+            + (fileCount ? `<p style="color:#64748b;font-size:12px">📎 มีไฟล์แนบ ${fileCount} ไฟล์ — เปิดดูได้ใน Ticket (ไฟล์ไม่ได้แนบมากับอีเมลฉบับนี้)</p>` : '')
+          const res = await sendTemplateEmail('comment_added', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title:  ticket.Title,
+            customer_name: ticket.CustomerName || '',
+            assigned_name: ticket.AssignedToName || '-',
+            comment_text:  bodyText,
+            link: window.location.origin,
+          }, [customer], cc)
+          if (res.ok) addToast('success', `ส่งถึงลูกค้าแล้ว (${customer})`)
+          else if (res.reason === 'no-template') addToast('error', 'บันทึกแล้ว แต่ยังไม่ได้ส่งเมล — ตั้ง template "Comment Added" ในหน้าตั้งค่าก่อน')
+          else addToast('error', 'บันทึกแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็นข้อความนี้')
+        }
+      } else {
+        addToast('success', 'บันทึก Comment แล้ว')
+      }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSending(false) }
   }
 
@@ -369,7 +410,8 @@ export default function TicketDetail() {
   const topComments = comments.filter(c => !c.ParentID)
 
   const renderComment = (c: TicketComment, isReply: boolean) => {
-    const author = c.Author?.Title ?? '—'
+    const relayed = parseRelayed(c.CommentText || '')
+    const author = relayed?.name ?? c.Author?.Title ?? '—'
     const handle = '@' + author.replace(/\s+/g, '')
     const likeList = parseLikes(c.LikedBy)
     const liked = !!user?.email && likeList.includes(user.email)
@@ -384,11 +426,16 @@ export default function TicketDetail() {
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <span className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{handle}</span>
             <span className="text-xs text-gray-400">{timeAgo(c.CommentDate)}</span>
-            {c.CommentType === 'Internal' && (
+            {c.CommentType === 'Internal' ? (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">{tr('ticket.internal')}</span>
+            ) : (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 font-medium"
+                title={relayed ? 'ลูกค้าตอบกลับทางอีเมล' : 'ส่งถึงลูกค้าทางอีเมล'}>
+                {relayed ? '📩 จากลูกค้า' : '✉️ ถึงลูกค้า'}
+              </span>
             )}
           </div>
-          <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          <SmartText text={relayed?.body ?? c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {c.AttachmentFiles.map(f => (
@@ -537,6 +584,11 @@ export default function TicketDetail() {
                       {t === 'Internal' ? tr('ticket.internal') : tr('ticket.toCustomer')}
                     </button>
                   ))}
+                  <span className="self-center text-[11px] text-gray-400">
+                    {commentType === 'External'
+                      ? `✉️ ส่งอีเมลถึง ${ticket?.CustomerEmail || 'ผู้แจ้ง'} ในเธรดเดิม`
+                      : '🔒 เห็นเฉพาะทีมภายใน ไม่ส่งอีเมล'}
+                  </span>
                 </div>
               )}
               <div className="relative">

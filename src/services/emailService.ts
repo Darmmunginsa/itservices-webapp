@@ -9,9 +9,14 @@ import { sendMail } from './graph'
 export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
 
 // เมลที่เกี่ยวกับ Ticket — ใช้ชื่อเรื่องของลูกค้าเป็นหัวข้อ (ไม่ใช่เลข Ticket)
-// ปัจจุบันมีแค่ ticket_created ที่ส่งอีเมลจริง (comment/status เป็น in-app notification)
-// ถ้าภายหลังเพิ่มเมลของ ticket ให้ใส่ event ที่นี่ — จะได้หัวข้อเดียวกัน = อยู่เธรดเดียวกันฝั่งลูกค้า
-const TICKET_EVENTS = new Set(['ticket_created'])
+// ทุก event ในเซ็ตนี้ใช้หัวข้อเดียวกัน = ไคลเอนต์อีเมลจัดเป็นเธรดเดียวฝั่งลูกค้า
+const TICKET_EVENTS = new Set(['ticket_created', 'comment_added'])
+
+// event ที่ต้อง CC ทีมวิศวกรเสมอ — เปิดเคสใหม่ และตอบกลับลูกค้า (ทีมต้องเห็นทั้งเธรด)
+const ALWAYS_CC_EVENTS = new Set(['ticket_created', 'comment_added'])
+
+/** ผลการส่ง — ok=false พร้อมเหตุผล เพื่อให้หน้าจอบอกผู้ใช้ได้ ไม่ใช่เงียบ */
+export type SendResult = { ok: true } | { ok: false; reason: 'no-template' | 'no-recipient' | 'failed'; detail?: string }
 
 /** แถบเลข Ticket บนหัวเนื้อเมล (รูปแบบเดียวกับ Add-in) */
 function ticketBanner(ticketNo: string): string {
@@ -91,15 +96,15 @@ export async function sendTemplateEmail(
   vars: Record<string, string>,
   recipients: string[],
   cc: string[] = [],
-): Promise<void> {
+): Promise<SendResult> {
   try {
     const templates = await getTemplates()
     const tpl = templates.find(t => t.EventKey === eventKey && t.IsEnabled)
-    if (!tpl) return  // ไม่มี template หรือ disabled
+    if (!tpl) return { ok: false, reason: 'no-template' }  // ไม่มี template หรือ disabled
 
     let subject = render(tpl.Subject || '', vars)
     let body    = render(tpl.Body    || '', vars)
-    if (!subject || !body) return
+    if (!subject || !body) return { ok: false, reason: 'no-template' }
 
     // ── เมลของ Ticket: ใช้ "ชื่อเรื่องของลูกค้า" เป็นหัวข้อ ไม่ใช่เลข Ticket ──
     // (หลักการเดียวกับ Add-in) เลข Ticket ย้ายไปเป็นแถบบนเนื้อเมลแทน
@@ -112,16 +117,18 @@ export async function sendTemplateEmail(
     // dedupe (case-insensitive) + ตัด CC ที่ซ้ำกับ To
     const norm = (e: string) => e.trim().toLowerCase()
     const to = [...new Map(recipients.filter(Boolean).map(e => [norm(e), e])).values()]
-    if (to.length === 0) return
+    if (to.length === 0) return { ok: false, reason: 'no-recipient' }
     const toSet = new Set(to.map(norm))
-    // เปิด Ticket ใหม่ → CC ทีมวิศวกรเสมอ (ทำที่ service layer เพื่อครอบคลุมทุกจุดที่สร้าง ticket)
-    const ccAll = eventKey === 'ticket_created' ? [...cc, ALWAYS_CC_TICKET] : cc
+    // เปิดเคสใหม่ / ตอบลูกค้า → CC ทีมวิศวกรเสมอ (ทำที่ service layer เพื่อครอบคลุมทุกจุดที่เรียก)
+    const ccAll = ALWAYS_CC_EVENTS.has(eventKey) ? [...cc, ALWAYS_CC_TICKET] : cc
     const ccFinal = [...new Map(ccAll.filter(Boolean).map(e => [norm(e), e])).values()]
       .filter(e => !toSet.has(norm(e)))
 
     const from = await getSender()
     await sendMail(to, subject, body, { from: from || undefined, cc: ccFinal })
-  } catch {
-    // email fail = non-critical, ไม่ throw
+    return { ok: true }
+  } catch (e) {
+    // email fail = non-critical, ไม่ throw — แต่คืนผลให้ผู้เรียกแจ้งผู้ใช้ได้
+    return { ok: false, reason: 'failed', detail: e instanceof Error ? e.message : String(e) }
   }
 }

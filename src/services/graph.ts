@@ -84,11 +84,13 @@ export async function sendMail(
   if (cc.length) message.ccRecipients = cc.map(a => ({ emailAddress: { address: a } }))
   // ส่งในนามบัญชีกลาง (ต้องมีสิทธิ์ Send As บน mailbox นั้นใน M365)
   if (opts?.from) message.from = { emailAddress: { address: opts.from } }
-  await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method: 'POST',
     headers,
     body: JSON.stringify({ message, saveToSentItems: true }),
   })
+  // เดิมไม่เช็คผล → ส่งไม่ออกก็เงียบ ตอบลูกค้าแล้วคิดว่าถึงแล้ว
+  if (!res.ok) throw new Error(`sendMail ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
 }
 
 export async function createCalendarEvent(event: {
