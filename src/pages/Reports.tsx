@@ -1,17 +1,23 @@
-import { useEffect, useState } from 'react'
-import { BarChart3, Ticket as TicketIcon, Clock, Users, TrendingUp, Award, Building2, CalendarDays, FileDown } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { BarChart3, Ticket as TicketIcon, Clock, Users, TrendingUp, TrendingDown, Award, Building2, CalendarDays, FileDown, FileSpreadsheet, Info, Minus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { useT } from '../i18n/useT'
 import { Card } from '../components/common/Card'
 import { Button } from '../components/common/Button'
 import { Skeleton } from '../components/common/Skeleton'
-import { Donut, BarChart, Columns } from '../components/common/Charts'
+import { Donut, BarChart, ColumnsPair } from '../components/common/Charts'
 import { spGet } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { LeaveRequest } from '../types/common'
-
-const MONTHS_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+import {
+  PRESETS, presetRange, previousRange, buildBuckets, pickBucket, rangeLabel,
+  toDateInput, fromDateInput, odata, inRange, type PresetKey, type Range,
+} from '../utils/period'
+import {
+  periodStats, buildPersonRows, delta, countBy, isClosed, SCORE_WEIGHTS,
+  type TicketLike, type IncidentLike, type TaskLike,
+} from '../utils/reportMetrics'
 
 const TICKET_STATUSES = [
   { key: 'Open',        color: '#3b82f6' },
@@ -27,38 +33,81 @@ const PRIORITIES = [
   { key: 'Low',      color: '#22c55e' },
 ]
 
+const TICKET_COLS = 'Id,Title,Status,Priority,Category,DueDate,ResolvedDate,Created,AssignedEmail,CustomerEmail,CustomerName,AssignedTo/Title'
+
+const fmtHours = (h: number | null): string => {
+  if (h === null) return '-'
+  if (h < 24) return `${Math.round(h)} ชม.`
+  return `${(h / 24).toFixed(1)} วัน`
+}
+const pct = (v: number | null, digits = 0): string => v === null ? '-' : `${v.toFixed(digits)}%`
+
 export default function Reports() {
   const { user } = useAppStore()
   const tr = useT()
   const isBoss = ['Boss', 'Admin'].includes(user?.role ?? '')
-  const [tickets, setTickets]   = useState<Ticket[]>([])
-  const [leaves, setLeaves]     = useState<LeaveRequest[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [scopeAll, setScopeAll] = useState(false)
-  const [leaveYear, setLeaveYear] = useState(new Date().getFullYear())
+
+  const [preset, setPreset] = useState<PresetKey>('this-month')
+  const [customFrom, setCustomFrom] = useState(toDateInput(presetRange('this-month').start))
+  const [customTo, setCustomTo]     = useState(toDateInput(new Date()))
+  const [scopeAll, setScopeAll]     = useState(false)
+  const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError]   = useState('')
+
+  const [tickets, setTickets]     = useState<TicketLike[]>([])
+  const [incidents, setIncidents] = useState<IncidentLike[]>([])
+  const [tasks, setTasks]         = useState<TaskLike[]>([])
+  const [leaves, setLeaves]       = useState<LeaveRequest[]>([])
 
   const mine = !isBoss || !scopeAll
 
+  const range: Range = useMemo(() => {
+    if (preset !== 'custom') return presetRange(preset)
+    const s = fromDateInput(customFrom)
+    const e = fromDateInput(customTo, true)
+    if (!s || !e || s > e) return presetRange('this-month')
+    return { start: s, end: e }
+  }, [preset, customFrom, customTo])
+
+  const prev = useMemo(() => previousRange(range), [range])
+
   useEffect(() => {
     setLoading(true)
-    const filter = mine ? `AssignedEmail eq '${user?.email}'` : undefined
-    Promise.all([
-      spGet<Ticket>('HD_Tickets', filter,
-        'Id,Title,Status,Priority,Category,DueDate,ResolvedDate,Created,AssignedEmail,CustomerEmail,CustomerName,AssignedTo/Title',
-        'Created desc', 2000, 'AssignedTo'),
-      spGet<LeaveRequest>('HD_LeaveRequests',
-        `LeaveDate ge '${leaveYear}-01-01' and LeaveDate le '${leaveYear}-12-31'`,
-        'Id,Title,LeaveDate,LeaveType,RequestedBy,RequestedEmail,Status,Created',
-        'LeaveDate desc', 2000),
-    ]).then(([t, l]) => { setTickets(t); setLeaves(l) })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [mine, user?.email, leaveYear])
+    setLoadError('')
+    const emailFilter = mine ? `AssignedEmail eq '${user?.email}'` : ''
+    const and = (a: string, b: string) => a && b ? `${a} and ${b}` : a || b
 
-  /**
-   * Export PDF ผ่าน print dialog ของเบราว์เซอร์ (เลือก "Save as PDF")
-   * ธีมมืดต้องถอด class 'dark' ชั่วคราว ไม่งั้นการ์ดพิมพ์ออกมาเป็นพื้นดำ กินหมึกและอ่านไม่ออก
-   * — วิธีนี้คงสีของ badge/กราฟไว้ครบ (ต่างจากการ force สีทั้งหน้าเป็นขาว-ดำ)
-   */
+    // ตั๋วที่ต้องใช้ = เปิดในช่วงนี้/ช่วงก่อน + ปิดในช่วงนี้/ช่วงก่อน (แม้เปิดมานาน) + ที่ยังค้างอยู่
+    // ดึงแยกกันแล้วรวมด้วย id เพราะ OData ซ้อน or/and ยาว ๆ กับลิสต์ใหญ่มักพัง
+    const openStatuses = "Status ne 'Closed' and Status ne 'Resolved'"
+    const queries = [
+      spGet<Ticket>('HD_Tickets', and(emailFilter, `Created ge ${odata(prev.start)}`), TICKET_COLS, 'Created desc', 3000, 'AssignedTo'),
+      spGet<Ticket>('HD_Tickets', and(emailFilter, `ResolvedDate ge ${odata(prev.start)}`), TICKET_COLS, 'Created desc', 3000, 'AssignedTo').catch(() => [] as Ticket[]),
+      spGet<Ticket>('HD_Tickets', and(emailFilter, openStatuses), TICKET_COLS, 'Created desc', 3000, 'AssignedTo').catch(() => [] as Ticket[]),
+    ]
+
+    Promise.all([
+      Promise.all(queries),
+      spGet<IncidentLike>('PM_Incidents', mine ? `AssignedEmail eq '${user?.email}'` : undefined,
+        'Id,Severity,Status,AssignedEmail,ResolvedDate,Created', 'Created desc', 2000).catch(() => [] as IncidentLike[]),
+      spGet<TaskLike>('PM_Tasks', undefined, 'Id,IsCompleted,AssignedEmail,DueDate', 'DueDate desc', 3000)
+        .catch(() => [] as TaskLike[]),
+      spGet<LeaveRequest>('HD_LeaveRequests',
+        `LeaveDate ge '${toDateInput(range.start)}' and LeaveDate le '${toDateInput(range.end)}'`,
+        'Id,Title,LeaveDate,LeaveType,RequestedBy,RequestedEmail,Status,Created', 'LeaveDate desc', 2000)
+        .catch(() => [] as LeaveRequest[]),
+    ]).then(([ticketSets, inc, tk, lv]) => {
+      const byId = new Map<number, TicketLike>()
+      for (const set of ticketSets) for (const t of set) byId.set(t.id, t as TicketLike)
+      setTickets([...byId.values()])
+      setIncidents(inc)
+      setTasks(tk)
+      setLeaves(lv)
+    }).catch(() => setLoadError('โหลดข้อมูลรายงานไม่สำเร็จ — ลองแคบช่วงเวลาลง'))
+      .finally(() => setLoading(false))
+  }, [mine, user?.email, range, prev.start])
+
+  /** Export PDF ผ่าน print dialog — ถอดธีมมืดชั่วคราว ไม่งั้นพิมพ์ออกมาพื้นดำ */
   function exportPdf() {
     const root = document.documentElement
     const wasDark = root.classList.contains('dark')
@@ -68,191 +117,217 @@ export default function Reports() {
       window.removeEventListener('afterprint', restore)
     }
     window.addEventListener('afterprint', restore)
-    // เผื่อบางเบราว์เซอร์ไม่ยิง afterprint — กันธีมค้างเป็นสว่าง
     setTimeout(restore, 60_000)
     window.print()
   }
 
   const now = new Date()
 
-  // ── Aggregates ──────────────────────────────────────────────────────────────
-  const byStatus   = TICKET_STATUSES.map(s => ({ label: s.key, value: tickets.filter(t => t.Status === s.key).length, color: s.color }))
-  const byPriority = PRIORITIES.map(p => ({ label: p.key, value: tickets.filter(t => t.Priority === p.key).length, color: p.color }))
+  // ── ตัวเลขหลัก + เทียบช่วงก่อนหน้า ──
+  const cur  = useMemo(() => periodStats(tickets, range, now), [tickets, range])   // eslint-disable-line react-hooks/exhaustive-deps
+  const past = useMemo(() => periodStats(tickets, prev, now),  [tickets, prev])    // eslint-disable-line react-hooks/exhaustive-deps
 
-  const withDue = tickets.filter(t => t.DueDate)
-  const onTime  = withDue.filter(t => t.ResolvedDate && new Date(t.ResolvedDate) <= new Date(t.DueDate!)).length
-  const overdue = withDue.filter(t => !t.ResolvedDate && new Date(t.DueDate!) < now).length
-  const breached = withDue.filter(t => t.ResolvedDate && new Date(t.ResolvedDate) > new Date(t.DueDate!)).length
-  const slaTotal = onTime + overdue + breached
-  const slaPct   = slaTotal ? Math.round((onTime / slaTotal) * 100) : 100
+  const inPeriod = useMemo(
+    () => tickets.filter(t => inRange(t.Created, range) || inRange(t.ResolvedDate, range)),
+    [tickets, range])
 
-  const resolved = tickets.filter(t => t.Status === 'Resolved' || t.Status === 'Closed').length
+  const byStatus   = TICKET_STATUSES.map(s => ({ label: s.key, value: inPeriod.filter(t => t.Status === s.key).length, color: s.color }))
+  const byPriority = PRIORITIES.map(p => ({ label: p.key, value: inPeriod.filter(t => t.Priority === p.key).length, color: p.color }))
+  const byCategory = countBy(inPeriod, t => t.Category || '').slice(0, 10)
 
-  // Ticket trend last 6 months
-  const trend = Array.from({ length: 6 }).map((_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-    return {
-      label: MONTHS_TH[d.getMonth()],
-      value: tickets.filter(t => {
-        if (!t.Created) return false
-        const c = new Date(t.Created)
-        return c.getFullYear() === d.getFullYear() && c.getMonth() === d.getMonth()
-      }).length,
-    }
-  })
-
-  // ── Per-agent breakdown ──────────────────────────────────────────────────────
-  const agentMap = new Map<string, { name: string; tickets: Ticket[] }>()
-  for (const t of tickets) {
-    const email = t.AssignedEmail || '(ไม่ได้กำหนด)'
-    const raw = (t as Ticket & { AssignedTo?: { Title?: string } | string }).AssignedTo
-    const name = (typeof raw === 'object' ? raw?.Title : raw) || email
-    if (!agentMap.has(email)) agentMap.set(email, { name, tickets: [] })
-    agentMap.get(email)!.tickets.push(t)
-  }
-  const agentRows = Array.from(agentMap.entries())
-    .map(([email, { name, tickets: ts }]) => {
-      const agentWithDue = ts.filter(t => t.DueDate)
-      const aOnTime  = agentWithDue.filter(t => t.ResolvedDate && new Date(t.ResolvedDate) <= new Date(t.DueDate!)).length
-      const aBreached = agentWithDue.filter(t => t.ResolvedDate && new Date(t.ResolvedDate) > new Date(t.DueDate!)).length
-      const aOverdue = agentWithDue.filter(t => !t.ResolvedDate && new Date(t.DueDate!) < now).length
-      const aSlaTotal = aOnTime + aBreached + aOverdue
-      const aSla = aSlaTotal ? Math.round((aOnTime / aSlaTotal) * 100) : null
-
-      // Avg resolution time (hours)
-      const resolvedTs = ts.filter(t => t.ResolvedDate && t.Created)
-      const avgHours = resolvedTs.length
-        ? Math.round(resolvedTs.reduce((sum, t) => {
-            const diff = new Date(t.ResolvedDate!).getTime() - new Date(t.Created).getTime()
-            return sum + diff / 3600000
-          }, 0) / resolvedTs.length)
-        : null
-
-      return {
-        email, name,
-        total: ts.length,
-        open:  ts.filter(t => t.Status === 'Open').length,
-        inProgress: ts.filter(t => t.Status === 'In Progress').length,
-        pending: ts.filter(t => t.Status === 'Pending').length,
-        closed: ts.filter(t => t.Status === 'Resolved' || t.Status === 'Closed').length,
-        overdue: aOverdue,
-        sla: aSla,
-        avgHours,
-      }
-    })
-    .sort((a, b) => b.total - a.total)
-
-  // ── Category breakdown ──────────────────────────────────────────────────────
-  const catMap = new Map<string, number>()
-  for (const t of tickets) {
-    const c = t.Category || 'ไม่ระบุ'
-    catMap.set(c, (catMap.get(c) || 0) + 1)
-  }
-  const byCategory = Array.from(catMap.entries())
-    .map(([label, value]) => ({ label, value, color: '#6366f1' }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8)
-
-  // ── Customer breakdown ──────────────────────────────────────────────────────
-  // อีเมลภายในบริษัท (โดเมนนี้) จะถูกรวมเป็นกลุ่มเดียว "ภายใน (Internal)"
-  const INTERNAL_DOMAIN = '@itservices.co.th'
-  const custMap = new Map<string, { name: string; email: string; tickets: Ticket[] }>()
-  for (const t of tickets) {
-    const rawEmail = t.CustomerEmail || '(ไม่ระบุ)'
-    const isInternal = rawEmail.toLowerCase().includes(INTERNAL_DOMAIN)
-    const email = isInternal ? '__internal__' : rawEmail
-    const name  = isInternal ? 'ภายใน (Internal)' : (t.CustomerName || rawEmail)
-    if (!custMap.has(email)) custMap.set(email, { name, email, tickets: [] })
-    custMap.get(email)!.tickets.push(t)
-  }
-  const custRows = Array.from(custMap.values())
-    .map(c => ({
-      ...c,
-      total:      c.tickets.length,
-      open:       c.tickets.filter(t => t.Status === 'Open').length,
-      inProgress: c.tickets.filter(t => t.Status === 'In Progress').length,
-      closed:     c.tickets.filter(t => t.Status === 'Resolved' || t.Status === 'Closed').length,
-      critical:   c.tickets.filter(t => t.Priority === 'Critical' || t.Priority === 'High').length,
+  // งานเข้า vs งานปิด ต่อช่วงย่อย — บอกทิศทางว่าตามงานทันไหม
+  const flow = useMemo(() => {
+    const buckets = buildBuckets(range, pickBucket(range))
+    return buckets.map(b => ({
+      label: b.label,
+      a: tickets.filter(t => inRange(t.Created, b)).length,
+      b: tickets.filter(t => inRange(t.ResolvedDate, b)).length,
     }))
-    .sort((a, b) => b.total - a.total)
+  }, [tickets, range])
 
-  // ── Leave breakdown ──────────────────────────────────────────────────────────
-  const leavePersonMap = new Map<string, { name: string; leaves: LeaveRequest[] }>()
-  for (const l of leaves) {
-    const email = l.RequestedEmail || l.RequestedBy || '?'
-    if (!leavePersonMap.has(email)) leavePersonMap.set(email, { name: l.RequestedBy || email, leaves: [] })
-    leavePersonMap.get(email)!.leaves.push(l)
-  }
-  const leaveRows = Array.from(leavePersonMap.values())
-    .map(p => {
-      const approved = p.leaves.filter(l => l.Status === 'Approved')
-      const typeMap = new Map<string, number>()
-      for (const l of approved) typeMap.set(l.LeaveType, (typeMap.get(l.LeaveType) || 0) + 1)
-      return {
-        name:     p.name,
-        total:    p.leaves.length,
-        approved: approved.length,
-        pending:  p.leaves.filter(l => l.Status === 'Pending').length,
-        rejected: p.leaves.filter(l => l.Status === 'Rejected').length,
-        byType:   Array.from(typeMap.entries()).map(([t, n]) => `${t} ${n}วัน`).join(', '),
+  const personRows = useMemo(
+    () => buildPersonRows(tickets, incidents, tasks, leaves, range, now),
+    [tickets, incidents, tasks, leaves, range])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── ลูกค้า ──
+  const INTERNAL_DOMAIN = '@itservices.co.th'
+  const custRows = useMemo(() => {
+    const m = new Map<string, { name: string; email: string; ts: TicketLike[] }>()
+    for (const t of inPeriod) {
+      const raw = t.CustomerEmail || '(ไม่ระบุ)'
+      const internal = raw.toLowerCase().includes(INTERNAL_DOMAIN)
+      const key = internal ? '__internal__' : raw
+      const name = internal ? 'ภายใน (Internal)' : (t.CustomerName || raw)
+      if (!m.has(key)) m.set(key, { name, email: key, ts: [] })
+      m.get(key)!.ts.push(t)
+    }
+    return [...m.values()].map(c => ({
+      ...c,
+      total: c.ts.length,
+      open: c.ts.filter(t => !isClosed(t)).length,
+      closed: c.ts.filter(t => isClosed(t)).length,
+      critical: c.ts.filter(t => t.Priority === 'Critical' || t.Priority === 'High').length,
+    })).sort((a, b) => b.total - a.total)
+  }, [inPeriod])
+
+  const leaveApproved = leaves.filter(l => l.Status === 'Approved')
+
+  async function exportExcel() {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      const summary = [
+        ['รายงานผลงาน Helpdesk'],
+        [`ช่วงเวลา: ${rangeLabel(range)}`],
+        [`เทียบกับ: ${rangeLabel(prev)}`],
+        [`ขอบเขต: ${scopeAll ? 'ทั้งองค์กร' : 'เฉพาะของฉัน'} · ออกโดย ${user?.displayName ?? '-'} · ${new Date().toLocaleString('th-TH')}`],
+        [],
+        ['ตัวชี้วัด', 'ช่วงนี้', 'ช่วงก่อน', 'เปลี่ยนแปลง %'],
+        ['งานรับเข้า', cur.created, past.created, delta(cur.created, past.created)?.toFixed(1) ?? '-'],
+        ['ปิดได้', cur.closed, past.closed, delta(cur.closed, past.closed)?.toFixed(1) ?? '-'],
+        ['อัตราปิดงาน %', cur.closeRate === null ? '-' : (cur.closeRate * 100).toFixed(0), past.closeRate === null ? '-' : (past.closeRate * 100).toFixed(0), ''],
+        ['ปิดทันกำหนด (SLA) %', cur.slaPct?.toFixed(0) ?? '-', past.slaPct?.toFixed(0) ?? '-', ''],
+        [`  ฐานที่ใช้คิด SLA (ใบ)`, cur.slaSample, past.slaSample, ''],
+        ['เวลาปิดกลาง (ชม.)', cur.medianHours?.toFixed(1) ?? '-', past.medianHours?.toFixed(1) ?? '-', ''],
+        ['เวลาปิดเฉลี่ย (ชม.)', cur.avgHours?.toFixed(1) ?? '-', past.avgHours?.toFixed(1) ?? '-', ''],
+        ['ค้าง ณ สิ้นช่วง', cur.backlogEnd, past.backlogEnd, ''],
+        ['ค้างเกินกำหนด (ตอนนี้)', cur.overdueNow, '', ''],
+      ]
+
+      const people = [
+        ['ผลงานรายคน — ' + rangeLabel(range)],
+        [`คะแนนรวมถ่วงน้ำหนัก: ปริมาณ ${SCORE_WEIGHTS.volume}% · ตรงเวลา ${SCORE_WEIGHTS.quality}% · ความเร็ว ${SCORE_WEIGHTS.speed}%`],
+        ['คะแนนเทียบกันเองภายในทีมในช่วงนี้ ไม่ใช่มาตรฐานกลาง และไม่ได้วัดความยากของงาน'],
+        [],
+        ['ชื่อ', 'อีเมล', 'คะแนน', 'รับมอบหมาย', 'ปิดได้', 'สัดส่วนงานที่ปิด %', 'ตรงเวลา', 'สาย', 'SLA %',
+          'เวลาปิดกลาง (ชม.)', 'เวลาปิดเฉลี่ย (ชม.)', 'ค้างอยู่', 'เลยกำหนด', 'Incident ที่ปิด',
+          'งานโครงการครบกำหนด', 'งานโครงการเสร็จ', 'วันลาที่อนุมัติ'],
+        ...personRows.map(r => [
+          r.name, r.email, r.score ?? '-', r.assigned, r.closed, r.sharePct.toFixed(1),
+          r.onTime, r.late, r.slaPct?.toFixed(0) ?? '-',
+          r.medianHours?.toFixed(1) ?? '-', r.avgHours?.toFixed(1) ?? '-',
+          r.openNow, r.overdueNow, r.incidents, r.tasksDue, r.tasksDone, r.leaveDays,
+        ]),
+      ]
+
+      const customers = [
+        ['Ticket รายลูกค้า — ' + rangeLabel(range)],
+        [],
+        ['ลูกค้า', 'อีเมล', 'ทั้งหมด', 'ค้างอยู่', 'ปิดแล้ว', 'Critical/High', 'สัดส่วน %'],
+        ...custRows.map(c => [c.name, c.email === '__internal__' ? '' : c.email, c.total, c.open, c.closed, c.critical,
+          inPeriod.length ? ((c.total / inPeriod.length) * 100).toFixed(1) : '0']),
+      ]
+
+      const mk = (rows: unknown[][], widths: number[]) => {
+        const ws = XLSX.utils.aoa_to_sheet(rows as never)
+        ws['!cols'] = widths.map(w => ({ wch: w }))
+        return ws
       }
-    })
-    .sort((a, b) => b.approved - a.approved)
-
-  const leaveTypeTotal = new Map<string, number>()
-  for (const l of leaves.filter(x => x.Status === 'Approved')) {
-    leaveTypeTotal.set(l.LeaveType, (leaveTypeTotal.get(l.LeaveType) || 0) + 1)
+      XLSX.utils.book_append_sheet(wb, mk(summary, [26, 12, 12, 14]), 'สรุปภาพรวม')
+      XLSX.utils.book_append_sheet(wb, mk(people, [22, 28, 8, 12, 9, 16, 9, 7, 8, 17, 18, 9, 10, 13, 20, 17, 15]), 'ผลงานรายคน')
+      XLSX.utils.book_append_sheet(wb, mk(customers, [26, 28, 10, 10, 10, 14, 10]), 'รายลูกค้า')
+      XLSX.writeFile(wb, `report-${toDateInput(range.start)}_${toDateInput(range.end)}.xlsx`)
+    } catch {
+      setLoadError('สร้างไฟล์ Excel ไม่สำเร็จ')
+    }
   }
-  const leaveTypeData = Array.from(leaveTypeTotal.entries())
-    .map(([label, value]) => ({ label, value, color: '#6366f1' }))
-    .sort((a, b) => b.value - a.value)
 
-  if (loading) return <div className="p-6"><Skeleton className="h-96" /></div>
+  const inputCx = 'text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-900'
 
   return (
     <div>
       <Header title={tr('reports.header')} />
       <div className="p-4 md:p-6 space-y-6">
 
-        {/* หัวรายงาน — แสดงเฉพาะตอนพิมพ์/บันทึก PDF (บนจอปกติมี Header อยู่แล้ว) */}
+        {/* หัวรายงาน — เห็นเฉพาะตอนพิมพ์ PDF */}
         <div className="print-only mb-4 pb-3" style={{ borderBottom: '2px solid #111' }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
-            รายงานสรุป Helpdesk — {scopeAll ? 'ทั้งองค์กร' : 'เฉพาะของฉัน'}
+            รายงานผลงาน Helpdesk — {scopeAll ? 'ทั้งองค์กร' : 'เฉพาะของฉัน'}
           </h1>
           <p style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+            ช่วง {rangeLabel(range)} · เทียบกับ {rangeLabel(prev)}<br />
             iT Services · ออกรายงานโดย {user?.displayName ?? '-'} · {new Date().toLocaleString('th-TH')}
-            {' · '}ข้อมูลวันลาปี {leaveYear}
           </p>
         </div>
 
-        {/* Scope toggle */}
-        <div className="flex items-center gap-2 no-print">
-          <span className="text-xs text-gray-500">{tr('reports.scope')}</span>
-          {isBoss ? (
-            <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
-              <button onClick={() => setScopeAll(false)}
-                className={`px-3 py-1.5 font-medium transition-colors ${!scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.mine')}</button>
-              <button onClick={() => setScopeAll(true)}
-                className={`px-3 py-1.5 font-medium transition-colors ${scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.org')}</button>
+        {/* แถบควบคุม — ช่วงเวลา + ขอบเขต + ส่งออก */}
+        <Card className="no-print">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500 mr-1">ช่วงเวลา</span>
+            <div className="flex flex-wrap rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
+              {PRESETS.map(p => (
+                <button key={p.key} onClick={() => setPreset(p.key)}
+                  className={`px-2.5 py-1.5 font-medium transition-colors ${preset === p.key ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                  {p.labelTh}
+                </button>
+              ))}
             </div>
-          ) : (
-            <span className="text-xs font-medium text-primary-600">{tr('reports.onlyMine')}</span>
-          )}
-          {/* Export PDF — ใช้ print dialog ของเบราว์เซอร์ เลือก "Save as PDF" */}
-          <Button size="sm" variant="secondary" className="ml-auto" onClick={exportPdf} disabled={loading}>
-            <FileDown size={14} /> Export PDF
-          </Button>
+            {preset === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)} className={inputCx} />
+                <span className="text-xs text-gray-400">ถึง</span>
+                <input type="date" value={customTo} min={customFrom} onChange={e => setCustomTo(e.target.value)} className={inputCx} />
+              </div>
+            )}
+
+            <span className="text-xs text-gray-500 ml-2">{tr('reports.scope')}</span>
+            {isBoss ? (
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
+                <button onClick={() => setScopeAll(false)}
+                  className={`px-3 py-1.5 font-medium transition-colors ${!scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.mine')}</button>
+                <button onClick={() => setScopeAll(true)}
+                  className={`px-3 py-1.5 font-medium transition-colors ${scopeAll ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>{tr('reports.org')}</button>
+              </div>
+            ) : (
+              <span className="text-xs font-medium text-primary-600">{tr('reports.onlyMine')}</span>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={exportExcel} disabled={loading}>
+                <FileSpreadsheet size={14} /> Excel
+              </Button>
+              <Button size="sm" variant="secondary" onClick={exportPdf} disabled={loading}>
+                <FileDown size={14} /> PDF
+              </Button>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">
+            {rangeLabel(range)} · เทียบกับช่วงก่อนหน้า {rangeLabel(prev)}
+          </p>
+          {loadError && <p className="text-xs text-red-500 mt-1">{loadError}</p>}
+        </Card>
+
+        {loading ? <Skeleton className="h-96" /> : (
+        <>
+        {/* KPI + การเปลี่ยนแปลงเทียบช่วงก่อน */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <KPI icon={<TicketIcon size={16} className="text-blue-600" />} bg="bg-blue-50 dark:bg-blue-900/10"
+            label="งานรับเข้า" value={cur.created} change={delta(cur.created, past.created)} higherIsBetter={null} />
+          <KPI icon={<BarChart3 size={16} className="text-green-600" />} bg="bg-green-50 dark:bg-green-900/10"
+            label="ปิดได้" value={cur.closed} change={delta(cur.closed, past.closed)} higherIsBetter />
+          <KPI icon={<TrendingUp size={16} className="text-violet-600" />} bg="bg-violet-50 dark:bg-violet-900/10"
+            label="อัตราปิดงาน" value={pct(cur.closeRate === null ? null : cur.closeRate * 100)}
+            change={delta(cur.closeRate, past.closeRate)} higherIsBetter sub="ปิดได้ ÷ รับเข้า" />
+          <KPI icon={<Clock size={16} className="text-emerald-600" />} bg="bg-emerald-50 dark:bg-emerald-900/10"
+            label="ปิดทันกำหนด" value={pct(cur.slaPct)} change={delta(cur.slaPct, past.slaPct)} higherIsBetter
+            sub={cur.slaSample ? `จาก ${cur.slaSample} ใบที่ตั้ง due date` : 'ยังไม่มีใบที่ตั้ง due date'} />
+          <KPI icon={<Clock size={16} className="text-amber-600" />} bg="bg-amber-50 dark:bg-amber-900/10"
+            label="เวลาปิดกลาง" value={fmtHours(cur.medianHours)}
+            change={delta(cur.medianHours, past.medianHours)} higherIsBetter={false} sub="ค่ากลาง — ไม่ถูกงานเดียวลากเพี้ยน" />
+          <KPI icon={<Clock size={16} className="text-red-600" />} bg="bg-red-50 dark:bg-red-900/10"
+            label="ค้างสะสม" value={cur.backlogEnd} change={delta(cur.backlogEnd, past.backlogEnd)} higherIsBetter={false}
+            sub={`เลยกำหนดแล้ว ${cur.overdueNow}`} />
         </div>
 
-        {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <KPI icon={<TicketIcon size={18} className="text-blue-600" />}   label="Ticket ทั้งหมด"    value={tickets.length}  bg="bg-blue-50 dark:bg-blue-900/10" />
-          <KPI icon={<Clock size={18} className="text-green-600" />}       label="SLA ตรงเวลา"       value={`${slaPct}%`}    bg="bg-green-50 dark:bg-green-900/10"  sub={`${overdue} เกินกำหนด`} />
-          <KPI icon={<BarChart3 size={18} className="text-violet-600" />}  label="ปิดงานแล้ว"        value={resolved}        bg="bg-violet-50 dark:bg-violet-900/10" />
-          <KPI icon={<Clock size={18} className="text-red-600" />}         label="ค้างเกินกำหนด"     value={overdue}         bg="bg-red-50 dark:bg-red-900/10" />
-        </div>
+        {/* ทิศทาง: งานเข้า vs งานปิด */}
+        <Card>
+          <h3 className="text-sm font-semibold mb-1">งานเข้า vs งานปิด</h3>
+          <p className="text-[11px] text-gray-400 mb-3">แท่งน้ำเงินสูงกว่าเขียวติดกันหลายช่วง = งานค้างกำลังสะสม ต้องเพิ่มคนหรือลดงานรับเข้า</p>
+          <ColumnsPair data={flow} labels={['รับเข้า', 'ปิดได้']} />
+        </Card>
 
-        {/* Charts row 1 */}
+        {/* สัดส่วนงาน */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <h3 className="text-sm font-semibold mb-4">{tr('reports.byStatus')}</h3>
@@ -264,33 +339,16 @@ export default function Reports() {
           </Card>
         </div>
 
-        {/* Charts row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <h3 className="text-sm font-semibold mb-4">{tr('reports.trend')}</h3>
-            <Columns data={trend} />
-          </Card>
-          <Card>
-            <h3 className="text-sm font-semibold mb-4">SLA Compliance</h3>
-            <Donut data={[
-              { label: 'ตรงเวลา',           value: onTime,   color: '#22c55e' },
-              { label: 'เกินกำหนด (ค้าง)',  value: overdue,  color: '#ef4444' },
-              { label: 'ปิดช้ากว่ากำหนด',   value: breached, color: '#f59e0b' },
-            ].filter(d => d.value > 0)} />
-            {slaTotal === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('reports.noDue')}</p>}
-          </Card>
-        </div>
-
-        {/* Category breakdown */}
         {byCategory.length > 0 && (
           <Card>
-            <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp size={15} className="text-primary-600" /> {tr('reports.byCategory')}</h3>
+            <h3 className="text-sm font-semibold mb-1 flex items-center gap-2"><TrendingUp size={15} className="text-primary-600" /> {tr('reports.byCategory')}</h3>
+            <p className="text-[11px] text-gray-400 mb-3">หมวดที่โตขึ้นเรื่อย ๆ คือจุดที่ควรลงทุนแก้ที่ต้นเหตุ แทนการรับแจ้งซ้ำ</p>
             <div className="space-y-2">
               {byCategory.map(c => (
                 <div key={c.label} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-36 truncate flex-shrink-0">{c.label}</span>
+                  <span className="text-xs text-gray-500 w-40 truncate flex-shrink-0">{c.label}</span>
                   <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.round((c.value / tickets.length) * 100)}%` }} />
+                    <div className="h-full rounded-full bg-primary-500" style={{ width: `${inPeriod.length ? Math.round((c.value / inPeriod.length) * 100) : 0}%` }} />
                   </div>
                   <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-8 text-right">{c.value}</span>
                 </div>
@@ -299,68 +357,99 @@ export default function Reports() {
           </Card>
         )}
 
-        {/* Per-agent breakdown — show when org scope or own data only 1 agent */}
+        {/* ผลงานรายคน */}
         <Card>
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
             <Users size={15} className="text-primary-600" />
-            {scopeAll ? 'ผลงานรายสมาชิก' : 'สรุปผลงานของฉัน'}
+            {scopeAll ? 'ผลงานรายคน' : 'สรุปผลงานของฉัน'}
           </h3>
+          <p className="text-[11px] text-gray-400 mb-3">
+            คะแนนรวม = ปริมาณ {SCORE_WEIGHTS.volume}% · ตรงเวลา {SCORE_WEIGHTS.quality}% · ความเร็ว {SCORE_WEIGHTS.speed}%
+            — เทียบกันเองภายในทีมในช่วงนี้
+          </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs whitespace-nowrap">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-800">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[140px]">{tr('reports.member')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.total')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-blue-500">Open</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.inProgress')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-purple-500">Pending</th>
-                  <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.closed')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-red-500">{tr('reports.pending')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">SLA%</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.avgHrs')}</th>
+                  <th className="text-left py-2 pr-3 font-medium text-gray-500 min-w-[150px]">{tr('reports.member')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">คะแนน</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">รับ</th>
+                  <th className="text-center py-2 px-2 font-medium text-green-600">ปิดได้</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">สัดส่วน</th>
+                  <th className="text-center py-2 px-2 font-medium text-emerald-600">ตรงเวลา</th>
+                  <th className="text-center py-2 px-2 font-medium text-amber-600">สาย</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">SLA</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">เวลาปิดกลาง</th>
+                  <th className="text-center py-2 px-2 font-medium text-blue-500">ค้าง</th>
+                  <th className="text-center py-2 px-2 font-medium text-red-500">เลยกำหนด</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">Incident</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">งานโครงการ</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500">วันลา</th>
                 </tr>
               </thead>
               <tbody>
-                {agentRows.map((a, i) => (
-                  <tr key={a.email} className={`border-b border-gray-50 dark:border-gray-800/60 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors ${i === 0 && scopeAll ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>
-                    <td className="py-2.5 pr-4">
+                {personRows.map((r, i) => (
+                  <tr key={r.email} className={`border-b border-gray-50 dark:border-gray-800/60 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors ${i === 0 && scopeAll && r.score !== null ? 'bg-amber-50/40 dark:bg-amber-900/5' : ''}`}>
+                    <td className="py-2.5 pr-3">
                       <div className="flex items-center gap-2">
-                        {i === 0 && scopeAll && <Award size={12} className="text-amber-500 flex-shrink-0" />}
-                        <div>
-                          <p className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[130px]">{a.name}</p>
-                          <p className="text-gray-400 truncate max-w-[130px]">{a.email}</p>
+                        {i === 0 && scopeAll && r.score !== null && <Award size={12} className="text-amber-500 flex-shrink-0" />}
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[140px]">{r.name}</p>
+                          <p className="text-gray-400 truncate max-w-[140px]">{r.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{a.total}</td>
-                    <td className="text-center py-2.5 px-2 text-blue-600">{a.open || '-'}</td>
-                    <td className="text-center py-2.5 px-2 text-amber-600">{a.inProgress || '-'}</td>
-                    <td className="text-center py-2.5 px-2 text-purple-600">{a.pending || '-'}</td>
-                    <td className="text-center py-2.5 px-2 text-green-600 font-medium">{a.closed || '-'}</td>
                     <td className="text-center py-2.5 px-2">
-                      {a.overdue > 0
-                        ? <span className="inline-block bg-red-100 dark:bg-red-900/30 text-red-600 rounded px-1.5 font-medium">{a.overdue}</span>
+                      {r.score === null ? <span className="text-gray-300" title="ไม่มีงานในช่วงนี้">-</span> : (
+                        <span className={`inline-block px-2 py-0.5 rounded-full font-semibold ${
+                          r.score >= 80 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : r.score >= 55 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>{r.score}</span>
+                      )}
+                    </td>
+                    <td className="text-center py-2.5 px-2 text-gray-600 dark:text-gray-300">{r.assigned || '-'}</td>
+                    <td className="text-center py-2.5 px-2 font-semibold text-green-600">{r.closed || '-'}</td>
+                    <td className="text-center py-2.5 px-2 text-gray-500">{r.sharePct ? `${r.sharePct.toFixed(0)}%` : '-'}</td>
+                    <td className="text-center py-2.5 px-2 text-emerald-600">{r.onTime || '-'}</td>
+                    <td className="text-center py-2.5 px-2 text-amber-600">{r.late || '-'}</td>
+                    <td className="text-center py-2.5 px-2">
+                      {r.slaPct === null ? <span className="text-gray-300">-</span> : (
+                        <span className={`font-medium ${r.slaPct >= 80 ? 'text-green-600' : r.slaPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{r.slaPct.toFixed(0)}%</span>
+                      )}
+                    </td>
+                    <td className="text-center py-2.5 px-2 text-gray-500">{fmtHours(r.medianHours)}</td>
+                    <td className="text-center py-2.5 px-2 text-blue-600">{r.openNow || '-'}</td>
+                    <td className="text-center py-2.5 px-2">
+                      {r.overdueNow > 0
+                        ? <span className="inline-block bg-red-100 dark:bg-red-900/30 text-red-600 rounded px-1.5 font-medium">{r.overdueNow}</span>
                         : <span className="text-gray-300">-</span>}
                     </td>
-                    <td className="text-center py-2.5 px-2">
-                      {a.sla !== null
-                        ? <span className={`font-medium ${a.sla >= 80 ? 'text-green-600' : a.sla >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{a.sla}%</span>
-                        : <span className="text-gray-300">-</span>}
-                    </td>
-                    <td className="text-center py-2.5 px-2 text-gray-500">
-                      {a.avgHours !== null ? `${a.avgHours}h` : <span className="text-gray-300">-</span>}
-                    </td>
+                    <td className="text-center py-2.5 px-2 text-gray-500">{r.incidents || '-'}</td>
+                    <td className="text-center py-2.5 px-2 text-gray-500">{r.tasksDue ? `${r.tasksDone}/${r.tasksDue}` : '-'}</td>
+                    <td className="text-center py-2.5 px-2 text-gray-500">{r.leaveDays || '-'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {agentRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noData')}</p>}
+            {personRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noData')}</p>}
+          </div>
+
+          {/* ข้อจำกัดของตัวเลข — ต้องอ่านก่อนเอาไปตัดสินคน */}
+          <div className="mt-4 flex items-start gap-2 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3">
+            <Info size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-[11px] text-blue-900 dark:text-blue-300 space-y-0.5">
+              <p className="font-semibold">อ่านก่อนใช้ตัดสินใจเรื่องค่าตอบแทน</p>
+              <p>• ตัวเลขนับ "จำนวนงาน" ไม่ได้วัด "ความยากของงาน" — ปิดงานเล็ก 20 ใบ กับแก้ปัญหาใหญ่ 3 ใบ ขึ้นหน้าจอไม่เท่ากัน</p>
+              <p>• SLA คิดเฉพาะใบที่ตั้ง due date เท่านั้น ใบที่ไม่ได้ตั้งจะไม่ถูกนับว่าสาย — ถ้าทีมตั้ง due date ไม่ทั่วถึง ตัวเลขนี้จะเทียบกันไม่ได้</p>
+              <p>• งานที่ไม่ได้มอบหมายให้ใคร จะไม่ถูกนับให้ใครเลย</p>
+              <p>• คนที่ลาส่วนใหญ่ของช่วงจะมีปริมาณงานต่ำโดยธรรมชาติ — ดูคอลัมน์วันลาประกอบ</p>
+            </div>
           </div>
         </Card>
 
-        {/* Customer breakdown */}
+        {/* ลูกค้า */}
         <Card>
-          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
             <Building2 size={15} className="text-primary-600" /> Ticket รายลูกค้า
           </h3>
           <div className="overflow-x-auto">
@@ -369,8 +458,7 @@ export default function Reports() {
                 <tr className="border-b border-gray-100 dark:border-gray-800">
                   <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[160px]">{tr('reports.customer')}</th>
                   <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.total')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-blue-500">Open</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.inProgress')}</th>
+                  <th className="text-center py-2 px-2 font-medium text-blue-500">ค้างอยู่</th>
                   <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.closed')}</th>
                   <th className="text-center py-2 px-2 font-medium text-red-500">Critical/High</th>
                   <th className="text-left py-2 pl-3 font-medium text-gray-500">{tr('reports.share')}</th>
@@ -385,7 +473,6 @@ export default function Reports() {
                     </td>
                     <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{c.total}</td>
                     <td className="text-center py-2.5 px-2 text-blue-600">{c.open || '-'}</td>
-                    <td className="text-center py-2.5 px-2 text-amber-600">{c.inProgress || '-'}</td>
                     <td className="text-center py-2.5 px-2 text-green-600 font-medium">{c.closed || '-'}</td>
                     <td className="text-center py-2.5 px-2">
                       {c.critical > 0
@@ -395,9 +482,9 @@ export default function Reports() {
                     <td className="py-2.5 pl-3 w-32">
                       <div className="flex items-center gap-1.5">
                         <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                          <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.round((c.total / tickets.length) * 100)}%` }} />
+                          <div className="h-full rounded-full bg-primary-500" style={{ width: `${inPeriod.length ? Math.round((c.total / inPeriod.length) * 100) : 0}%` }} />
                         </div>
-                        <span className="text-gray-400 text-[10px] w-6 text-right">{Math.round((c.total / tickets.length) * 100)}%</span>
+                        <span className="text-gray-400 text-[10px] w-6 text-right">{inPeriod.length ? Math.round((c.total / inPeriod.length) * 100) : 0}%</span>
                       </div>
                     </td>
                   </tr>
@@ -408,105 +495,81 @@ export default function Reports() {
           </div>
         </Card>
 
-        {/* Leave breakdown */}
+        {/* การลา — อิงช่วงเวลาเดียวกับรายงาน */}
         <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <CalendarDays size={15} className="text-primary-600" /> การลางานพนักงาน
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">{tr('reports.year')}</span>
-              <select value={leaveYear} onChange={e => setLeaveYear(Number(e.target.value))}
-                className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-900">
-                {[leaveYear - 1, leaveYear, leaveYear + 1].map(y => <option key={y} value={y}>{y + 543}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <CalendarDays size={15} className="text-primary-600" /> การลางานในช่วงนี้
+          </h3>
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-green-50 dark:bg-green-900/10 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-green-600">{leaves.filter(l => l.Status === 'Approved').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.approvedDays')}</p>
+              <p className="text-xl font-bold text-green-600">{leaveApproved.length}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{tr('reports.approvedDays')}</p>
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-amber-600">{leaves.filter(l => l.Status === 'Pending').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.waiting')}</p>
+              <p className="text-xl font-bold text-amber-600">{leaves.filter(l => l.Status === 'Pending').length}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{tr('reports.waiting')}</p>
             </div>
             <div className="bg-red-50 dark:bg-red-900/10 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-red-500">{leaves.filter(l => l.Status === 'Rejected').length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{tr('reports.rejected')}</p>
+              <p className="text-xl font-bold text-red-500">{leaves.filter(l => l.Status === 'Rejected').length}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{tr('reports.rejected')}</p>
             </div>
           </div>
-
-          {leaveTypeData.length > 0 && (
-            <div className="mb-4 space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 mb-2">แยกตามประเภทลา (Approved)</p>
-              {leaveTypeData.map(lt => (
+          {countBy(leaveApproved, l => l.LeaveType || '').length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 mb-2">แยกตามประเภทลา (อนุมัติแล้ว)</p>
+              {countBy(leaveApproved, l => l.LeaveType || '').map(lt => (
                 <div key={lt.label} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500 w-24 truncate flex-shrink-0">{lt.label}</span>
+                  <span className="text-xs text-gray-500 w-28 truncate flex-shrink-0">{lt.label}</span>
                   <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-full h-2 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary-500"
-                      style={{ width: `${Math.round((lt.value / leaves.filter(l => l.Status === 'Approved').length) * 100)}%` }} />
+                    <div className="h-full rounded-full bg-primary-500" style={{ width: `${Math.round((lt.value / leaveApproved.length) * 100)}%` }} />
                   </div>
                   <span className="text-xs font-medium text-gray-700 dark:text-gray-300 w-8 text-right">{lt.value}</span>
                 </div>
               ))}
             </div>
           )}
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
-                  <th className="text-left py-2 pr-4 font-medium text-gray-500 min-w-[140px]">พนักงาน</th>
-                  <th className="text-center py-2 px-2 font-medium text-gray-500">{tr('reports.allRequests')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-green-600">{tr('reports.approveShort')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-amber-500">{tr('reports.waitShort')}</th>
-                  <th className="text-center py-2 px-2 font-medium text-red-500">{tr('reports.rejected')}</th>
-                  <th className="text-left py-2 pl-3 font-medium text-gray-500">{tr('reports.detail')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leaveRows.map(r => (
-                  <tr key={r.name} className="border-b border-gray-50 dark:border-gray-800/60 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                    <td className="py-2.5 pr-4">
-                      <p className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[130px]">{r.name}</p>
-                    </td>
-                    <td className="text-center py-2.5 px-2 font-semibold text-gray-800 dark:text-gray-200">{r.total}</td>
-                    <td className="text-center py-2.5 px-2 text-green-600 font-medium">{r.approved || '-'}</td>
-                    <td className="text-center py-2.5 px-2">
-                      {r.pending > 0
-                        ? <span className="inline-block bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded px-1.5 font-medium">{r.pending}</span>
-                        : <span className="text-gray-300">-</span>}
-                    </td>
-                    <td className="text-center py-2.5 px-2">
-                      {r.rejected > 0
-                        ? <span className="inline-block bg-red-100 dark:bg-red-900/30 text-red-500 rounded px-1.5">{r.rejected}</span>
-                        : <span className="text-gray-300">-</span>}
-                    </td>
-                    <td className="py-2.5 pl-3 text-gray-400 truncate max-w-[200px]">{r.byType || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {leaveRows.length === 0 && <p className="text-center text-sm text-gray-400 py-8">{tr('reports.noLeaveYear')}</p>}
-          </div>
+          {leaves.length === 0 && <p className="text-center text-sm text-gray-400 py-6">{tr('reports.noLeaveYear')}</p>}
         </Card>
-
+        </>
+        )}
       </div>
     </div>
   )
 }
 
-function KPI({ icon, label, value, bg, sub }: { icon: React.ReactNode; label: string; value: string | number; bg: string; sub?: string }) {
+/**
+ * การ์ดตัวชี้วัด + ลูกศรเทียบช่วงก่อนหน้า
+ * higherIsBetter: true = มากขึ้นดี, false = น้อยลงดี, null = ไม่ตัดสิน (เช่นงานรับเข้า — เยอะไม่ได้แปลว่าดีหรือแย่)
+ */
+function KPI({ icon, label, value, bg, sub, change, higherIsBetter }: {
+  icon: React.ReactNode
+  label: string
+  value: string | number
+  bg: string
+  sub?: string
+  change?: number | null
+  higherIsBetter?: boolean | null
+}) {
+  const good = change === null || change === undefined || higherIsBetter === null || higherIsBetter === undefined
+    ? null
+    : (change >= 0) === higherIsBetter
+  const Arrow = change === null || change === undefined ? Minus : change >= 0 ? TrendingUp : TrendingDown
+  const tone = good === null ? 'text-gray-400' : good ? 'text-green-600' : 'text-red-500'
   return (
-    <Card className="flex items-center gap-4">
-      <div className={`p-3 rounded-xl ${bg}`}>{icon}</div>
-      <div className="min-w-0">
-        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-        <p className="text-xs text-gray-500">{label}</p>
-        {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    <Card className="!p-3.5">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className={`p-1.5 rounded-lg ${bg}`}>{icon}</div>
+        <p className="text-[11px] text-gray-500 leading-tight">{label}</p>
       </div>
+      <div className="flex items-end gap-2">
+        <p className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-none">{value}</p>
+        {change !== null && change !== undefined && (
+          <span className={`flex items-center gap-0.5 text-[11px] font-medium ${tone}`} title="เทียบกับช่วงก่อนหน้า">
+            <Arrow size={11} />{Math.abs(change).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      {sub && <p className="text-[10px] text-gray-400 mt-1 leading-tight">{sub}</p>}
     </Card>
   )
 }

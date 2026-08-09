@@ -59,6 +59,46 @@ export function BarChart({ data }: { data: { label: string; value: number; color
   )
 }
 
+/**
+ * แท่งคู่ต่อช่วงเวลา — งานเข้า vs งานปิด
+ * ดูทิศทางว่าทีมตามงานทันไหม: แท่งเข้าสูงกว่าแท่งปิดติดกันหลายช่วง = งานค้างกำลังสะสม
+ * ป้ายกำกับซ่อนเมื่อช่องเยอะ (เช่นรายวัน 31 ช่อง) ไม่งั้นตัวหนังสือทับกันจนอ่านไม่ออก
+ */
+export function ColumnsPair({ data, labels }: {
+  data: { label: string; a: number; b: number }[]
+  labels: [string, string]
+}) {
+  const max = Math.max(1, ...data.flatMap(d => [d.a, d.b]))
+  const step = data.length > 16 ? Math.ceil(data.length / 12) : 1
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-2">
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#0F4C81' }} /> {labels[0]}
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] text-gray-500">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#22c55e' }} /> {labels[1]}
+        </span>
+      </div>
+      <div className="flex items-end gap-1 h-40">
+        {data.map((d, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-1 h-full justify-end min-w-0">
+            <div className="w-full flex items-end justify-center gap-[2px] flex-1">
+              <div className="w-1/2 rounded-t" title={`${labels[0]} ${d.a}`}
+                style={{ height: `${(d.a / max) * 100}%`, minHeight: d.a ? 3 : 0, background: '#0F4C81' }} />
+              <div className="w-1/2 rounded-t" title={`${labels[1]} ${d.b}`}
+                style={{ height: `${(d.b / max) * 100}%`, minHeight: d.b ? 3 : 0, background: '#22c55e' }} />
+            </div>
+            <span className="text-[9px] text-gray-400 truncate w-full text-center">
+              {i % step === 0 ? d.label : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Simple column trend (last N periods)
 export function Columns({ data, color = '#0F4C81' }: { data: { label: string; value: number }[]; color?: string }) {
   const max = Math.max(1, ...data.map(d => d.value))

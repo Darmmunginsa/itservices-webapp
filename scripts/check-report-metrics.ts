@@ -1,0 +1,123 @@
+// ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
+// โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
+//   npm run check:report
+import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
+import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows } from '../src/utils/reportMetrics'
+import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
+
+let pass = 0, fail = 0
+function eq(actual: unknown, expected: unknown, msg: string) {
+  const a = JSON.stringify(actual), e = JSON.stringify(expected)
+  if (a === e) { pass++ } else { fail++; console.log(`FAIL ${msg}\n  got ${a}\n  want ${e}`) }
+}
+
+const TODAY = new Date(2026, 7, 9)   // 9 ส.ค. 2026
+
+// ── period ──
+const m = presetRange('this-month', TODAY)
+eq([m.start.getMonth(), m.start.getDate()], [7, 1], 'this-month starts on the 1st')
+const lm = presetRange('last-month', TODAY)
+eq([lm.start.getMonth(), lm.end.getMonth(), lm.end.getDate()], [6, 6, 31], 'last-month = full July')
+const q = presetRange('this-quarter', TODAY)
+eq(q.start.getMonth(), 6, 'Q3 starts in July')
+const y12 = presetRange('last-12m', TODAY)
+eq([y12.start.getFullYear(), y12.start.getMonth()], [2025, 8], 'last-12m starts Sep 2025')
+
+const prev = previousRange(lm)
+eq([prev.start.getMonth(), prev.end.getMonth(), prev.end.getDate()], [5, 5, 30], 'previous of July = June')
+eq(prev.end.getTime() < lm.start.getTime(), true, 'previous period ends before current starts')
+
+eq(pickBucket(presetRange('this-month', TODAY)), 'day', 'a month buckets by day')
+eq(pickBucket(presetRange('last-12m', TODAY)), 'month', 'a year buckets by month')
+eq(buildBuckets(lm, 'day').length, 31, 'July has 31 day-buckets')
+eq(buildBuckets(presetRange('last-12m', TODAY), 'month').length, 12, '12-month range has 12 buckets')
+
+eq(inRange(new Date(2026, 6, 15).toISOString(), lm), true, 'mid-July is inside July')
+eq(inRange(new Date(2026, 7, 1).toISOString(), lm), false, '1 Aug is outside July')
+eq(inRange(undefined, lm), false, 'missing date is never in range')
+eq(fromDateInput('not-a-date'), null, 'bad date input rejected')
+
+// ── ticket helpers ──
+eq(closedOnTime({ id: 1, DueDate: '2026-07-10T00:00:00Z', ResolvedDate: '2026-07-09T00:00:00Z' }), true, 'closed before due = on time')
+eq(closedOnTime({ id: 2, DueDate: '2026-07-10T00:00:00Z', ResolvedDate: '2026-07-11T00:00:00Z' }), false, 'closed after due = late')
+eq(closedOnTime({ id: 3, ResolvedDate: '2026-07-11T00:00:00Z' }), null, 'no due date = cannot judge, not late')
+eq(resolutionHours({ id: 4, Created: '2026-07-01T00:00:00Z', ResolvedDate: '2026-07-01T06:00:00Z' }), 6, 'six hours to resolve')
+eq(resolutionHours({ id: 5, Created: '2026-07-02T00:00:00Z', ResolvedDate: '2026-07-01T00:00:00Z' }), null, 'resolved before created is rejected')
+eq(median([1, 2, 3]), 2, 'median of odd count')
+eq(median([1, 2, 3, 4]), 2.5, 'median of even count')
+eq(median([]), null, 'median of nothing')
+
+// ── periodStats ──
+const iso = (mo: number, d: number, h = 0) => new Date(2026, mo, d, h).toISOString()
+const tickets: TicketLike[] = [
+  // เปิด+ปิดในเดือนก.ค. ทันกำหนด
+  { id: 1, Status: 'Closed', Created: iso(6, 1), ResolvedDate: iso(6, 2), DueDate: iso(6, 5), AssignedEmail: 'a@x.com', AssignedTo: { Title: 'Ann' } },
+  // เปิดในก.ค. ปิดช้ากว่ากำหนด
+  { id: 2, Status: 'Resolved', Created: iso(6, 3), ResolvedDate: iso(6, 20), DueDate: iso(6, 10), AssignedEmail: 'a@x.com', AssignedTo: { Title: 'Ann' } },
+  // เปิดมิ.ย. ปิดก.ค. → นับ "ปิด" ในก.ค. แต่ไม่นับ "รับเข้า"
+  { id: 3, Status: 'Closed', Created: iso(5, 20), ResolvedDate: iso(6, 4), DueDate: iso(6, 30), AssignedEmail: 'b@x.com', AssignedTo: { Title: 'Bob' } },
+  // เปิดก.ค. ยังไม่ปิด เลยกำหนดแล้ว → ค้าง + overdue
+  { id: 4, Status: 'Open', Created: iso(6, 25), DueDate: iso(6, 28), AssignedEmail: 'b@x.com', AssignedTo: { Title: 'Bob' } },
+  // เปิดส.ค. → อยู่นอกช่วงก.ค.ทั้งหมด
+  { id: 5, Status: 'Open', Created: iso(7, 2), AssignedEmail: 'a@x.com', AssignedTo: { Title: 'Ann' } },
+]
+
+const st = periodStats(tickets, lm, TODAY)
+eq(st.created, 3, 'created in July = 3 (ids 1,2,4)')
+eq(st.closed, 3, 'closed in July = 3 (ids 1,2,3)')
+eq(st.slaSample, 3, 'all three closed had due dates')
+eq(Math.round(st.slaPct!), 67, 'two of three on time')
+eq(st.backlogEnd, 1, 'only id 4 was still open at end of July')
+eq(st.overdueNow, 1, 'id 4 is overdue now; id 5 has no due date')
+eq(Math.round(st.closeRate! * 100), 100, 'closed 3 of 3 created')
+
+const empty = periodStats([], lm, TODAY)
+eq([empty.closeRate, empty.slaPct, empty.avgHours], [null, null, null], 'no data yields nulls, not zeros or NaN')
+
+eq(delta(10, 5), 100, 'doubling is +100%')
+eq(delta(5, 10), -50, 'halving is -50%')
+eq(delta(5, 0), null, 'cannot compare against zero')
+eq(delta(null, 5), null, 'cannot compare a missing value')
+
+// ── per-person ──
+const rows = buildPersonRows(tickets, [], [], [], lm, TODAY)
+const byEmail = Object.fromEntries(rows.map(r => [r.email, r]))
+eq(rows.length, 2, 'two people appear')
+eq(byEmail['a@x.com'].closed, 2, 'Ann closed two')
+eq(byEmail['a@x.com'].onTime, 1, 'one of Ann\'s was on time')
+eq(byEmail['a@x.com'].late, 1, 'the other was late')
+eq(byEmail['b@x.com'].closed, 1, 'Bob closed one')
+eq(byEmail['b@x.com'].overdueNow, 1, 'Bob has one overdue open ticket')
+eq(byEmail['a@x.com'].assigned, 2, 'Ann was assigned 2 in July — id 5 is August, outside the range')
+eq(Math.round(byEmail['a@x.com'].sharePct), 67, 'Ann closed 2 of the 3 team closures')
+
+const unassigned = buildPersonRows([{ id: 9, Status: 'Open', Created: iso(6, 1) }], [], [], [], lm, TODAY)
+eq(unassigned.length, 0, 'unassigned tickets belong to nobody')
+
+// ── scoring ──
+const base = (over: Partial<PersonRow>): PersonRow => ({
+  email: 'e', name: 'n', assigned: 0, closed: 0, onTime: 0, late: 0, slaPct: null,
+  avgHours: null, medianHours: null, openNow: 0, overdueNow: 0, incidents: 0,
+  tasksDue: 0, tasksDone: 0, leaveDays: 0, sharePct: 0, score: null, ...over,
+})
+const scored = scoreRows([
+  base({ email: 'top', closed: 10, slaPct: 100, medianHours: 2 }),
+  base({ email: 'mid', closed: 5,  slaPct: 50,  medianHours: 4 }),
+  base({ email: 'none' }),
+])
+const s = Object.fromEntries(scored.map(r => [r.email, r.score]))
+eq(s['top'], 100, 'best on every axis scores 100')
+eq(s['none'], null, 'no data means no score, not zero')
+eq(scored[0].email, 'top', 'sorted best first')
+eq(s['mid']! < s['top']!, true, 'weaker performance scores lower')
+
+// คนที่ปิดน้อยแต่ตรงเวลา 100% ต้องไม่ถูกคะแนนปริมาณกลบจนเหลือศูนย์
+const fair = scoreRows([
+  base({ email: 'many', closed: 20, slaPct: 40, medianHours: 10 }),
+  base({ email: 'few',  closed: 4,  slaPct: 100, medianHours: 10 }),
+])
+const f = Object.fromEntries(fair.map(r => [r.email, r.score!]))
+eq(f['few'] > 0, true, 'low volume still scores above zero when quality is perfect')
+
+console.log(`\n${pass} passed, ${fail} failed`)
+if (fail) process.exit(1)
