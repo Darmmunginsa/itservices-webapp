@@ -3,17 +3,8 @@ import { Link } from 'react-router-dom'
 import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon, CalendarClock, Users } from 'lucide-react'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { FloatingVideo } from '../components/common/FloatingVideo'
+import { youtubeEmbed } from '../utils/youtube'
 
-// Convert any YouTube URL/ID → embed URL
-function youtubeEmbed(raw: string): string {
-  if (!raw) return ''
-  const s = raw.trim()
-  let id = ''
-  const m = s.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([A-Za-z0-9_-]{11})/)
-  if (m) id = m[1]
-  else if (/^[A-Za-z0-9_-]{11}$/.test(s)) id = s
-  return id ? `https://www.youtube.com/embed/${id}` : ''
-}
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Badge } from '../components/common/Badge'

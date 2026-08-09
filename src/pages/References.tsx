@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Quote, Paperclip, FolderOpen } from 'lucide-react'
+import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, FolderOpen } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
@@ -9,6 +9,8 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { formatCitation, formatBibliography } from '../utils/citation'
+import { ReferenceContent } from '../components/project/ReferenceContent'
+import { parseMediaLinks } from '../utils/youtube'
 import { REF_TYPES, REF_TYPE_TH, REF_TYPE_ICON, type ProjectReference, type ProjectReferenceLink } from '../types/reference'
 import { useT } from '../i18n/useT'
 
@@ -17,7 +19,7 @@ const LINK_LIST = 'PM_ProjectReferences'
 
 const EMPTY = {
   Title: '', RefType: 'Book', Authors: '', Year: '', Publisher: '',
-  Edition: '', Identifier: '', Locator: '', URL: '', Summary: '', Topics: '',
+  Edition: '', Identifier: '', Locator: '', URL: '', Summary: '', Topics: '', Media: '',
 }
 type Form = typeof EMPTY
 
@@ -66,7 +68,7 @@ export default function References() {
       Title: r.Title || '', RefType: r.RefType || 'Book', Authors: r.Authors || '',
       Year: r.Year || '', Publisher: r.Publisher || '', Edition: r.Edition || '',
       Identifier: r.Identifier || '', Locator: r.Locator || '', URL: r.URL || '',
-      Summary: r.Summary || '', Topics: r.Topics || '',
+      Summary: r.Summary || '', Topics: r.Topics || '', Media: r.Media || '',
     })
     setShowModal(true)
   }
@@ -87,6 +89,7 @@ export default function References() {
       URL: form.URL || undefined,
       Summary: form.Summary || undefined,
       Topics: form.Topics || undefined,
+      Media: form.Media || undefined,
     }
     try {
       if (editing) { await spUpdate(LIST, editing.id, payload); addToast('success', 'อัปเดตแหล่งอ้างอิงแล้ว') }
@@ -127,7 +130,7 @@ export default function References() {
     if (typeFilter && (r.RefType || 'Other') !== typeFilter) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
-    return [r.Title, r.Authors, r.Publisher, r.Identifier, r.Summary, r.Topics]
+    return [r.Title, r.Authors, r.Publisher, r.Identifier, r.Summary, r.Topics, r.Media]
       .some(v => (v || '').toLowerCase().includes(q))
   }), [rows, search, typeFilter])
 
@@ -226,11 +229,18 @@ export default function References() {
                               {citation && citation !== `${r.Title}.` && (
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">{citation}</p>
                               )}
+                              {/* เนื้อหาโชว์บนการ์ดเลย ไม่ต้องกดเปิด */}
+                              <ReferenceContent summary={r.Summary} media={r.Media} />
                               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {(r.Topics || '').split(',').map(t => t.trim()).filter(Boolean).map(t => (
                                   <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
                                 ))}
                                 {r.Identifier && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{r.Identifier}</Badge>}
+                                {parseMediaLinks(r.Media).length > 0 && (
+                                  <Badge className="bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                                    ▶ {parseMediaLinks(r.Media).length} คลิป
+                                  </Badge>
+                                )}
                                 {r.URL && (
                                   <a href={r.URL} target="_blank" rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline">
@@ -278,12 +288,6 @@ export default function References() {
 
                           {open && (
                             <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3">
-                              {r.Summary && (
-                                <div className="flex gap-2">
-                                  <Quote size={13} className="text-gray-300 flex-shrink-0 mt-0.5" />
-                                  <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{r.Summary}</p>
-                                </div>
-                              )}
                               <AttachmentSection listName={LIST} itemId={r.id} readOnly={!canEdit} />
                               {r.Author?.Title && <p className="text-[11px] text-gray-400">เพิ่มเข้าคลังโดย {r.Author.Title}</p>}
                             </div>
@@ -357,6 +361,16 @@ export default function References() {
           <div>
             <label className={labelCx}>หัวข้อ / แท็ก (คั่นด้วย ,)</label>
             <input value={form.Topics} onChange={e => set('Topics', e.target.value)} className={inputCx} placeholder="SRE, SLO, Monitoring" />
+          </div>
+
+          <div>
+            <label className={labelCx}>คลิป / ลิงก์ (บรรทัดละ 1 ใส่ได้ไม่จำกัด)</label>
+            <textarea value={form.Media} onChange={e => set('Media', e.target.value)} rows={3} className={inputCx}
+              placeholder={['https://youtu.be/xxxxxxxxxxx', 'ตอนที่ 2 SLO | https://youtu.be/yyyyyyyyyyy'].join('\n')} />
+            <p className="text-[11px] text-gray-400 mt-1">
+              คลิป YouTube เล่นได้ในหน้าเลย · ตั้งชื่อคลิปด้วยรูปแบบ <code>ชื่อ | ลิงก์</code>
+              {parseMediaLinks(form.Media).length > 0 && ` · ตอนนี้ ${parseMediaLinks(form.Media).length} รายการ`}
+            </p>
           </div>
 
           <div>

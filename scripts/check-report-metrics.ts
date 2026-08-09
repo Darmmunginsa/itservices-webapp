@@ -2,10 +2,12 @@
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
 import { formatCitation, formatBibliography } from '../src/utils/citation'
+import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
 
+const NL = String.fromCharCode(10)   // เลี่ยงลำดับ escape ในไฟล์ตรวจ
 let pass = 0, fail = 0
 function eq(actual: unknown, expected: unknown, msg: string) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected)
@@ -154,6 +156,28 @@ eq(formatCitation({ Title: ' Padded  ' }), 'Padded.', 'whitespace trimmed')
 eq(formatCitation({ Title: 'T', URL: 'https://x.dev' }), 'T. https://x.dev', 'url comes last and keeps no trailing dot')
 eq(formatBibliography([{ Title: 'Zebra' }, { Title: 'Alpha' }, {}]),
   ['1. Alpha.', '2. Zebra.'].join('\n'), 'bibliography sorts, numbers, and drops empties')
+
+// -- youtube links (utils/youtube) --
+eq(youtubeId('https://youtu.be/dQw4w9WgXcQ'), 'dQw4w9WgXcQ', 'short link')
+eq(youtubeId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42'), 'dQw4w9WgXcQ', 'watch link with extra params')
+eq(youtubeId('https://www.youtube.com/shorts/dQw4w9WgXcQ'), 'dQw4w9WgXcQ', 'shorts')
+eq(youtubeId('https://www.youtube.com/live/dQw4w9WgXcQ'), 'dQw4w9WgXcQ', 'live')
+eq(youtubeId('dQw4w9WgXcQ'), 'dQw4w9WgXcQ', 'bare id')
+eq(youtubeId('https://vimeo.com/12345'), null, 'not youtube')
+eq(youtubeId(''), null, 'empty')
+
+eq(parseMediaLinks(undefined).length, 0, 'no media field')
+eq(parseMediaLinks(['https://youtu.be/dQw4w9WgXcQ', '', '  ', 'https://vimeo.com/1'].join(NL)).length, 2,
+  'blank lines dropped, non-youtube kept as a plain link')
+eq(parseMediaLinks(['a | https://youtu.be/dQw4w9WgXcQ'].join(NL))[0].label, 'a', 'label before the pipe')
+eq(parseMediaLinks('ตอน 1 | ตอน 2 | https://youtu.be/dQw4w9WgXcQ')[0].label, 'ตอน 1 | ตอน 2',
+  'splits on the last pipe so labels may contain one')
+eq(parseMediaLinks(['https://youtu.be/aaaaaaaaaaa', 'https://youtu.be/aaaaaaaaaaa'].join(NL)).length, 1,
+  'duplicate links collapse')
+eq(parseMediaLinks(['https://youtu.be/dQw4w9WgXcQ'].join(NL))[0].label, 'https://youtu.be/dQw4w9WgXcQ',
+  'unlabelled link falls back to the url')
+eq(parseMediaLinks(Array.from({ length: 40 }, (_, i) => `https://youtu.be/${String(i).padStart(11, 'x')}`).join(NL)).length,
+  40, 'no cap on how many links can be added')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

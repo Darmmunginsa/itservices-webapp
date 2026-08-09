@@ -14,6 +14,7 @@ export interface ProjectReference {
   URL?: string
   Summary?: string           // สรุปสาระ หรือข้อความที่ยกมา
   Topics?: string            // หัวข้อ/แท็ก คั่นด้วยจุลภาค เช่น "SRE, SLO, Monitoring"
+  Media?: string             // คลิป/ลิงก์ บรรทัดละ 1 ใส่ได้ไม่จำกัด — "ชื่อ | url" ตั้งชื่อได้
   Created?: string
   Author?: { Title: string }  // SP Created By — ใครเป็นคนเพิ่มเข้าคลัง
 }

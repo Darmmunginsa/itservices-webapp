@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, X, ExternalLink, Search, Copy, Check, BookOpen, Quote, Paperclip, Pencil } from 'lucide-react'
+import { Plus, X, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, Pencil } from 'lucide-react'
 import { Button } from '../common/Button'
 import { Modal } from '../common/Modal'
 import { Badge } from '../common/Badge'
@@ -8,6 +8,7 @@ import { AttachmentSection } from '../common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
 import { formatCitation, formatBibliography } from '../../utils/citation'
+import { ReferenceContent } from './ReferenceContent'
 import { REF_TYPE_TH, REF_TYPE_ICON, type ProjectReference, type ProjectReferenceLink } from '../../types/reference'
 
 const LIST = 'PM_References'
@@ -183,6 +184,8 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
                     {l.AppliedTo && (
                       <p className="text-xs text-primary-600 dark:text-primary-400 mt-1">ใช้กับ: {l.AppliedTo}</p>
                     )}
+                    {/* เนื้อหาโชว์บนการ์ดเลย — สรุปสาระ + คลิปที่เล่นได้ในหน้า */}
+                    <ReferenceContent summary={r?.Summary} media={r?.Media} compact />
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                       {r?.RefType && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{REF_TYPE_TH[r.RefType] ?? r.RefType}</Badge>}
                       {l.Locator && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{l.Locator}</Badge>}
@@ -224,12 +227,6 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
 
                 {open && r && (
                   <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3">
-                    {r.Summary && (
-                      <div className="flex gap-2">
-                        <Quote size={13} className="text-gray-300 flex-shrink-0 mt-0.5" />
-                        <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{r.Summary}</p>
-                      </div>
-                    )}
                     {/* อ่าน/ดาวน์โหลดได้ แต่แก้ไฟล์แนบต้องไปที่หน้าคลัง — กันแก้ของกลางจากในโครงการ */}
                     <AttachmentSection listName={LIST} itemId={r.id} readOnly />
                   </div>
