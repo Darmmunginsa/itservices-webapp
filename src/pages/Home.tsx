@@ -219,6 +219,69 @@ export default function Home() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
   }
 
+  // กล่อง "งานที่ถึงกำหนด / เลยกำหนด" — วางในแถวบนคู่กับกล่องสรุป (ฝั่งละครึ่ง)
+  const DUE_PANEL = (
+    <Card>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <CalendarClock size={16} className="text-primary-600" />
+        <h3 className="text-sm font-semibold">{t('home.dueTitle')}</h3>
+        <span className="text-xs text-gray-400">{t('home.dueWindow')}</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {overdueCount > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+              {t('home.dueOverdue')} {overdueCount}
+            </span>
+          )}
+          {todayCount > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+              {t('home.dueToday')} {todayCount}
+            </span>
+          )}
+          {soonCount > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+              {t('home.dueSoon')} {soonCount}
+            </span>
+          )}
+        </div>
+      </div>
+      {loading ? (
+        <p className="text-sm text-gray-400 text-center py-6">{t('common.loading')}</p>
+      ) : dueRows.length === 0 ? (
+        <div className="text-center py-8 text-gray-400">
+          <CheckCircle size={26} className="mx-auto mb-2 opacity-40" />
+          <p className="text-sm">{t('home.dueEmpty')}</p>
+        </div>
+      ) : (
+        <div className="max-h-[25vh] min-h-[8rem] overflow-y-auto pr-1 space-y-1.5">
+          {dueRows.map(r => {
+            const color = getDueDateColor(r.due)
+            return (
+              <Link key={r.key} to={r.link}
+                className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                  r.days < 0 ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
+                <span className="text-sm flex-shrink-0">{getDueDateEmoji(color) || '🔵'}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-12 text-center">
+                  {r.type}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">{r.title}</span>
+                  <span className="block text-xs text-gray-400">{formatDate(r.due)}</span>
+                </span>
+                {/* ครึ่งจอกว้างไม่พอใส่ทุกอย่าง — สถานะโผล่เฉพาะจอกว้าง วันครบกำหนดสำคัญกว่า */}
+                {r.status && <Badge className={`${getStatusColor(r.status)} hidden xl:inline-flex`}>{r.status}</Badge>}
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
+                  {r.days < 0 ? `${t('home.dueLateBy')} ${Math.abs(r.days)} ${t('home.dueDays')}`
+                    : r.days === 0 ? t('home.dueToday')
+                    : `${t('home.dueIn')} ${r.days} ${t('home.dueDays')}`}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+
   const statCards = [
     { label: t('home.stat.openTickets'),  value: stats.openTickets,    icon: TicketIcon,    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/10',   link: '/my-work' },
     { label: t('home.stat.activeProjects'),   value: stats.activeProjects, icon: FolderOpen,    color: 'text-green-600',  bg: 'bg-green-50 dark:bg-green-900/10',  link: '/projects' },
@@ -231,20 +294,6 @@ export default function Home() {
       <Header title={`${t('home.greeting')}, ${user?.displayName ?? '...'}`} />
 
       <div className="p-4 md:p-6 space-y-6">
-        {/* Global Search */}
-        <GlobalSearch />
-
-        {/* Warranty Alert */}
-        {warningAssets.length > 0 && (
-          <div className="flex items-center gap-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl px-4 py-3">
-            <AlertTriangle size={16} className="text-orange-600 flex-shrink-0" />
-            <p className="text-sm text-orange-700 dark:text-orange-400">
-              {warningAssets.length} {t('home.warranty')}
-              <Link to="/assets" className="ml-1 underline font-medium">{t('home.viewList')}</Link>
-            </p>
-          </div>
-        )}
-
         {/* ยังไม่ถูกกำหนดสิทธิ์เข้าถึงหน้า — แจ้งให้ติดต่อ Admin (กันงงว่าทำไมเมนูว่าง) */}
         {permSource === 'none' && (
           <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-xl p-4">
@@ -256,46 +305,68 @@ export default function Home() {
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {loading
-            ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
-            : statCards.map(s => (
-              <Link key={s.label} to={s.link} className="block hover:scale-[1.02] transition-transform">
-                <Card className="flex items-center gap-4 h-full">
-                  <div className={`p-3 rounded-xl ${s.bg}`}>
-                    <s.icon size={20} className={s.color} />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{s.value}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-                  </div>
-                </Card>
-              </Link>
-            ))
-          }
-        </div>
+        {/* ── แถวบน: สรุปภาพรวม (ซ้าย) + งานที่ถึงกำหนด (ขวา) — ฝั่งละ 1/4 ของหน้า ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-        {/* ── โปรเจกต์ที่ฉันร่วมทีม (ถูก Invite) ── */}
-        {invitedProjects.length > 0 && (
-          <Card>
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Users size={15} className="text-primary-600" /> {t('home.invitedProjects')}
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {invitedProjects.map(p => (
-                <Link key={p.id} to={`/projects/${p.id}`}
-                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
-                  <span className="w-6 h-6 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                    {p.Title.charAt(0).toUpperCase()}
-                  </span>
-                  <span className="text-xs font-medium text-primary-700 dark:text-primary-300">{p.Title}</span>
-                  {p.Status && <Badge className={`${getStatusColor(p.Status)} !text-[10px] !px-1.5 !py-0`}>{p.Status}</Badge>}
-                </Link>
-              ))}
+          {/* ซ้ายบน — ค้นหา + เตือนประกัน + ตัวเลขรวม + โปรเจกต์ที่ร่วมทีม */}
+          <div className="space-y-3">
+            <GlobalSearch />
+
+            {/* Warranty Alert */}
+            {warningAssets.length > 0 && (
+              <div className="flex items-center gap-2.5 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl px-3 py-2">
+                <AlertTriangle size={15} className="text-orange-600 flex-shrink-0" />
+                <p className="text-xs text-orange-700 dark:text-orange-400">
+                  {warningAssets.length} {t('home.warranty')}
+                  <Link to="/assets" className="ml-1 underline font-medium">{t('home.viewList')}</Link>
+                </p>
+              </div>
+            )}
+
+            {/* Stats — 2×2 ในครึ่งซ้าย (เดิมเรียง 4 ใบเต็มความกว้าง) */}
+            <div className="grid grid-cols-2 gap-3">
+              {loading
+                ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+                : statCards.map(s => (
+                  <Link key={s.label} to={s.link} className="block hover:scale-[1.02] transition-transform">
+                    <Card className="flex items-center gap-3 h-full !p-3">
+                      <div className={`p-2 rounded-lg ${s.bg} flex-shrink-0`}>
+                        <s.icon size={17} className={s.color} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{s.value}</p>
+                        <p className="text-[11px] text-gray-500 truncate">{s.label}</p>
+                      </div>
+                    </Card>
+                  </Link>
+                ))
+              }
             </div>
-          </Card>
-        )}
+
+            {/* โปรเจกต์ที่ฉันร่วมทีม (ถูก Invite) */}
+            {invitedProjects.length > 0 && (
+              <Card className="!p-3">
+                <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
+                  <Users size={14} className="text-primary-600" /> {t('home.invitedProjects')}
+                </h3>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                  {invitedProjects.map(p => (
+                    <Link key={p.id} to={`/projects/${p.id}`}
+                      className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
+                      <span className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                        {p.Title.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="text-[11px] font-medium text-primary-700 dark:text-primary-300">{p.Title}</span>
+                      {p.Status && <Badge className={`${getStatusColor(p.Status)} !text-[10px] !px-1.5 !py-0`}>{p.Status}</Badge>}
+                    </Link>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {DUE_PANEL}
+        </div>
 
         {/* Leave Approval — Boss/Admin only */}
         {pendingLeaves.length > 0 && (
@@ -367,65 +438,6 @@ export default function Home() {
           </Card>
         )}
 
-        {/* งานที่ถึงกำหนด / เลยกำหนด — เหนือปฏิทิน สูงราว 1/4 จอ เลื่อนดูในกล่อง */}
-        <Card>
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <CalendarClock size={16} className="text-primary-600" />
-            <h3 className="text-sm font-semibold">{t('home.dueTitle')}</h3>
-            <span className="text-xs text-gray-400">{t('home.dueWindow')}</span>
-            <div className="ml-auto flex items-center gap-1.5">
-              {overdueCount > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                  {t('home.dueOverdue')} {overdueCount}
-                </span>
-              )}
-              {todayCount > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-                  {t('home.dueToday')} {todayCount}
-                </span>
-              )}
-              {soonCount > 0 && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-                  {t('home.dueSoon')} {soonCount}
-                </span>
-              )}
-            </div>
-          </div>
-          {loading ? (
-            <p className="text-sm text-gray-400 text-center py-6">{t('common.loading')}</p>
-          ) : dueRows.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <CheckCircle size={26} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">{t('home.dueEmpty')}</p>
-            </div>
-          ) : (
-            <div className="max-h-[25vh] min-h-[8rem] overflow-y-auto pr-1 space-y-1.5">
-              {dueRows.map(r => {
-                const color = getDueDateColor(r.due)
-                return (
-                  <Link key={r.key} to={r.link}
-                    className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                      r.days < 0 ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
-                    <span className="text-sm flex-shrink-0">{getDueDateEmoji(color) || '🔵'}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-12 text-center">
-                      {r.type}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">{r.title}</span>
-                      <span className="block text-xs text-gray-400">{formatDate(r.due)}</span>
-                    </span>
-                    {r.status && <Badge className={getStatusColor(r.status)}>{r.status}</Badge>}
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
-                      {r.days < 0 ? `${t('home.dueLateBy')} ${Math.abs(r.days)} ${t('home.dueDays')}`
-                        : r.days === 0 ? t('home.dueToday')
-                        : `${t('home.dueIn')} ${r.days} ${t('home.dueDays')}`}
-                    </span>
-                  </Link>
-                )
-              })}
-            </div>
-          )}
-        </Card>
 
         {/* Focus Items (half) + Calendar (half, pinned) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
