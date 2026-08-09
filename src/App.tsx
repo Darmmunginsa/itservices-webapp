@@ -43,6 +43,7 @@ import Tools from './pages/Tools'
 import ActivityLog from './pages/ActivityLog'
 import OrgChart from './pages/OrgChart'
 import PhishReports from './pages/PhishReports'
+import References from './pages/References'
 import './index.css'
 
 // map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
@@ -60,6 +61,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   skills: <Skills />,
   contracts: <Contracts />,
   orgchart: <OrgChart />,
+  references: <References />,
   admin: <Admin />,
   activity: <ActivityLog />,
   phish: <PhishReports />,

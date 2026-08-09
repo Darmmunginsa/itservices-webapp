@@ -210,7 +210,7 @@ export default function ProjectDetail() {
       spGet<ProjectLink>('PM_Links', `ProjectID eq ${numId}`, undefined, 'Title asc'),
       spGet<ProjectAsset>('PM_ProjectAssets', `ProjectID eq ${numId}`).catch(() => []),
       // นับแหล่งอ้างอิงไว้โชว์บนแท็บตั้งแต่แรก ไม่ต้องรอให้กดเข้าไปก่อนถึงจะเห็นเลข
-      spGet<{ id: number }>('PM_References', `ProjectID eq ${numId}`, 'Id', undefined, 500).catch(() => []),
+      spGet<{ id: number }>('PM_ProjectReferences', `ProjectID eq ${numId}`, 'Id', undefined, 500).catch(() => []),
     ]).then(([proj, t, n, inc, lnk, pa, refs]) => {
       setProject(proj[0] ?? null)
       setTasks(t)
@@ -1234,7 +1234,6 @@ export default function ProjectDetail() {
           <ReferencesPanel
             projectId={Number(id)}
             canEdit={isAgent}
-            canDelete={isBossAdmin}
             onCount={setRefCount}
           />
         )}

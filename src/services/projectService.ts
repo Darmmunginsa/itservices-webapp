@@ -9,7 +9,7 @@ const CHILD_LISTS = [
   'PM_Notes',
   'PM_Incidents',
   'PM_Links',
-  'PM_References',
+  'PM_ProjectReferences',   // ลิสต์เชื่อมเท่านั้น — คลัง PM_References เป็นของกลาง ห้ามลบตามโครงการ
   'PM_ProjectAssets',
   'PM_ProjectMembers',
   'PM_Comments',
