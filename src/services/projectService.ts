@@ -9,6 +9,7 @@ const CHILD_LISTS = [
   'PM_Notes',
   'PM_Incidents',
   'PM_Links',
+  'PM_References',
   'PM_ProjectAssets',
   'PM_ProjectMembers',
   'PM_Comments',

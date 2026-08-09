@@ -9,6 +9,7 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
+import { ReferencesPanel } from '../components/project/ReferencesPanel'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
@@ -87,7 +88,9 @@ export default function ProjectDetail() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
+  // จำนวนแหล่งอ้างอิง — ให้ panel รายงานกลับมาโชว์บนแท็บ (โหลดแยกจาก load() หลัก)
+  const [refCount, setRefCount] = useState(0)
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
 
@@ -206,13 +209,16 @@ export default function ProjectDetail() {
       spGet<ProjectIncident>('PM_Incidents', `ProjectID eq ${numId}`, '*,Author/Title,Author/EMail', undefined, 500, 'Author'),
       spGet<ProjectLink>('PM_Links', `ProjectID eq ${numId}`, undefined, 'Title asc'),
       spGet<ProjectAsset>('PM_ProjectAssets', `ProjectID eq ${numId}`).catch(() => []),
-    ]).then(([proj, t, n, inc, lnk, pa]) => {
+      // นับแหล่งอ้างอิงไว้โชว์บนแท็บตั้งแต่แรก ไม่ต้องรอให้กดเข้าไปก่อนถึงจะเห็นเลข
+      spGet<{ id: number }>('PM_References', `ProjectID eq ${numId}`, 'Id', undefined, 500).catch(() => []),
+    ]).then(([proj, t, n, inc, lnk, pa, refs]) => {
       setProject(proj[0] ?? null)
       setTasks(t)
       setNotes(n)
       setIncidents(inc)
       setLinks(lnk)
       setLinkedAssets(pa as ProjectAsset[])
+      setRefCount((refs as { id: number }[]).length)
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
@@ -1108,10 +1114,10 @@ export default function ProjectDetail() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'notes', 'incidents', 'links', 'monitor', 'assets', 'comments', 'files'] as const).map(t => (
+          {(['tasks', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'comments', 'files'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : tr('ticket.attachments')}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : tr('ticket.attachments')}
             </button>
           ))}
         </div>
@@ -1221,6 +1227,16 @@ export default function ProjectDetail() {
                 </div>
             }
           </div>
+        )}
+
+        {/* ── แหล่งอ้างอิงความรู้ (PM_References) ── */}
+        {tab === 'refs' && (
+          <ReferencesPanel
+            projectId={Number(id)}
+            canEdit={isAgent}
+            canDelete={isBossAdmin}
+            onCount={setRefCount}
+          />
         )}
 
         {/* ── Monitor (dashboard ที่ผูกกับโปรเจกต์ — PM_Links LinkType='Dashboard') ── */}

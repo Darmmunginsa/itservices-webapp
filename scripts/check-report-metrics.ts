@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
@@ -141,6 +142,18 @@ const fair = scoreRows([
 ])
 const f = Object.fromEntries(fair.map(r => [r.email, r.score!]))
 eq(f['few'] > 0, true, 'low volume still scores above zero when quality is perfect')
+
+// -- citation lines (utils/citation) --
+eq(formatCitation({ Authors: 'Beyer, B.', Year: '2016', Title: 'Site Reliability Engineering', Publisher: "O'Reilly", Locator: 'chapter 4' }),
+  "Beyer, B. (2016). Site Reliability Engineering. O'Reilly. chapter 4.", 'full citation')
+eq(formatCitation({ Title: 'RFC 5322', Identifier: 'RFC 5322' }), 'RFC 5322. RFC 5322.', 'sparse entry still reads sensibly')
+eq(formatCitation({ Title: 'Book', Edition: '2nd ed.' }), 'Book (2nd ed.).', 'edition sits in brackets after the title')
+eq(formatCitation({}), '', 'nothing in, nothing out - no stray dots or brackets')
+eq(formatCitation({ Authors: 'Kim, G.' }), 'Kim, G.', 'an author that already ends in a dot does not get a second one')
+eq(formatCitation({ Title: ' Padded  ' }), 'Padded.', 'whitespace trimmed')
+eq(formatCitation({ Title: 'T', URL: 'https://x.dev' }), 'T. https://x.dev', 'url comes last and keeps no trailing dot')
+eq(formatBibliography([{ Title: 'Zebra' }, { Title: 'Alpha' }, {}]),
+  ['1. Alpha.', '2. Zebra.'].join('\n'), 'bibliography sorts, numbers, and drops empties')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
