@@ -60,13 +60,15 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
 
   const rows = useMemo(() => links.map(l => ({ link: l, ref: refById.get(l.ReferenceID) })), [links, refById])
 
-  const pickable = useMemo(() => {
+  const PICK_LIMIT = 60
+  // คลังใหญ่ขึ้นเรื่อย ๆ → แสดงทีละ 60 แต่ต้องบอกว่าตัดไปเท่าไหร่ ไม่ใช่เงียบ ๆ
+  const pickMatches = useMemo(() => {
     const q = pickSearch.trim().toLowerCase()
     return library
       .filter(r => !linkedIds.has(r.id))
       .filter(r => !q || [r.Title, r.Authors, r.Identifier, r.Topics].some(v => (v || '').toLowerCase().includes(q)))
-      .slice(0, 60)
   }, [library, linkedIds, pickSearch])
+  const pickable = pickMatches.slice(0, PICK_LIMIT)
 
   async function attach(r: ProjectReference) {
     if (busy) return
@@ -266,6 +268,9 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
             </div>
           )}
           <p className="text-[11px] text-gray-400 text-center">
+            {pickMatches.length > PICK_LIMIT
+              ? `แสดง ${PICK_LIMIT} จาก ${pickMatches.length} รายการ — พิมพ์ค้นหาเพื่อแคบลง · `
+              : ''}
             ไม่มีที่ต้องการ? <Link to="/references" className="text-primary-600 hover:underline">เพิ่มเข้าคลังก่อน</Link>
           </p>
         </div>

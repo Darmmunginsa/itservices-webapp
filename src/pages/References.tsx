@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, FolderOpen } from 'lucide-react'
+import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, FolderOpen, FileSpreadsheet, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { Badge } from '../components/common/Badge'
 import { AttachmentSection } from '../components/common/AttachmentSection'
+import { DataTable, type Column } from '../components/common/DataTable'
+import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { formatCitation, formatBibliography } from '../utils/citation'
@@ -42,6 +44,9 @@ export default function References() {
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState('')
   const [openId, setOpenId] = useState<number | null>(null)
+  const [view, setView] = useViewMode('references')
+  const [topicFilter, setTopicFilter] = useState('')
+  const [detail, setDetail] = useState<ProjectReference | null>(null)   // รายละเอียดเต็ม (ใช้กับมุมมองตาราง)
 
   function load() {
     setLoading(true)
@@ -126,13 +131,25 @@ export default function References() {
     } catch { addToast('error', 'คัดลอกไม่สำเร็จ') }
   }
 
+  // หัวข้อทั้งหมดที่มีในคลัง เรียงตามจำนวนที่ใช้ — พอหนังสือเยอะ ตัวกรองนี้แคบกว่าประเภท
+  const topicCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of rows) {
+      for (const t of (r.Topics || '').split(',').map(x => x.trim()).filter(Boolean)) {
+        m.set(t, (m.get(t) ?? 0) + 1)
+      }
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'th'))
+  }, [rows])
+
   const filtered = useMemo(() => rows.filter(r => {
     if (typeFilter && (r.RefType || 'Other') !== typeFilter) return false
+    if (topicFilter && !(r.Topics || '').split(',').map(x => x.trim()).includes(topicFilter)) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return [r.Title, r.Authors, r.Publisher, r.Identifier, r.Summary, r.Topics, r.Media]
       .some(v => (v || '').toLowerCase().includes(q))
-  }), [rows, search, typeFilter])
+  }), [rows, search, typeFilter, topicFilter])
 
   const grouped = useMemo(() => {
     const m = new Map<string, ProjectReference[]>()
@@ -151,6 +168,97 @@ export default function References() {
     for (const u of usage) m.set(u.ReferenceID, [...(m.get(u.ReferenceID) ?? []), u])
     return m
   }, [usage])
+
+  async function exportExcel() {
+    try {
+      const XLSX = await import('xlsx')
+      const rowsOut = filtered.map(r => ({
+        'ประเภท': REF_TYPE_TH[r.RefType ?? 'Other'] ?? r.RefType ?? '',
+        'ชื่อเรื่อง': r.Title,
+        'ผู้แต่ง': r.Authors ?? '',
+        'ปี': r.Year ?? '',
+        'สำนักพิมพ์': r.Publisher ?? '',
+        'ครั้งที่พิมพ์': r.Edition ?? '',
+        'เลขอ้างอิง': r.Identifier ?? '',
+        'ตำแหน่งที่อ้างถึง': r.Locator ?? '',
+        'หัวข้อ': r.Topics ?? '',
+        'URL': r.URL ?? '',
+        'จำนวนคลิป/ลิงก์': parseMediaLinks(r.Media).length,
+        'ใช้ในโครงการ': (usageByRef.get(r.id) ?? []).map(u => projectNames[u.ProjectID] ?? `#${u.ProjectID}`).join(', '),
+        'สรุปสาระ': r.Summary ?? '',
+        'บรรทัดอ้างอิง': formatCitation(r),
+      }))
+      const ws = XLSX.utils.json_to_sheet(rowsOut)
+      ws['!cols'] = [12, 40, 24, 6, 20, 12, 20, 18, 22, 34, 14, 28, 60, 60].map(w => ({ wch: w }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'แหล่งอ้างอิง')
+      XLSX.writeFile(wb, `references-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch { addToast('error', 'สร้างไฟล์ Excel ไม่สำเร็จ') }
+  }
+
+  // ── มุมมองตาราง — ใช้ตอนคลังใหญ่ เรียง/กวาดสายตาได้เร็วกว่าการ์ด ──
+  const columns: Column<ProjectReference>[] = [
+    {
+      key: 'type', label: 'ประเภท', sortValue: r => REF_TYPE_TH[r.RefType ?? 'Other'] ?? '',
+      render: r => (
+        <span className="whitespace-nowrap text-gray-600 dark:text-gray-300">
+          {REF_TYPE_ICON[r.RefType ?? 'Other'] ?? '🔖'} {REF_TYPE_TH[r.RefType ?? 'Other'] ?? r.RefType}
+        </span>
+      ),
+    },
+    {
+      key: 'title', label: 'ชื่อเรื่อง', sortValue: r => r.Title ?? '',
+      render: r => (
+        <div className="min-w-0">
+          <p className="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[320px]">{r.Title}</p>
+          {r.Topics && <p className="text-[11px] text-gray-400 truncate max-w-[320px]">{r.Topics}</p>}
+        </div>
+      ),
+    },
+    { key: 'authors', label: 'ผู้แต่ง', sortValue: r => r.Authors ?? '',
+      render: r => <span className="text-gray-600 dark:text-gray-300 truncate block max-w-[180px]">{r.Authors || '-'}</span> },
+    { key: 'year', label: 'ปี', align: 'center', sortValue: r => r.Year ?? '',
+      render: r => <span className="text-gray-500">{r.Year || '-'}</span> },
+    { key: 'ident', label: 'เลขอ้างอิง', sortValue: r => r.Identifier ?? '',
+      render: r => <span className="text-gray-500 truncate block max-w-[160px]">{r.Identifier || '-'}</span> },
+    {
+      key: 'media', label: 'คลิป', align: 'center', sortValue: r => parseMediaLinks(r.Media).length,
+      render: r => {
+        const n = parseMediaLinks(r.Media).length
+        return n ? <span className="text-red-600 dark:text-red-400 font-medium">▶ {n}</span> : <span className="text-gray-300">-</span>
+      },
+    },
+    {
+      key: 'usage', label: 'ใช้ในโครงการ', align: 'center', sortValue: r => (usageByRef.get(r.id) ?? []).length,
+      render: r => {
+        const n = (usageByRef.get(r.id) ?? []).length
+        return n ? <span className="text-primary-600 font-medium">{n}</span> : <span className="text-gray-300">-</span>
+      },
+    },
+    {
+      key: 'actions', label: '', align: 'right',
+      render: r => (
+        <div className="flex items-center gap-1 justify-end" onClick={e => e.stopPropagation()}>
+          <button onClick={() => copy(formatCitation(r), String(r.id))} title="คัดลอกบรรทัดอ้างอิง"
+            className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600">
+            {copied === String(r.id) ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+          </button>
+          {canEdit && (
+            <button onClick={() => openEdit(r)} title="แก้ไข"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600">
+              <Edit2 size={13} />
+            </button>
+          )}
+          {canDelete && (
+            <button onClick={() => remove(r)} title="ลบออกจากคลัง"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600">
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ]
 
   const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelCx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
@@ -174,13 +282,17 @@ export default function References() {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหาชื่อเรื่อง / ผู้แต่ง / ISBN / หัวข้อ..."
                 className="flex-1 bg-transparent text-sm focus:outline-none" />
             </div>
-            {rows.length > 0 && (
+            {rows.length > 0 && (<>
+              <ViewToggle mode={view} onChange={setView} />
               <Button variant="secondary" onClick={() => copy(formatBibliography(filtered), '__all__')}
                 title="คัดลอกบรรณานุกรมของรายการที่เห็นอยู่">
                 {copied === '__all__' ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
                 คัดลอกบรรณานุกรม
               </Button>
-            )}
+              <Button variant="secondary" onClick={exportExcel} title="ส่งออกรายการที่กรองอยู่">
+                <FileSpreadsheet size={15} /> Excel
+              </Button>
+            </>)}
           </div>
 
           {typeCounts.size > 1 && (
@@ -198,6 +310,31 @@ export default function References() {
             </div>
           )}
 
+          {topicCounts.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-gray-400 mr-0.5">หัวข้อ</span>
+              {topicCounts.slice(0, 14).map(([t, n]) => (
+                <button key={t} onClick={() => setTopicFilter(topicFilter === t ? '' : t)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${topicFilter === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
+                  {t} ({n})
+                </button>
+              ))}
+              {topicFilter && (
+                <button onClick={() => setTopicFilter('')} className="text-xs text-gray-400 hover:text-red-500 inline-flex items-center gap-0.5">
+                  <X size={11} /> ล้าง
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* จำนวนที่เห็นอยู่ตอนนี้ — พอกรองแล้วต้องรู้ว่าเหลือเท่าไหร่จากทั้งหมด */}
+          {!loading && rows.length > 0 && (
+            <p className="text-[11px] text-gray-400">
+              แสดง {filtered.length} จาก {rows.length} รายการ
+              {(typeFilter || topicFilter || search.trim()) && ' (กรองอยู่)'}
+            </p>
+          )}
+
           {loading ? (
             <p className="text-center text-sm text-gray-400 py-12">กำลังโหลด...</p>
           ) : filtered.length === 0 ? (
@@ -205,6 +342,14 @@ export default function References() {
               <BookOpen size={32} className="mx-auto mb-3 opacity-30" />
               <p className="text-sm">{rows.length === 0 ? 'ยังไม่มีแหล่งอ้างอิงในคลัง' : 'ไม่พบรายการที่ค้นหา'}</p>
             </div>
+          ) : view === 'table' ? (
+            <DataTable
+              rows={filtered}
+              columns={columns}
+              rowKey={r => r.id}
+              onRowClick={r => setDetail(r)}
+              emptyText="ไม่พบรายการ"
+            />
           ) : (
             <div className="space-y-5">
               {grouped.map(([type, items]) => (
@@ -302,6 +447,65 @@ export default function References() {
           )}
         </>)}
       </div>
+
+      {/* รายละเอียดเต็ม — ใช้ตอนกดแถวในมุมมองตาราง */}
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.Title} size="lg">
+        {detail && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                {REF_TYPE_ICON[detail.RefType ?? 'Other'] ?? '🔖'} {REF_TYPE_TH[detail.RefType ?? 'Other'] ?? detail.RefType}
+              </Badge>
+              {(detail.Topics || '').split(',').map(t => t.trim()).filter(Boolean).map(t => (
+                <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
+              ))}
+            </div>
+
+            <div className="flex items-start gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5">
+              <p className="text-xs text-gray-700 dark:text-gray-200 break-words flex-1">{formatCitation(detail)}</p>
+              <button onClick={() => copy(formatCitation(detail), `d${detail.id}`)} title="คัดลอกบรรทัดอ้างอิง"
+                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-primary-600 flex-shrink-0">
+                {copied === `d${detail.id}` ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+              </button>
+            </div>
+
+            {detail.URL && (
+              <a href={detail.URL} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline break-all">
+                {detail.URL} <ExternalLink size={11} className="flex-shrink-0" />
+              </a>
+            )}
+
+            <ReferenceContent summary={detail.Summary} media={detail.Media} />
+
+            {(usageByRef.get(detail.id) ?? []).length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 mb-1.5">ใช้ในโครงการ</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(usageByRef.get(detail.id) ?? []).map(u => (
+                    <Link key={u.id} to={`/projects/${u.ProjectID}`} onClick={() => setDetail(null)}
+                      className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
+                      title={u.AppliedTo || undefined}>
+                      {projectNames[u.ProjectID] ?? `โครงการ #${u.ProjectID}`}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+              <AttachmentSection listName={LIST} itemId={detail.id} readOnly={!canEdit} />
+            </div>
+
+            {canEdit && (
+              <Button variant="secondary" className="w-full justify-center"
+                onClick={() => { const r = detail; setDetail(null); openEdit(r) }}>
+                <Edit2 size={14} /> แก้ไขรายการนี้
+              </Button>
+            )}
+          </div>
+        )}
+      </Modal>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไขแหล่งอ้างอิง' : 'เพิ่มแหล่งอ้างอิงเข้าคลัง'} size="lg">
         <form onSubmit={save} className="space-y-3">
