@@ -71,8 +71,23 @@ eq(st.backlogEnd, 1, 'only id 4 was still open at end of July')
 eq(st.overdueNow, 1, 'id 4 is overdue now; id 5 has no due date')
 eq(Math.round(st.closeRate! * 100), 100, 'closed 3 of 3 created')
 
+eq(st.dueSetPct, 100, 'every closed ticket in July had a due date')
+
+// ความน่าเชื่อถือของ SLA — ปิด 2 ใบ ตั้ง due date ใบเดียว
+const halfSet: TicketLike[] = [
+  { id: 10, Status: 'Closed', Created: iso(6, 1), ResolvedDate: iso(6, 2), DueDate: iso(6, 5), AssignedEmail: 'c@x.com' },
+  { id: 11, Status: 'Closed', Created: iso(6, 1), ResolvedDate: iso(6, 2), AssignedEmail: 'c@x.com' },
+]
+const half = periodStats(halfSet, lm, TODAY)
+eq(half.dueSetPct, 50, 'half the closed tickets had a due date')
+eq(half.slaPct, 100, 'SLA still reads 100% — computed only over the half that was measurable')
+eq(half.slaSample, 1, 'and it rests on a single ticket')
+
+const noneSet = periodStats([{ id: 12, Status: 'Closed', Created: iso(6, 1), ResolvedDate: iso(6, 2) }], lm, TODAY)
+eq([noneSet.dueSetPct, noneSet.slaPct], [0, null], 'no due dates at all: 0% coverage and no SLA to report')
+
 const empty = periodStats([], lm, TODAY)
-eq([empty.closeRate, empty.slaPct, empty.avgHours], [null, null, null], 'no data yields nulls, not zeros or NaN')
+eq([empty.closeRate, empty.slaPct, empty.avgHours, empty.dueSetPct], [null, null, null, null], 'no data yields nulls, not zeros or NaN')
 
 eq(delta(10, 5), 100, 'doubling is +100%')
 eq(delta(5, 10), -50, 'halving is -50%')
@@ -91,12 +106,20 @@ eq(byEmail['b@x.com'].overdueNow, 1, 'Bob has one overdue open ticket')
 eq(byEmail['a@x.com'].assigned, 2, 'Ann was assigned 2 in July — id 5 is August, outside the range')
 eq(Math.round(byEmail['a@x.com'].sharePct), 67, 'Ann closed 2 of the 3 team closures')
 
+eq(byEmail['a@x.com'].dueSetPct, 100, 'Ann set a due date on everything she closed')
+
+// คนที่ไม่ตั้ง due date เลย: SLA ว่าง และ coverage 0 — เห็นได้ว่าทำไม SLA ถึงว่าง
+const noDue = buildPersonRows(
+  [{ id: 20, Status: 'Closed', Created: iso(6, 1), ResolvedDate: iso(6, 3), AssignedEmail: 'c@x.com', AssignedTo: { Title: 'Cat' } }],
+  [], [], [], lm, TODAY)
+eq([noDue[0].slaPct, noDue[0].dueSetPct], [null, 0], 'no due dates: SLA unknown, coverage 0%')
+
 const unassigned = buildPersonRows([{ id: 9, Status: 'Open', Created: iso(6, 1) }], [], [], [], lm, TODAY)
 eq(unassigned.length, 0, 'unassigned tickets belong to nobody')
 
 // ── scoring ──
 const base = (over: Partial<PersonRow>): PersonRow => ({
-  email: 'e', name: 'n', assigned: 0, closed: 0, onTime: 0, late: 0, slaPct: null,
+  email: 'e', name: 'n', assigned: 0, closed: 0, onTime: 0, late: 0, slaPct: null, dueSetPct: null,
   avgHours: null, medianHours: null, openNow: 0, overdueNow: 0, incidents: 0,
   tasksDue: 0, tasksDone: 0, leaveDays: 0, sharePct: 0, score: null, ...over,
 })

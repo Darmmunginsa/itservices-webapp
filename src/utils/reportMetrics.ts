@@ -75,6 +75,7 @@ export interface PeriodStats {
   closeRate: number | null// ปิดได้ / รับเข้า
   slaPct: number | null   // % ที่ปิดทันกำหนด (เฉพาะที่มี due date)
   slaSample: number       // ฐานที่ใช้คิด SLA — น้อยเกินไปก็อย่าเพิ่งเชื่อ
+  dueSetPct: number | null// % ของงานที่ปิดในช่วงที่ "มีการตั้ง due date" — ความน่าเชื่อถือของ SLA ข้างบน
   avgHours: number | null
   medianHours: number | null
   backlogEnd: number      // ค้างอยู่ ณ สิ้นช่วง
@@ -106,6 +107,7 @@ export function periodStats(tickets: TicketLike[], r: Range, now = new Date()): 
     closeRate: created.length ? closed.length / created.length : null,
     slaPct: judged.length ? (judged.filter(Boolean).length / judged.length) * 100 : null,
     slaSample: judged.length,
+    dueSetPct: closed.length ? (judged.length / closed.length) * 100 : null,
     avgHours: mean(hours),
     medianHours: median(hours),
     backlogEnd,
@@ -127,6 +129,7 @@ export interface PersonRow {
   onTime: number
   late: number
   slaPct: number | null
+  dueSetPct: number | null  // % ของงานที่ปิดที่มีการตั้ง due date — ต่ำ = SLA ข้างบนเชื่อไม่ได้เต็มปาก
   avgHours: number | null
   medianHours: number | null
   openNow: number
@@ -180,6 +183,7 @@ export function buildPersonRows(
       onTime,
       late: judged.length - onTime,
       slaPct: judged.length ? (onTime / judged.length) * 100 : null,
+      dueSetPct: closedTs.length ? (judged.length / closedTs.length) * 100 : null,
       avgHours: mean(hours),
       medianHours: median(hours),
       openNow: ts.filter(t => !isClosed(t)).length,

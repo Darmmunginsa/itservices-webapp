@@ -189,6 +189,7 @@ export default function Reports() {
         ['อัตราปิดงาน %', cur.closeRate === null ? '-' : (cur.closeRate * 100).toFixed(0), past.closeRate === null ? '-' : (past.closeRate * 100).toFixed(0), ''],
         ['ปิดทันกำหนด (SLA) %', cur.slaPct?.toFixed(0) ?? '-', past.slaPct?.toFixed(0) ?? '-', ''],
         [`  ฐานที่ใช้คิด SLA (ใบ)`, cur.slaSample, past.slaSample, ''],
+        ['  ตั้ง due date (% ของงานที่ปิด)', cur.dueSetPct?.toFixed(0) ?? '-', past.dueSetPct?.toFixed(0) ?? '-', ''],
         ['เวลาปิดกลาง (ชม.)', cur.medianHours?.toFixed(1) ?? '-', past.medianHours?.toFixed(1) ?? '-', ''],
         ['เวลาปิดเฉลี่ย (ชม.)', cur.avgHours?.toFixed(1) ?? '-', past.avgHours?.toFixed(1) ?? '-', ''],
         ['ค้าง ณ สิ้นช่วง', cur.backlogEnd, past.backlogEnd, ''],
@@ -200,12 +201,12 @@ export default function Reports() {
         [`คะแนนรวมถ่วงน้ำหนัก: ปริมาณ ${SCORE_WEIGHTS.volume}% · ตรงเวลา ${SCORE_WEIGHTS.quality}% · ความเร็ว ${SCORE_WEIGHTS.speed}%`],
         ['คะแนนเทียบกันเองภายในทีมในช่วงนี้ ไม่ใช่มาตรฐานกลาง และไม่ได้วัดความยากของงาน'],
         [],
-        ['ชื่อ', 'อีเมล', 'คะแนน', 'รับมอบหมาย', 'ปิดได้', 'สัดส่วนงานที่ปิด %', 'ตรงเวลา', 'สาย', 'SLA %',
+        ['ชื่อ', 'อีเมล', 'คะแนน', 'รับมอบหมาย', 'ปิดได้', 'สัดส่วนงานที่ปิด %', 'ตรงเวลา', 'สาย', 'SLA %', 'ตั้ง due date %',
           'เวลาปิดกลาง (ชม.)', 'เวลาปิดเฉลี่ย (ชม.)', 'ค้างอยู่', 'เลยกำหนด', 'Incident ที่ปิด',
           'งานโครงการครบกำหนด', 'งานโครงการเสร็จ', 'วันลาที่อนุมัติ'],
         ...personRows.map(r => [
           r.name, r.email, r.score ?? '-', r.assigned, r.closed, r.sharePct.toFixed(1),
-          r.onTime, r.late, r.slaPct?.toFixed(0) ?? '-',
+          r.onTime, r.late, r.slaPct?.toFixed(0) ?? '-', r.dueSetPct?.toFixed(0) ?? '-',
           r.medianHours?.toFixed(1) ?? '-', r.avgHours?.toFixed(1) ?? '-',
           r.openNow, r.overdueNow, r.incidents, r.tasksDue, r.tasksDone, r.leaveDays,
         ]),
@@ -225,7 +226,7 @@ export default function Reports() {
         return ws
       }
       XLSX.utils.book_append_sheet(wb, mk(summary, [26, 12, 12, 14]), 'สรุปภาพรวม')
-      XLSX.utils.book_append_sheet(wb, mk(people, [22, 28, 8, 12, 9, 16, 9, 7, 8, 17, 18, 9, 10, 13, 20, 17, 15]), 'ผลงานรายคน')
+      XLSX.utils.book_append_sheet(wb, mk(people, [22, 28, 8, 12, 9, 16, 9, 7, 8, 16, 17, 18, 9, 10, 13, 20, 17, 15]), 'ผลงานรายคน')
       XLSX.utils.book_append_sheet(wb, mk(customers, [26, 28, 10, 10, 10, 14, 10]), 'รายลูกค้า')
       XLSX.writeFile(wb, `report-${toDateInput(range.start)}_${toDateInput(range.end)}.xlsx`)
     } catch {
@@ -311,7 +312,7 @@ export default function Reports() {
             change={delta(cur.closeRate, past.closeRate)} higherIsBetter sub="ปิดได้ ÷ รับเข้า" />
           <KPI icon={<Clock size={16} className="text-emerald-600" />} bg="bg-emerald-50 dark:bg-emerald-900/10"
             label="ปิดทันกำหนด" value={pct(cur.slaPct)} change={delta(cur.slaPct, past.slaPct)} higherIsBetter
-            sub={cur.slaSample ? `จาก ${cur.slaSample} ใบที่ตั้ง due date` : 'ยังไม่มีใบที่ตั้ง due date'} />
+            sub={cur.slaSample ? `จาก ${cur.slaSample} ใบ (ตั้ง due date ${pct(cur.dueSetPct)} ของงานที่ปิด)` : 'ยังไม่มีใบที่ตั้ง due date'} />
           <KPI icon={<Clock size={16} className="text-amber-600" />} bg="bg-amber-50 dark:bg-amber-900/10"
             label="เวลาปิดกลาง" value={fmtHours(cur.medianHours)}
             change={delta(cur.medianHours, past.medianHours)} higherIsBetter={false} sub="ค่ากลาง — ไม่ถูกงานเดียวลากเพี้ยน" />
@@ -379,6 +380,9 @@ export default function Reports() {
                   <th className="text-center py-2 px-2 font-medium text-emerald-600">ตรงเวลา</th>
                   <th className="text-center py-2 px-2 font-medium text-amber-600">สาย</th>
                   <th className="text-center py-2 px-2 font-medium text-gray-500">SLA</th>
+                  <th className="text-center py-2 px-2 font-medium text-gray-500" title="สัดส่วนงานที่ปิดซึ่งมีการตั้ง due date — ต่ำ = SLA ข้างซ้ายวัดจากงานส่วนน้อย เทียบกับคนอื่นไม่ได้เต็มปาก">
+                    ตั้ง due date
+                  </th>
                   <th className="text-center py-2 px-2 font-medium text-gray-500">เวลาปิดกลาง</th>
                   <th className="text-center py-2 px-2 font-medium text-blue-500">ค้าง</th>
                   <th className="text-center py-2 px-2 font-medium text-red-500">เลยกำหนด</th>
@@ -413,8 +417,19 @@ export default function Reports() {
                     <td className="text-center py-2.5 px-2 text-emerald-600">{r.onTime || '-'}</td>
                     <td className="text-center py-2.5 px-2 text-amber-600">{r.late || '-'}</td>
                     <td className="text-center py-2.5 px-2">
-                      {r.slaPct === null ? <span className="text-gray-300">-</span> : (
-                        <span className={`font-medium ${r.slaPct >= 80 ? 'text-green-600' : r.slaPct >= 60 ? 'text-amber-500' : 'text-red-500'}`}>{r.slaPct.toFixed(0)}%</span>
+                      {r.slaPct === null ? <span className="text-gray-300" title="ไม่มีงานที่ตั้ง due date จึงวัดไม่ได้">-</span> : (
+                        <span className={`font-medium ${r.slaPct >= 80 ? 'text-green-600' : r.slaPct >= 60 ? 'text-amber-500' : 'text-red-500'} ${r.dueSetPct !== null && r.dueSetPct < 50 ? 'opacity-50 line-through decoration-1' : ''}`}
+                          title={r.dueSetPct !== null && r.dueSetPct < 50 ? 'วัดจากงานไม่ถึงครึ่ง — ยังเทียบกับคนอื่นไม่ได้' : undefined}>
+                          {r.slaPct.toFixed(0)}%
+                        </span>
+                      )}
+                    </td>
+                    {/* ความครอบคลุมของข้อมูล — ต่ำแปลว่า SLA ช่องซ้ายวัดจากงานส่วนน้อย */}
+                    <td className="text-center py-2.5 px-2">
+                      {r.dueSetPct === null ? <span className="text-gray-300">-</span> : (
+                        <span className={r.dueSetPct >= 80 ? 'text-gray-500' : r.dueSetPct >= 50 ? 'text-amber-600 font-medium' : 'text-red-500 font-semibold'}>
+                          {r.dueSetPct.toFixed(0)}%
+                        </span>
                       )}
                     </td>
                     <td className="text-center py-2.5 px-2 text-gray-500">{fmtHours(r.medianHours)}</td>
@@ -440,7 +455,8 @@ export default function Reports() {
             <div className="text-[11px] text-blue-900 dark:text-blue-300 space-y-0.5">
               <p className="font-semibold">อ่านก่อนใช้ตัดสินใจเรื่องค่าตอบแทน</p>
               <p>• ตัวเลขนับ "จำนวนงาน" ไม่ได้วัด "ความยากของงาน" — ปิดงานเล็ก 20 ใบ กับแก้ปัญหาใหญ่ 3 ใบ ขึ้นหน้าจอไม่เท่ากัน</p>
-              <p>• SLA คิดเฉพาะใบที่ตั้ง due date เท่านั้น ใบที่ไม่ได้ตั้งจะไม่ถูกนับว่าสาย — ถ้าทีมตั้ง due date ไม่ทั่วถึง ตัวเลขนี้จะเทียบกันไม่ได้</p>
+              <p>• SLA คิดเฉพาะใบที่ตั้ง due date ดูคอลัมน์ <b>"ตั้ง due date"</b> คู่กันเสมอ — ถ้าต่ำกว่า 50% ตัวเลข SLA จะถูกขีดฆ่าไว้ เพราะวัดจากงานไม่ถึงครึ่ง</p>
+              <p>• คนที่ไม่ตั้ง due date เลยจะไม่มี SLA และ<b>ไม่ถูกคิดคะแนนด้านตรงเวลา</b> — คะแนนรวมจะมาจากปริมาณกับความเร็วเท่านั้น ต้องดูคอลัมน์นี้ก่อนเทียบคะแนนกัน</p>
               <p>• งานที่ไม่ได้มอบหมายให้ใคร จะไม่ถูกนับให้ใครเลย</p>
               <p>• คนที่ลาส่วนใหญ่ของช่วงจะมีปริมาณงานต่ำโดยธรรมชาติ — ดูคอลัมน์วันลาประกอบ</p>
             </div>
