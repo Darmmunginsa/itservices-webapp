@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon, Users } from 'lucide-react'
+import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon, CalendarClock, Users } from 'lucide-react'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
 import { FloatingVideo } from '../components/common/FloatingVideo'
 
@@ -21,11 +21,11 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
-import type { Project } from '../types/project'
+import type { Project, Task } from '../types/project'
 import type { FocusItem, LeaveRequest } from '../types/common'
 import type { Asset as AssetType } from '../types/asset'
 import type { ProjectIncident } from '../types/project'
-import { getDueDateEmoji, getDueDateColor, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
+import { getDueDateEmoji, getDueDateColor, getDueDateBadgeClass, daysUntil, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 import { sendTemplateEmail } from '../services/emailService'
 import { GlobalSearch } from '../components/common/GlobalSearch'
@@ -35,6 +35,34 @@ interface Stats {
   openTickets: number
   activeProjects: number
   openIncidents: number
+}
+
+// งานที่ใกล้ถึง/เลยกำหนด — รวมจากหลายลิสต์มาเรียงในตารางเดียว
+interface DueRow {
+  key: string
+  title: string
+  type: 'Ticket' | 'Task'
+  link: string
+  due: string
+  days: number      // ติดลบ = เลยกำหนดมาแล้วกี่วัน
+  status?: string
+}
+
+const DUE_WINDOW_DAYS = 7   // มองไปข้างหน้าแค่ 7 วัน — ไกลกว่านั้นยังไม่ต้องเร่ง
+
+function buildDueRows(tickets: Ticket[], tasks: Task[]): DueRow[] {
+  const rows: DueRow[] = []
+  for (const t of tickets) {
+    if (!t.DueDate || ['Resolved', 'Closed'].includes(t.Status)) continue
+    rows.push({ key: `tk-${t.id}`, title: t.Title, type: 'Ticket', link: `/tickets/${t.id}`, due: t.DueDate, days: daysUntil(t.DueDate), status: t.Status })
+  }
+  for (const t of tasks) {
+    if (!t.DueDate || t.IsCompleted) continue
+    rows.push({ key: `ts-${t.id}`, title: t.Title, type: 'Task', link: `/projects/${t.ProjectID}`, due: t.DueDate, days: daysUntil(t.DueDate) })
+  }
+  return rows
+    .filter(r => r.days <= DUE_WINDOW_DAYS)
+    .sort((a, b) => a.days - b.days)   // เลยกำหนดนานสุดอยู่บนสุด
 }
 
 export default function Home() {
@@ -52,6 +80,8 @@ export default function Home() {
   const [videoEmbed, setVideoEmbed] = useState('')
   // โปรเจกต์ที่ถูกเชิญเข้าร่วมทีม (PM_ProjectMembers) — ช่องทางลัดเข้าไปทำงาน
   const [invitedProjects, setInvitedProjects] = useState<Project[]>([])
+  // งานที่ถึง/เลยกำหนด (Ticket + Task ของฉัน)
+  const [dueRows, setDueRows] = useState<DueRow[]>([])
 
   // Load Home video URL from HD_Options (Category = HomeVideo)
   useEffect(() => {
@@ -79,6 +109,9 @@ export default function Home() {
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`, 'Id,Title,RefID,FocusType,FocusedBy,FocusedEmail,DueDate,Status,SortOrder,PinTarget', 'SortOrder asc', 200),
       spGet<AssetType>('IT_Assets'),
       spGet<ProjectIncident>('PM_Incidents', incidentFilter),
+      // งานในโครงการที่มอบหมายให้ฉัน — ใช้คู่กับ ticket เพื่อรวมเป็นรายการ "ถึงกำหนด"
+      spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, undefined, 'DueDate asc', 500)
+        .catch(() => [] as Task[]),
     ]
     if (isBoss) {
       promises.push(
@@ -99,8 +132,8 @@ export default function Home() {
       }).catch(() => {})
 
     Promise.all(promises).then(results => {
-      const [tickets, projects, focus, assets, incidents, leaves] = results as [
-        Ticket[], Project[], FocusItem[], AssetType[], ProjectIncident[], LeaveRequest[]?
+      const [tickets, projects, focus, assets, incidents, tasks, leaves] = results as [
+        Ticket[], Project[], FocusItem[], AssetType[], ProjectIncident[], Task[], LeaveRequest[]?
       ]
       setStats({
         openTickets: tickets.length,
@@ -110,9 +143,14 @@ export default function Home() {
       setMyTickets(tickets)
       setFocusItems((focus ?? []).filter(f => f.PinTarget !== 'Navigator'))
       setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)))
+      setDueRows(buildDueRows(tickets ?? [], tasks ?? []))
       if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
+
+  const overdueCount = dueRows.filter(r => r.days < 0).length
+  const todayCount   = dueRows.filter(r => r.days === 0).length
+  const soonCount    = dueRows.filter(r => r.days > 0).length
 
   async function unpinFocus(focusId: number) {
     try {
@@ -328,6 +366,66 @@ export default function Home() {
             )}
           </Card>
         )}
+
+        {/* งานที่ถึงกำหนด / เลยกำหนด — เหนือปฏิทิน สูงราว 1/4 จอ เลื่อนดูในกล่อง */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <CalendarClock size={16} className="text-primary-600" />
+            <h3 className="text-sm font-semibold">{t('home.dueTitle')}</h3>
+            <span className="text-xs text-gray-400">{t('home.dueWindow')}</span>
+            <div className="ml-auto flex items-center gap-1.5">
+              {overdueCount > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  {t('home.dueOverdue')} {overdueCount}
+                </span>
+              )}
+              {todayCount > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                  {t('home.dueToday')} {todayCount}
+                </span>
+              )}
+              {soonCount > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                  {t('home.dueSoon')} {soonCount}
+                </span>
+              )}
+            </div>
+          </div>
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-6">{t('common.loading')}</p>
+          ) : dueRows.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <CheckCircle size={26} className="mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{t('home.dueEmpty')}</p>
+            </div>
+          ) : (
+            <div className="max-h-[25vh] min-h-[8rem] overflow-y-auto pr-1 space-y-1.5">
+              {dueRows.map(r => {
+                const color = getDueDateColor(r.due)
+                return (
+                  <Link key={r.key} to={r.link}
+                    className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                      r.days < 0 ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
+                    <span className="text-sm flex-shrink-0">{getDueDateEmoji(color) || '🔵'}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-12 text-center">
+                      {r.type}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">{r.title}</span>
+                      <span className="block text-xs text-gray-400">{formatDate(r.due)}</span>
+                    </span>
+                    {r.status && <Badge className={getStatusColor(r.status)}>{r.status}</Badge>}
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
+                      {r.days < 0 ? `${t('home.dueLateBy')} ${Math.abs(r.days)} ${t('home.dueDays')}`
+                        : r.days === 0 ? t('home.dueToday')
+                        : `${t('home.dueIn')} ${r.days} ${t('home.dueDays')}`}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </Card>
 
         {/* Focus Items (half) + Calendar (half, pinned) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
