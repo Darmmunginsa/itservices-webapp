@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, Monitor, UserPlus, X, ImagePlus } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, ChevronUp, Monitor, UserPlus, X, ImagePlus, AlertTriangle } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SmartText } from '../components/common/SmartText'
@@ -22,7 +22,7 @@ import type { AgentProfile, FocusItem } from '../types/common'
 import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
-import { getStatusColor } from '../utils/colorUtils'
+import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { projectIcon, ICON_CHOICES, IMG_PREFIX, isImageIcon, iconFileName, makeIconFile } from '../utils/projectIcon'
 import { ProjectIcon, clearProjectIconCache } from '../components/common/ProjectIcon'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
@@ -91,6 +91,8 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
   // จำนวนแหล่งอ้างอิง — ให้ panel รายงานกลับมาโชว์บนแท็บ (โหลดแยกจาก load() หลัก)
   const [refCount, setRefCount] = useState(0)
+  // กล่องงานค้างเหนือแท็บ — พับเก็บได้ และจำไว้ต่อเครื่อง
+  const [pinOpen, setPinOpen] = useState(() => localStorage.getItem('pdPinOpen') !== '0')
   const [showSecure, setShowSecure] = useState(false)
   const [infoOpen, setInfoOpen] = useState(true)
 
@@ -918,6 +920,17 @@ export default function ProjectDetail() {
     return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) - (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
   })
 
+  // ── งานค้าง (ปักไว้เหนือแท็บ) ──
+  // Task ที่ยังไม่เสร็จ เรียงเลยกำหนดขึ้นก่อน แล้วค่อยตามวันครบกำหนด
+  // ตัวที่ไม่ได้ตั้ง due date ไปท้ายสุด — ไม่ใช่หายไป เพราะมันก็ยังค้างอยู่
+  const openTasks = sortedTasks.filter(t => !t.IsCompleted)
+  const overdueTasks = openTasks.filter(t => getDueDateColor(t.DueDate, false) === 'red')
+  const SEV_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
+  const openIncidents = incidents
+    .filter(i => i.Status !== 'Resolved')
+    .sort((a, b) => (SEV_ORDER[a.Severity] ?? 9) - (SEV_ORDER[b.Severity] ?? 9))
+  const criticalOpen = openIncidents.filter(i => i.Severity === 'Critical')
+
   const ic = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const lc = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
   const pf = (key: keyof typeof EMPTY_PROJECT_FORM, val: string) =>
@@ -1111,6 +1124,99 @@ export default function ProjectDetail() {
             <p className="text-sm text-gray-400">{tr('ticket.noMembers')}</p>
           )}
         </Card>
+
+        {/* ── งานค้าง — ปักไว้เหนือแท็บ เข้ามาปุ๊บเห็นเลยว่ามีอะไรค้าง ไม่ต้องไล่เปิดแท็บ ── */}
+        {(openTasks.length > 0 || openIncidents.length > 0) && (
+          <Card className={overdueTasks.length > 0 || criticalOpen.length > 0 ? '!border-red-200 dark:!border-red-900/40' : ''}>
+            <button onClick={() => setPinOpen(o => { localStorage.setItem('pdPinOpen', o ? '0' : '1'); return !o })}
+              className="w-full flex items-center gap-2 text-left">
+              <Pin size={15} className="text-primary-600 flex-shrink-0" />
+              <h3 className="text-sm font-semibold">{tr('pd.openWork')}</h3>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {openTasks.length > 0 && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    Task {openTasks.length}
+                  </span>
+                )}
+                {overdueTasks.length > 0 && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                    {tr('pd.overdue')} {overdueTasks.length}
+                  </span>
+                )}
+                {openIncidents.length > 0 && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    Incident {openIncidents.length}
+                  </span>
+                )}
+              </div>
+              {pinOpen ? <ChevronUp size={15} className="ml-auto text-gray-400" /> : <ChevronDown size={15} className="ml-auto text-gray-400" />}
+            </button>
+
+            {pinOpen && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+                {/* Task ที่ยังไม่เสร็จ — ติ๊กปิดได้จากตรงนี้เลย ไม่ต้องเข้าแท็บ */}
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">
+                    {tr('pd.openTasks')} ({openTasks.length})
+                  </p>
+                  {openTasks.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">{tr('pd.allTasksDone')}</p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto pr-1 space-y-1">
+                      {openTasks.map(t => {
+                        const color = getDueDateColor(t.DueDate, false)
+                        return (
+                          <div key={t.id}
+                            className={`flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${color === 'red' ? 'bg-red-50/60 dark:bg-red-900/10' : ''}`}>
+                            <button onClick={() => completeTask(t)} title={tr('pd.markDone')}
+                              className="w-4 h-4 rounded border border-gray-300 dark:border-gray-600 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 flex-shrink-0 transition-colors" />
+                            <button onClick={() => setTab('tasks')} className="flex-1 min-w-0 text-left">
+                              <span className="block text-xs text-gray-800 dark:text-gray-200 truncate">
+                                {getDueDateEmoji(color)} {t.Title}
+                              </span>
+                              {t.DueDate && (
+                                <span className={`block text-[10px] ${color === 'red' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                                  {formatDate(t.DueDate)}
+                                  {color === 'red' && ` · ${tr('pd.lateBy')} ${Math.abs(daysUntil(t.DueDate))} ${tr('pd.days')}`}
+                                </span>
+                              )}
+                            </button>
+                            {t.AssignedTo && <span className="text-[10px] text-gray-400 truncate max-w-[70px] flex-shrink-0">{t.AssignedTo}</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Incident ที่ยังไม่ Resolved — เรียงตามความรุนแรง */}
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">
+                    {tr('pd.openIncidents')} ({openIncidents.length})
+                  </p>
+                  {openIncidents.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">{tr('pd.noOpenIncident')}</p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto pr-1 space-y-1">
+                      {openIncidents.map(i => (
+                        <button key={i.id} onClick={() => setTab('incidents')}
+                          className={`w-full flex items-center gap-2 p-1.5 rounded-lg text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${i.Severity === 'Critical' ? 'bg-red-50/60 dark:bg-red-900/10' : ''}`}>
+                          <AlertTriangle size={12} className={`flex-shrink-0 ${i.Severity === 'Critical' ? 'text-red-500' : i.Severity === 'High' ? 'text-orange-500' : 'text-gray-400'}`} />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-xs text-gray-800 dark:text-gray-200 truncate">{i.Title}</span>
+                            <span className="block text-[10px] text-gray-400 truncate">{i.AssignedTo || tr('pd.unassigned')}</span>
+                          </span>
+                          <Badge className={`${getSeverityColor(i.Severity)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Severity}</Badge>
+                          <Badge className={`${getStatusColor(i.Status)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Status}</Badge>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
