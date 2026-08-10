@@ -13,6 +13,8 @@ import { useAppStore } from '../store/useAppStore'
 import { formatCitation, formatBibliography } from '../utils/citation'
 import { ReferenceContent } from '../components/project/ReferenceContent'
 import { parseMediaLinks } from '../utils/youtube'
+import { parseSections, countLinks } from '../utils/richNote'
+import { RichNote } from '../components/common/RichNote'
 import { REF_TYPES, REF_TYPE_TH, REF_TYPE_ICON, type ProjectReference, type ProjectReferenceLink } from '../types/reference'
 import { useT } from '../i18n/useT'
 
@@ -47,6 +49,7 @@ export default function References() {
   const [view, setView] = useViewMode('references')
   const [topicFilter, setTopicFilter] = useState('')
   const [detail, setDetail] = useState<ProjectReference | null>(null)   // รายละเอียดเต็ม (ใช้กับมุมมองตาราง)
+  const [preview, setPreview] = useState(false)   // ดูตัวอย่างเนื้อหาในฟอร์มก่อนบันทึก
 
   function load() {
     setLoading(true)
@@ -66,9 +69,10 @@ export default function References() {
 
   const set = (k: keyof Form, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  function openAdd() { setEditing(null); setForm({ ...EMPTY }); setShowModal(true) }
+  function openAdd() { setEditing(null); setForm({ ...EMPTY }); setPreview(false); setShowModal(true) }
   function openEdit(r: ProjectReference) {
     setEditing(r)
+    setPreview(false)
     setForm({
       Title: r.Title || '', RefType: r.RefType || 'Book', Authors: r.Authors || '',
       Year: r.Year || '', Publisher: r.Publisher || '', Edition: r.Edition || '',
@@ -184,12 +188,14 @@ export default function References() {
         'หัวข้อ': r.Topics ?? '',
         'URL': r.URL ?? '',
         'จำนวนคลิป/ลิงก์': parseMediaLinks(r.Media).length,
+        'จำนวนหัวข้อ': parseSections(r.Summary).filter(x => x.heading).length,
+        'ลิงก์ในเนื้อหา': countLinks(r.Summary),
         'ใช้ในโครงการ': (usageByRef.get(r.id) ?? []).map(u => projectNames[u.ProjectID] ?? `#${u.ProjectID}`).join(', '),
         'สรุปสาระ': r.Summary ?? '',
         'บรรทัดอ้างอิง': formatCitation(r),
       }))
       const ws = XLSX.utils.json_to_sheet(rowsOut)
-      ws['!cols'] = [12, 40, 24, 6, 20, 12, 20, 18, 22, 34, 14, 28, 60, 60].map(w => ({ wch: w }))
+      ws['!cols'] = [12, 40, 24, 6, 20, 12, 20, 18, 22, 34, 14, 11, 13, 28, 60, 60].map(w => ({ wch: w }))
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'แหล่งอ้างอิง')
       XLSX.writeFile(wb, `references-${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -221,6 +227,17 @@ export default function References() {
       render: r => <span className="text-gray-500">{r.Year || '-'}</span> },
     { key: 'ident', label: 'เลขอ้างอิง', sortValue: r => r.Identifier ?? '',
       render: r => <span className="text-gray-500 truncate block max-w-[160px]">{r.Identifier || '-'}</span> },
+    {
+      key: 'sections', label: 'หัวข้อ', align: 'center',
+      sortValue: r => parseSections(r.Summary).filter(x => x.heading).length,
+      render: r => {
+        const n = parseSections(r.Summary).filter(x => x.heading).length
+        const l = countLinks(r.Summary)
+        return n || l
+          ? <span className="text-gray-500 whitespace-nowrap">{n || '-'}{l > 0 && <span className="text-gray-400"> · 🔗{l}</span>}</span>
+          : <span className="text-gray-300">-</span>
+      },
+    },
     {
       key: 'media', label: 'คลิป', align: 'center', sortValue: r => parseMediaLinks(r.Media).length,
       render: r => {
@@ -381,6 +398,16 @@ export default function References() {
                                   <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
                                 ))}
                                 {r.Identifier && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{r.Identifier}</Badge>}
+                                {parseSections(r.Summary).filter(x => x.heading).length > 0 && (
+                                  <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                    {parseSections(r.Summary).filter(x => x.heading).length} หัวข้อ
+                                  </Badge>
+                                )}
+                                {countLinks(r.Summary) > 0 && (
+                                  <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                    🔗 {countLinks(r.Summary)}
+                                  </Badge>
+                                )}
                                 {parseMediaLinks(r.Media).length > 0 && (
                                   <Badge className="bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400">
                                     ▶ {parseMediaLinks(r.Media).length} คลิป
@@ -578,9 +605,43 @@ export default function References() {
           </div>
 
           <div>
-            <label className={labelCx}>สรุปสาระ / ข้อความที่ยกมา</label>
-            <textarea value={form.Summary} onChange={e => set('Summary', e.target.value)} rows={4} className={inputCx}
-              placeholder="สรุปสั้น ๆ ว่าแหล่งนี้บอกอะไร หรือวางข้อความที่ต้องการอ้างถึงตรง ๆ" />
+            <div className="flex items-center gap-2 mb-1">
+              <label className={labelCx + ' !mb-0'}>เนื้อหา / บันทึกความรู้</label>
+              {parseSections(form.Summary).filter(x => x.heading).length > 0 && (
+                <span className="text-[11px] text-gray-400">
+                  {parseSections(form.Summary).filter(x => x.heading).length} หัวข้อ · {countLinks(form.Summary)} ลิงก์
+                </span>
+              )}
+              <button type="button" onClick={() => setPreview(p => !p)}
+                className="ml-auto text-[11px] text-primary-600 hover:underline">
+                {preview ? 'กลับไปแก้ไข' : 'ดูตัวอย่าง'}
+              </button>
+            </div>
+            {preview ? (
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 min-h-[8rem] bg-gray-50 dark:bg-gray-800/40">
+                {form.Summary.trim()
+                  ? <RichNote text={form.Summary} defaultOpenFirst={false} />
+                  : <p className="text-xs text-gray-400">ยังไม่มีเนื้อหา</p>}
+              </div>
+            ) : (
+              <textarea value={form.Summary} onChange={e => set('Summary', e.target.value)} rows={10}
+                className={inputCx + ' font-mono text-[13px] leading-relaxed'}
+                placeholder={[
+                  'สรุปสั้น ๆ ว่าแหล่งนี้บอกอะไร',
+                  '',
+                  '## การตั้ง SLO',
+                  '- เริ่มจาก SLI ที่ลูกค้ารู้สึกได้จริง',
+                  '- อ้างอิงเพิ่ม https://sre.google/workbook/implementing-slos/',
+                  '',
+                  '## Error budget',
+                  'ดูตัวอย่างการคำนวณที่ [หน้า workbook](https://sre.google/workbook/) ประกอบ',
+                ].join(String.fromCharCode(10))} />
+            )}
+            <p className="text-[11px] text-gray-400 mt-1">
+              เพิ่มหัวข้อใหม่ด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">## ชื่อหัวข้อ</code> ·
+              รายการย่อยด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">-</code> ·
+              วาง URL ตรงไหนก็กดได้ หรือตั้งชื่อลิงก์ด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[ชื่อ](url)</code>
+            </p>
           </div>
 
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5">

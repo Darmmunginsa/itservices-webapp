@@ -3,6 +3,7 @@
 //   npm run check:report
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
+import { parseSections, parseInline, countLinks } from '../src/utils/richNote'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
@@ -178,6 +179,27 @@ eq(parseMediaLinks(['https://youtu.be/dQw4w9WgXcQ'].join(NL))[0].label, 'https:/
   'unlabelled link falls back to the url')
 eq(parseMediaLinks(Array.from({ length: 40 }, (_, i) => `https://youtu.be/${String(i).padStart(11, 'x')}`).join(NL)).length,
   40, 'no cap on how many links can be added')
+
+// -- knowledge notes (utils/richNote) --
+const note = ['นำ', '## หัวข้อ ก', '- ข้อหนึ่ง', '', '## หัวข้อ ข', 'เนื้อหา'].join(NL)
+eq(parseSections(note).length, 3, 'lead paragraph plus two headed sections')
+eq(parseSections(note)[0].heading, '', 'text before the first heading keeps no heading')
+eq(parseSections(note)[1].heading, 'หัวข้อ ก', 'heading text without the hashes')
+eq(parseSections(note)[2].body, 'เนื้อหา', 'body follows its heading')
+eq(parseSections('# เดี่ยว')[0].heading, 'เดี่ยว', 'a single hash counts as a heading too')
+eq(parseSections('## ยังไม่เขียน').length, 1, 'an empty heading is kept, not dropped while still being typed')
+eq(parseSections('').length, 0, 'nothing in, nothing out')
+eq(parseSections('C:\path#notaheading').length, 1, 'a hash mid-line is not a heading')
+
+eq(parseInline('ดูที่ https://a.dev/x ต่อ').filter(x => x.type === 'link').length, 1, 'bare url becomes a link')
+eq(parseInline('(ดู https://a.dev/x)')[1], { type: 'link', text: 'https://a.dev/x', href: 'https://a.dev/x' },
+  'a closing bracket is not swallowed into the url')
+eq(parseInline('จบที่ https://a.dev/x.')[1].text, 'https://a.dev/x', 'a trailing full stop stays out of the link')
+eq(parseInline('[ชื่อ](https://a.dev)')[0], { type: 'link', text: 'ชื่อ', href: 'https://a.dev' }, 'named link')
+eq(parseInline('www.a.dev')[0].href, 'https://www.a.dev', 'www gets a scheme so the href works')
+eq(parseInline('ไม่มีลิงก์').length, 1, 'plain text stays one segment')
+eq(countLinks('a https://x.dev b [c](https://y.dev)'), 2, 'counts both link forms')
+eq(countLinks(undefined), 0, 'no content, no links')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

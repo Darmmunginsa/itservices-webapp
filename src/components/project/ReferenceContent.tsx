@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Play, ExternalLink, Quote } from 'lucide-react'
+import { Play, ExternalLink } from 'lucide-react'
 import { parseMediaLinks, youtubeThumb } from '../../utils/youtube'
+import { RichNote } from '../common/RichNote'
+import { parseSections } from '../../utils/richNote'
 
-const CLAMP_CHARS = 320   // ยาวกว่านี้ค่อยพับ — สั้น ๆ พับแล้วกวนกว่าเดิม
 
 /**
  * เนื้อหาของแหล่งอ้างอิงที่แสดงบนการ์ดเลย ไม่ต้องกดเปิด
@@ -15,35 +16,19 @@ export function ReferenceContent({ summary, media, compact }: {
   media?: string
   compact?: boolean       // ในโครงการพื้นที่แคบกว่า → กริดคลิปแคบลง
 }) {
-  const [expanded, setExpanded] = useState(false)
   // เก็บเฉพาะคลิปที่ผู้ใช้กดเล่น — ฝัง iframe ทุกอันตั้งแต่แรกจะหน่วงทั้งหน้า
   const [playing, setPlaying] = useState<Set<string>>(new Set())
 
   const links = parseMediaLinks(media)
-  const text = (summary ?? '').trim()
-  const long = text.length > CLAMP_CHARS
-  const shown = long && !expanded ? text.slice(0, CLAMP_CHARS).trimEnd() + '…' : text
+  const sections = parseSections(summary)
 
-  if (!text && links.length === 0) return null
+  if (sections.length === 0 && links.length === 0) return null
 
   const play = (url: string) => setPlaying(prev => new Set(prev).add(url))
 
   return (
     <div className="mt-2 space-y-2">
-      {text && (
-        <div className="flex gap-2">
-          <Quote size={12} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-gray-600 dark:text-gray-300 whitespace-pre-wrap leading-relaxed flex-1 min-w-0">
-            {shown}
-            {long && (
-              <button onClick={() => setExpanded(e => !e)}
-                className="ml-1 text-primary-600 hover:underline font-medium whitespace-nowrap">
-                {expanded ? 'ย่อ' : 'อ่านเพิ่ม'}
-              </button>
-            )}
-          </p>
-        </div>
-      )}
+      {sections.length > 0 && <RichNote text={summary} />}
 
       {links.length > 0 && (
         <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
