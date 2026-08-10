@@ -4,8 +4,9 @@
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks } from '../src/utils/richNote'
+import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
-import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows } from '../src/utils/reportMetrics'
+import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows, incidentSla } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
 
 const NL = String.fromCharCode(10)   // เลี่ยงลำดับ escape ในไฟล์ตรวจ
@@ -200,6 +201,66 @@ eq(parseInline('www.a.dev')[0].href, 'https://www.a.dev', 'www gets a scheme so 
 eq(parseInline('ไม่มีลิงก์').length, 1, 'plain text stays one segment')
 eq(countLinks('a https://x.dev b [c](https://y.dev)'), 2, 'counts both link forms')
 eq(countLinks(undefined), 0, 'no content, no links')
+
+// -- incident SLA (utils/sla) --
+const NOW = new Date(2026, 7, 9, 12, 0)          // 9 ส.ค. 2026 12:00
+const at = (h: number) => new Date(NOW.getTime() + h * 3600000).toISOString()
+
+eq(slaInfo({}, NOW).state, 'none', 'no SLA set cannot be judged')
+eq(slaInfo({ SLAHours: 4, Created: at(-1) }, NOW).state, 'running', 'open and inside the window')
+eq(Math.round(slaInfo({ SLAHours: 4, Created: at(-1) }, NOW).hoursLeft!), 3, 'three hours left of four')
+eq(slaInfo({ SLAHours: 4, Created: at(-9) }, NOW).state, 'overdue', 'open past the deadline')
+eq(Math.round(slaInfo({ SLAHours: 4, Created: at(-9) }, NOW).hoursLeft!), -5, 'five hours over')
+
+eq(slaInfo({ SLAHours: 4, Created: at(-6), ResolvedDate: at(-3), Status: 'Resolved' }, NOW).state, 'met',
+  'resolved three hours after opening, inside a four-hour SLA')
+eq(slaInfo({ SLAHours: 4, Created: at(-10), ResolvedDate: at(-1), Status: 'Resolved' }, NOW).state, 'breached',
+  'resolved nine hours after opening, outside a four-hour SLA')
+eq(slaInfo({ SLAHours: 1, Created: at(-10), Status: 'Resolved' }, NOW).state, 'none',
+  'resolved with no timestamp cannot be judged either way — no guessing in either direction')
+
+// SLADue ที่บันทึกไว้ต้องชนะการคำนวณสด — SLAHours อาจถูกแก้ทีหลัง
+eq(slaDue({ SLAHours: 1, Created: at(-10), SLADue: at(2) })!.getTime(), new Date(at(2)).getTime(),
+  'a stored deadline wins over recomputing from hours')
+eq(slaDue({ SLAHours: 0, Created: at(-1) }), null, 'zero hours is not an SLA')
+eq(slaDue({ SLAHours: '4', Created: at(-1) }) !== null, true, 'hours arriving as text from SharePoint still work')
+eq(slaDue({ SLAHours: 4 }), null, 'no start time, no deadline')
+
+eq(computeSlaDue(2, at(0), NOW), at(2), 'deadline counts from when the case opened')
+eq(computeSlaDue(null, at(0), NOW), null, 'no hours, no deadline')
+eq(computeSlaDue(2, undefined, NOW), at(2), 'a new case counts from now')
+eq(computeSlaDue(2, 'not-a-date', NOW), at(2), 'an unreadable start falls back to now instead of NaN')
+
+eq([slaFailed('breached'), slaFailed('overdue'), slaFailed('met'), slaFailed('running')], [true, true, false, false],
+  'both breached and still-overdue count as failing')
+eq([slaJudged('running'), slaJudged('none'), slaJudged('met')], [false, false, true],
+  'a running clock is not yet a verdict and must stay out of the percentage')
+
+eq(slaCountdown(0.25), 'เหลือ 15 นาที', 'under an hour reads in minutes')
+eq(slaCountdown(-5), 'เลยมา 5 ชม.', 'past due reads as elapsed')
+eq(slaCountdown(72), 'เหลือ 3 วัน', 'long windows read in days')
+eq(slaCountdown(null), '', 'nothing to count down')
+
+// -- SLA ขององค์กรวัดที่ Incident --
+const incs = [
+  { id: 1, Created: iso(6, 1, 8), ResolvedDate: iso(6, 1, 10), Status: 'Resolved', SLAHours: 4, AssignedEmail: 'a@x.com' },   // ทัน
+  { id: 2, Created: iso(6, 2, 8), ResolvedDate: iso(6, 3, 8),  Status: 'Resolved', SLAHours: 4, AssignedEmail: 'a@x.com' },   // เกิน
+  { id: 3, Created: iso(6, 3, 8), Status: 'Open', SLAHours: 4, AssignedEmail: 'b@x.com' },                                    // ค้างจนเลยกำหนด
+  { id: 4, Created: iso(6, 4, 8), ResolvedDate: iso(6, 4, 9), Status: 'Resolved', AssignedEmail: 'b@x.com' },                 // ไม่ได้กำหนด SLA
+]
+const sla = incidentSla(incs, lm, TODAY)
+eq([sla.judged, sla.met, sla.failed], [3, 1, 2], 'one met, one breached, one still open past due')
+eq(Math.round(sla.pct!), 33, 'only one of three judged incidents met its SLA')
+eq(sla.setPct, 75, 'three of four incidents had an SLA set')
+eq(incidentSla([], lm, TODAY).pct, null, 'no incidents means no percentage, not 100%')
+
+// เคสที่ยังไม่ปิดและยังไม่เลยกำหนด ต้องไม่ถูกนับว่าผ่านหรือไม่ผ่าน
+// ต้องใช้ช่วงที่ครอบวันนี้ — เคสในเดือนที่ผ่านไปแล้วยังไงก็เลยกำหนด ไม่มีทางเป็น running
+const running = incidentSla(
+  [{ id: 5, Created: new Date(TODAY.getTime() - 3600000).toISOString(), Status: 'Open', SLAHours: 8 }],
+  presetRange('this-month', TODAY), TODAY)
+eq([running.judged, running.running, running.pct], [0, 1, null],
+  'a clock still ticking is not a verdict and stays out of the denominator')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

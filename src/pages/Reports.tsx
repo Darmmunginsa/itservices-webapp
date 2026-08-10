@@ -15,7 +15,7 @@ import {
   toDateInput, fromDateInput, odata, inRange, type PresetKey, type Range,
 } from '../utils/period'
 import {
-  periodStats, buildPersonRows, delta, countBy, isClosed, SCORE_WEIGHTS,
+  periodStats, buildPersonRows, delta, countBy, isClosed, incidentSla, SCORE_WEIGHTS,
   type TicketLike, type IncidentLike, type TaskLike,
 } from '../utils/reportMetrics'
 
@@ -89,7 +89,7 @@ export default function Reports() {
     Promise.all([
       Promise.all(queries),
       spGet<IncidentLike>('PM_Incidents', mine ? `AssignedEmail eq '${user?.email}'` : undefined,
-        'Id,Severity,Status,AssignedEmail,ResolvedDate,Created', 'Created desc', 2000).catch(() => [] as IncidentLike[]),
+        '*', 'Created desc', 2000).catch(() => [] as IncidentLike[]),
       spGet<TaskLike>('PM_Tasks', undefined, 'Id,IsCompleted,AssignedEmail,DueDate', 'DueDate desc', 3000)
         .catch(() => [] as TaskLike[]),
       spGet<LeaveRequest>('HD_LeaveRequests',
@@ -126,6 +126,10 @@ export default function Reports() {
   // ── ตัวเลขหลัก + เทียบช่วงก่อนหน้า ──
   const cur  = useMemo(() => periodStats(tickets, range, now), [tickets, range])   // eslint-disable-line react-hooks/exhaustive-deps
   const past = useMemo(() => periodStats(tickets, prev, now),  [tickets, prev])    // eslint-disable-line react-hooks/exhaustive-deps
+
+  // SLA ขององค์กรวัดที่ Incident เท่านั้น — Ticket คือคำขอ ไม่ใช่ปัญหา
+  const sla     = useMemo(() => incidentSla(incidents, range, now), [incidents, range])   // eslint-disable-line react-hooks/exhaustive-deps
+  const slaPast = useMemo(() => incidentSla(incidents, prev, now),  [incidents, prev])    // eslint-disable-line react-hooks/exhaustive-deps
 
   const inPeriod = useMemo(
     () => tickets.filter(t => inRange(t.Created, range) || inRange(t.ResolvedDate, range)),
@@ -187,7 +191,10 @@ export default function Reports() {
         ['งานรับเข้า', cur.created, past.created, delta(cur.created, past.created)?.toFixed(1) ?? '-'],
         ['ปิดได้', cur.closed, past.closed, delta(cur.closed, past.closed)?.toFixed(1) ?? '-'],
         ['อัตราปิดงาน %', cur.closeRate === null ? '-' : (cur.closeRate * 100).toFixed(0), past.closeRate === null ? '-' : (past.closeRate * 100).toFixed(0), ''],
-        ['ปิดทันกำหนด (SLA) %', cur.slaPct?.toFixed(0) ?? '-', past.slaPct?.toFixed(0) ?? '-', ''],
+        ['SLA ของ Incident %', sla.pct?.toFixed(0) ?? '-', slaPast.pct?.toFixed(0) ?? '-', ''],
+        ['  เคสที่ตัดสินได้', sla.judged, slaPast.judged, ''],
+        ['  กำหนด SLA ไว้ %', sla.setPct?.toFixed(0) ?? '-', slaPast.setPct?.toFixed(0) ?? '-', ''],
+        ['Ticket ทันกำหนด %', cur.slaPct?.toFixed(0) ?? '-', past.slaPct?.toFixed(0) ?? '-', ''],
         [`  ฐานที่ใช้คิด SLA (ใบ)`, cur.slaSample, past.slaSample, ''],
         ['  ตั้ง due date (% ของงานที่ปิด)', cur.dueSetPct?.toFixed(0) ?? '-', past.dueSetPct?.toFixed(0) ?? '-', ''],
         ['เวลาปิดกลาง (ชม.)', cur.medianHours?.toFixed(1) ?? '-', past.medianHours?.toFixed(1) ?? '-', ''],
@@ -311,14 +318,16 @@ export default function Reports() {
             label="อัตราปิดงาน" value={pct(cur.closeRate === null ? null : cur.closeRate * 100)}
             change={delta(cur.closeRate, past.closeRate)} higherIsBetter sub="ปิดได้ ÷ รับเข้า" />
           <KPI icon={<Clock size={16} className="text-emerald-600" />} bg="bg-emerald-50 dark:bg-emerald-900/10"
-            label="ปิดทันกำหนด" value={pct(cur.slaPct)} change={delta(cur.slaPct, past.slaPct)} higherIsBetter
-            sub={cur.slaSample ? `จาก ${cur.slaSample} ใบ (ตั้ง due date ${pct(cur.dueSetPct)} ของงานที่ปิด)` : 'ยังไม่มีใบที่ตั้ง due date'} />
+            label="SLA (Incident)" value={pct(sla.pct)} change={delta(sla.pct, slaPast.pct)} higherIsBetter
+            sub={sla.judged
+              ? `${sla.met}/${sla.judged} เคส · กำหนด SLA ${pct(sla.setPct)}${sla.running ? ` · กำลังนับ ${sla.running}` : ''}`
+              : 'ยังไม่มี Incident ที่ตัดสินได้'} />
           <KPI icon={<Clock size={16} className="text-amber-600" />} bg="bg-amber-50 dark:bg-amber-900/10"
             label="เวลาปิดกลาง" value={fmtHours(cur.medianHours)}
             change={delta(cur.medianHours, past.medianHours)} higherIsBetter={false} sub="ค่ากลาง — ไม่ถูกงานเดียวลากเพี้ยน" />
           <KPI icon={<Clock size={16} className="text-red-600" />} bg="bg-red-50 dark:bg-red-900/10"
-            label="ค้างสะสม" value={cur.backlogEnd} change={delta(cur.backlogEnd, past.backlogEnd)} higherIsBetter={false}
-            sub={`เลยกำหนดแล้ว ${cur.overdueNow}`} />
+            label="ค้างสะสม (Ticket)" value={cur.backlogEnd} change={delta(cur.backlogEnd, past.backlogEnd)} higherIsBetter={false}
+            sub={`เลยกำหนดแล้ว ${cur.overdueNow} · ทันกำหนด ${pct(cur.slaPct)}`} />
         </div>
 
         {/* ทิศทาง: งานเข้า vs งานปิด */}
@@ -455,7 +464,8 @@ export default function Reports() {
             <div className="text-[11px] text-blue-900 dark:text-blue-300 space-y-0.5">
               <p className="font-semibold">อ่านก่อนใช้ตัดสินใจเรื่องค่าตอบแทน</p>
               <p>• ตัวเลขนับ "จำนวนงาน" ไม่ได้วัด "ความยากของงาน" — ปิดงานเล็ก 20 ใบ กับแก้ปัญหาใหญ่ 3 ใบ ขึ้นหน้าจอไม่เท่ากัน</p>
-              <p>• SLA คิดเฉพาะใบที่ตั้ง due date ดูคอลัมน์ <b>"ตั้ง due date"</b> คู่กันเสมอ — ถ้าต่ำกว่า 50% ตัวเลข SLA จะถูกขีดฆ่าไว้ เพราะวัดจากงานไม่ถึงครึ่ง</p>
+              <p>• <b>SLA ขององค์กรวัดที่ Incident เท่านั้น</b> (ปัญหาที่ต้องแก้เร่งด่วน) — Ticket คือคำขอให้ทำบางอย่าง ตารางนี้จึงวัด Ticket ด้วย "ทันกำหนด" ที่ตั้งเอง ไม่ใช่ SLA</p>
+              <p>• คอลัมน์ "ทันกำหนด" คิดเฉพาะใบที่ตั้ง due date ดูคอลัมน์ <b>"ตั้ง due date"</b> คู่กันเสมอ — ถ้าต่ำกว่า 50% ตัวเลขจะถูกขีดฆ่า เพราะวัดจากงานไม่ถึงครึ่ง</p>
               <p>• คนที่ไม่ตั้ง due date เลยจะไม่มี SLA และ<b>ไม่ถูกคิดคะแนนด้านตรงเวลา</b> — คะแนนรวมจะมาจากปริมาณกับความเร็วเท่านั้น ต้องดูคอลัมน์นี้ก่อนเทียบคะแนนกัน</p>
               <p>• งานที่ไม่ได้มอบหมายให้ใคร จะไม่ถูกนับให้ใครเลย</p>
               <p>• คนที่ลาส่วนใหญ่ของช่วงจะมีปริมาณงานต่ำโดยธรรมชาติ — ดูคอลัมน์วันลาประกอบ</p>

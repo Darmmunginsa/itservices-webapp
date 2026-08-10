@@ -1,6 +1,7 @@
 // ตัวเลขทั้งหมดของหน้ารายงาน — แยกออกมาเป็น pure function เพราะเป็นตัวเลขที่เอาไปใช้
 // ตัดสินใจเรื่องคน จึงต้องตรวจสอบได้ว่าคิดมาจากอะไร ไม่ใช่ฝังอยู่ใน JSX
 import { inRange, type Range } from './period'
+import { slaInfo, slaFailed, slaJudged } from './sla'
 
 export interface TicketLike {
   id: number
@@ -24,6 +25,41 @@ export interface IncidentLike {
   AssignedEmail?: string
   ResolvedDate?: string
   Created?: string
+  SLAHours?: number | string
+  SLADue?: string
+}
+
+/**
+ * SLA ขององค์กร — วัดที่ Incident เท่านั้น
+ * Ticket คือ "คำขอให้ทำบางอย่าง" ไม่ใช่ปัญหา จึงไม่เอามาคิด SLA (ดู DueDate ของ Ticket แยกต่างหาก)
+ * เคสที่ยังไม่ปิดและยังไม่เลยกำหนด ('running') ตัดสินไม่ได้ ต้องไม่อยู่ในตัวหาร
+ */
+export interface SlaStats {
+  judged: number      // ตัดสินได้กี่เคส (ทัน + ไม่ทัน + ค้างจนเลยกำหนด)
+  met: number
+  failed: number
+  pct: number | null  // % ที่ทัน SLA
+  setPct: number | null   // % ของ incident ในช่วงที่กำหนด SLA ไว้ — ต่ำ = ตัวเลขข้างบนเชื่อได้น้อย
+  running: number     // ยังนับถอยหลังอยู่
+}
+
+export function incidentSla(incidents: IncidentLike[], r: Range, now = new Date()): SlaStats {
+  // เอาเคสที่ "เปิดในช่วง" หรือ "ปิดในช่วง" — ครอบคลุมเคสยาวข้ามเดือน
+  const scope = incidents.filter(i => inRange(i.Created, r) || inRange(i.ResolvedDate, r))
+  let judged = 0, met = 0, failed = 0, running = 0, withSla = 0
+  for (const i of scope) {
+    const info = slaInfo(i, now)
+    if (info.state !== 'none') withSla++
+    if (info.state === 'running') { running++; continue }
+    if (!slaJudged(info.state)) continue
+    judged++
+    if (slaFailed(info.state)) failed++; else met++
+  }
+  return {
+    judged, met, failed, running,
+    pct: judged ? (met / judged) * 100 : null,
+    setPct: scope.length ? (withSla / scope.length) * 100 : null,
+  }
 }
 
 export interface TaskLike {

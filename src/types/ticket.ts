@@ -21,6 +21,7 @@ export interface Ticket {
   DueDate?: string
   ResolvedDate?: string
   ResolutionNote?: string
+  ProjectID?: number        // โครงการที่ ticket นี้สังกัด (Number field ใน SP) — ไม่ผูกก็ได้
   Created: string
   Modified: string
   CreatedByEmail?: string   // not present in SP list schema — read-only, may be absent

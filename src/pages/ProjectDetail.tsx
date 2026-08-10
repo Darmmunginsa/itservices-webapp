@@ -1,5 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, ChevronUp, Monitor, UserPlus, X, ImagePlus, AlertTriangle } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -18,11 +18,13 @@ import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
 import { CommentSection } from '../components/common/CommentSection'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset, ProjectMember } from '../types/project'
+import type { Ticket } from '../types/ticket'
 import type { AgentProfile, FocusItem } from '../types/common'
 import type { Contract } from '../types/ticket'
 import type { Asset } from '../types/asset'
 import { OptionSelect } from '../components/common/OptionSelect'
-import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
+import { getStatusColor, getSeverityColor, getPriorityColor } from '../utils/colorUtils'
+import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue, slaInfo, slaCountdown, SLA_STATE_META } from '../utils/sla'
 import { projectIcon, ICON_CHOICES, IMG_PREFIX, isImageIcon, iconFileName, makeIconFile } from '../utils/projectIcon'
 import { ProjectIcon, clearProjectIconCache } from '../components/common/ProjectIcon'
 import { getDueDateColor, getDueDateRowClass, getDueDateEmoji, formatDate, daysUntil } from '../utils/dateUtils'
@@ -54,6 +56,7 @@ const EMPTY_INCIDENT = {
   title: '', severity: 'Medium', status: 'Open',
   incidentDate: new Date().toISOString().slice(0, 10),
   resolvedDate: '', description: '', assignedAgentEmail: '', resolution: '',
+  slaHours: String(SLA_BY_SEVERITY.Medium),   // ตั้งต้นตามความรุนแรง เปลี่ยนได้
 }
 const EMPTY_LINK = { title: '', url: '', linkType: 'Other', linkNote: '' }
 const EMPTY_PROJECT_FORM = {
@@ -88,7 +91,9 @@ export default function ProjectDetail() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [tab, setTab] = useState<'tasks' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'tickets' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'comments' | 'files'>('tasks')
+  // Ticket ที่ผูกกับโครงการนี้ — คำขอให้ทำบางอย่าง (ไม่ใช่ปัญหา จึงไม่มี SLA)
+  const [tickets, setTickets] = useState<Ticket[]>([])
   // จำนวนแหล่งอ้างอิง — ให้ panel รายงานกลับมาโชว์บนแท็บ (โหลดแยกจาก load() หลัก)
   const [refCount, setRefCount] = useState(0)
   // กล่องงานค้างเหนือแท็บ — พับเก็บได้ และจำไว้ต่อเครื่อง
@@ -213,7 +218,8 @@ export default function ProjectDetail() {
       spGet<ProjectAsset>('PM_ProjectAssets', `ProjectID eq ${numId}`).catch(() => []),
       // นับแหล่งอ้างอิงไว้โชว์บนแท็บตั้งแต่แรก ไม่ต้องรอให้กดเข้าไปก่อนถึงจะเห็นเลข
       spGet<{ id: number }>('PM_ProjectReferences', `ProjectID eq ${numId}`, 'Id', undefined, 500).catch(() => []),
-    ]).then(([proj, t, n, inc, lnk, pa, refs]) => {
+      spGet<Ticket>('HD_Tickets', `ProjectID eq ${numId}`, 'Id,Title,TicketNumber,Status,Priority,Category,DueDate,Created,AssignedToName,AssignedEmail,CustomerName', 'Created desc', 500).catch(() => [] as Ticket[]),
+    ]).then(([proj, t, n, inc, lnk, pa, refs, tk]) => {
       setProject(proj[0] ?? null)
       setTasks(t)
       setNotes(n)
@@ -221,6 +227,7 @@ export default function ProjectDetail() {
       setLinks(lnk)
       setLinkedAssets(pa as ProjectAsset[])
       setRefCount((refs as { id: number }[]).length)
+      setTickets(tk as Ticket[])
     }).catch(() => {}).finally(() => setLoading(false))
   }
 
@@ -601,6 +608,7 @@ export default function ProjectDetail() {
       severity: inc.Severity,
       status: inc.Status,
       incidentDate: inc.IncidentDate ? inc.IncidentDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      slaHours: inc.SLAHours ? String(inc.SLAHours) : '',
       resolvedDate: inc.ResolvedDate ? inc.ResolvedDate.slice(0, 10) : '',
       description: inc.Description ?? '',
       assignedAgentEmail: inc.AssignedEmail ?? '',
@@ -623,7 +631,17 @@ export default function ProjectDetail() {
       AssignedTo: agent?.Title ?? '',
       AssignedEmail: incidentForm.assignedAgentEmail || undefined,
       Resolution: incidentForm.resolution || undefined,
+      SLAHours: incidentForm.slaHours ? Number(incidentForm.slaHours) : null,
     }
+    // ปิดเคสแล้วต้องรู้ว่าปิดเมื่อไหร่ ไม่งั้นวัด SLA ไม่ได้ — ประทับเวลาให้ถ้าผู้ใช้ไม่ได้กรอก
+    if (incidentForm.status === 'Resolved' && !incidentForm.resolvedDate) {
+      payload.ResolvedDate = new Date().toISOString()
+    }
+    // เส้นตายนับจากเวลาที่ "เปิดเคส" ของเดิม ไม่ใช่เวลาที่มากดแก้
+    payload.SLADue = computeSlaDue(
+      incidentForm.slaHours ? Number(incidentForm.slaHours) : null,
+      editingIncident?.Created,
+    )
     try {
       const actorEmail = user?.email?.toLowerCase() ?? ''
       if (editingIncident) {
@@ -815,6 +833,19 @@ export default function ProjectDetail() {
             <p className={`text-sm font-medium leading-snug ${isResolved ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>{inc.Title}</p>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+              {/* นาฬิกา SLA — เคสที่ยังไม่ปิดต้องเห็นว่าเหลือเวลาเท่าไหร่ ไม่ใช่รู้ตอนเลยไปแล้ว */}
+              {(() => {
+                const info = slaInfo(inc)
+                if (info.state === 'none') return null
+                const meta = SLA_STATE_META[info.state]
+                const urgent = info.state === 'running' && (info.hoursLeft ?? 99) < 2
+                return (
+                  <span title={info.due ? `ครบกำหนด ${info.due.toLocaleString('th-TH')}` : undefined}
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${urgent ? SLA_STATE_META.overdue.cls : meta.cls}`}>
+                    ⏱ {info.hoursLeft !== null ? slaCountdown(info.hoursLeft) : meta.label}
+                  </span>
+                )
+              })()}
               {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
             </div>
           </div>
@@ -926,9 +957,17 @@ export default function ProjectDetail() {
   const openTasks = sortedTasks.filter(t => !t.IsCompleted)
   const overdueTasks = openTasks.filter(t => getDueDateColor(t.DueDate, false) === 'red')
   const SEV_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 }
+  // เรียงตามเวลาที่เหลือของ SLA ก่อน (เลยกำหนดขึ้นบนสุด) แล้วค่อยตามความรุนแรง
+  // เคสที่ไม่ได้กำหนด SLA ไปต่อท้ายของที่มีนาฬิกาเดินอยู่ แต่ยังเรียงตามความรุนแรงกันเอง
   const openIncidents = incidents
     .filter(i => i.Status !== 'Resolved')
-    .sort((a, b) => (SEV_ORDER[a.Severity] ?? 9) - (SEV_ORDER[b.Severity] ?? 9))
+    .sort((a, b) => {
+      const la = slaInfo(a).hoursLeft, lb = slaInfo(b).hoursLeft
+      if (la !== null && lb !== null) return la - lb
+      if (la !== null) return -1
+      if (lb !== null) return 1
+      return (SEV_ORDER[a.Severity] ?? 9) - (SEV_ORDER[b.Severity] ?? 9)
+    })
   const criticalOpen = openIncidents.filter(i => i.Severity === 'Critical')
 
   const ic = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -1206,6 +1245,18 @@ export default function ProjectDetail() {
                             <span className="block text-xs text-gray-800 dark:text-gray-200 truncate">{i.Title}</span>
                             <span className="block text-[10px] text-gray-400 truncate">{i.AssignedTo || tr('pd.unassigned')}</span>
                           </span>
+                          {/* นาฬิกา SLA — สิ่งแรกที่ควรเห็นในกล่องงานค้าง */}
+                          {(() => {
+                            const info = slaInfo(i)
+                            if (info.hoursLeft === null) return null
+                            const late = info.state === 'overdue'
+                            return (
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                                late || info.hoursLeft < 2 ? SLA_STATE_META.overdue.cls : SLA_STATE_META.running.cls}`}>
+                                ⏱ {slaCountdown(info.hoursLeft)}
+                              </span>
+                            )
+                          })()}
                           <Badge className={`${getSeverityColor(i.Severity)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Severity}</Badge>
                           <Badge className={`${getStatusColor(i.Status)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Status}</Badge>
                         </button>
@@ -1220,10 +1271,10 @@ export default function ProjectDetail() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'comments', 'files'] as const).map(t => (
+          {(['tasks', 'tickets', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'comments', 'files'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : tr('ticket.attachments')}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'tickets' ? `🎫 Tickets (${tickets.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : tr('ticket.attachments')}
             </button>
           ))}
         </div>
@@ -1332,6 +1383,52 @@ export default function ProjectDetail() {
                   ))}
                 </div>
             }
+          </div>
+        )}
+
+        {/* ── Ticket ของโครงการนี้ ── */}
+        {/* Ticket = "ขอให้ทำบางอย่าง" ต่างจาก Incident ที่เป็นปัญหาต้องแก้เร่งด่วน
+            จึงไม่มี SLA ที่นี่ — SLA วัดที่ Incident อย่างเดียว */}
+        {tab === 'tickets' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link to={`/submit?project=${id}`}>
+                <Button size="sm"><Plus size={14} /> {tr('pd.newTicket')}</Button>
+              </Link>
+              <p className="text-[11px] text-gray-400">
+                {tr('pd.ticketHint')}
+              </p>
+            </div>
+            {tickets.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-10">{tr('pd.noTicket')}</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {tickets.map(t => {
+                  const color = getDueDateColor(t.DueDate, ['Resolved', 'Closed'].includes(t.Status))
+                  return (
+                    <Link key={t.id} to={`/tickets/${t.id}`}
+                      className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-md transition-shadow ${getDueDateRowClass(color)}`}>
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] text-gray-400">{t.TicketNumber}</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{t.Title}</p>
+                        </div>
+                        <Badge className={getPriorityColor(t.Priority)}>{t.Priority}</Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <Badge className={getStatusColor(t.Status)}>{t.Status}</Badge>
+                        {t.DueDate && (
+                          <span className={`text-[11px] ${color === 'red' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                            {getDueDateEmoji(color)} {formatDate(t.DueDate)}
+                          </span>
+                        )}
+                        {t.AssignedToName && <span className="text-[11px] text-gray-400 truncate">· {t.AssignedToName}</span>}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1801,12 +1898,32 @@ export default function ProjectDetail() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={lc}>{tr('pd.severity')}</label>
-              <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={incidentForm.severity} onChange={v => setIncidentForm(f => ({ ...f, severity: v }))} className={ic} />
+              <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={incidentForm.severity}
+                onChange={v => setIncidentForm(f => ({
+                  ...f, severity: v,
+                  // เคสใหม่: เลื่อน SLA ตามความรุนแรงให้อัตโนมัติ · เคสเก่า: ไม่แตะของที่ตั้งไว้แล้ว
+                  slaHours: editingIncident ? f.slaHours : String(SLA_BY_SEVERITY[v] ?? f.slaHours),
+                }))} className={ic} />
             </div>
             <div>
               <label className={lc}>{tr('assets.statusLabel')}</label>
               <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={incidentForm.status} onChange={v => setIncidentForm(f => ({ ...f, status: v }))} className={ic} />
             </div>
+          </div>
+          <div>
+            <label className={lc}>SLA — ต้องแก้ให้จบภายใน</label>
+            <select value={incidentForm.slaHours}
+              onChange={e => setIncidentForm(f => ({ ...f, slaHours: e.target.value }))} className={ic}>
+              <option value="">ไม่กำหนด SLA</option>
+              {SLA_OPTIONS.map(o => <option key={o.hours} value={o.hours}>{o.labelTh}</option>)}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              นับจากเวลาที่เปิดเคส · SLA วัดที่ Incident เท่านั้น (Ticket = คำขอ ไม่ใช่ปัญหา)
+              {incidentForm.slaHours && !editingIncident && (() => {
+                const due = computeSlaDue(Number(incidentForm.slaHours))
+                return due ? ` · ครบกำหนด ${new Date(due).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}` : ''
+              })()}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

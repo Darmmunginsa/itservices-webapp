@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -59,7 +60,9 @@ export default function Submit() {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [activeProjectsOnly, setActiveProjectsOnly] = useState(true)
 
-  const [form, setForm] = useState({ ...EMPTY_FORM })
+  const [searchParams] = useSearchParams()
+  // มาจากปุ่ม "เปิด Ticket ในโครงการนี้" → เติมโครงการให้ล่วงหน้า
+  const [form, setForm] = useState({ ...EMPTY_FORM, projectId: searchParams.get('project') ?? '' })
 
   useEffect(() => {
     spGet<{ id: number; Title: string }>('HD_Categories', undefined, undefined, 'Title asc')
@@ -75,8 +78,10 @@ export default function Submit() {
       .then(setContracts).catch(() => {})
   }, [])
 
+  // กรอง Active อย่างเดียวก็จริง แต่โครงการที่เลือกไว้แล้วต้องอยู่ในลิสต์เสมอ
+  // ไม่งั้นถ้าโครงการนั้นไม่ใช่ Active ช่องจะว่างทั้งที่ผูกอยู่ แล้วบันทึกทับเป็นไม่ผูก
   const filteredProjects = activeProjectsOnly
-    ? projects.filter(p => p.Status === 'Active')
+    ? projects.filter(p => p.Status === 'Active' || String(p.id) === form.projectId)
     : projects
 
   const set = (key: keyof typeof EMPTY_FORM, val: string) =>
@@ -144,6 +149,8 @@ export default function Submit() {
           AssignedToName: form.assignedName || undefined,
           IsAcknowledged: false,
           DueDate: dueDate ?? null,
+          // Ticket = คำขอให้ทำบางอย่าง อาจอยู่ในโครงการหรือไม่ก็ได้ → ไม่บังคับ
+          ProjectID: form.projectId ? Number(form.projectId) : null,
         })
 
         if (addCalendar && form.calendarDate) {
@@ -431,6 +438,19 @@ export default function Submit() {
                 <div>
                   <label className={lx}>{t('submit.department')}</label>
                   <OptionSelect category="Department" defaults={[...DEPARTMENTS]} value={form.department} onChange={v => set('department', v)} className={cx} />
+                </div>
+
+                {/* ผูกกับโครงการ (ไม่บังคับ) — Ticket ก็เป็นงานส่วนหนึ่งของโครงการได้ */}
+                <div>
+                  <label className={lx}>{t('submit.projectOptional')}</label>
+                  <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                    <option value="">{t('submit.noProject')}</option>
+                    {filteredProjects.map(p => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {isAgent && (

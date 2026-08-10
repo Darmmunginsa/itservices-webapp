@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -15,6 +15,7 @@ import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
+import type { Project } from '../types/project'
 import type { AgentProfile } from '../types/common'
 import { getStatusColor, getPriorityColor, TICKET_STATUS_DESC } from '../utils/colorUtils'
 import { formatDate, timeAgo } from '../utils/dateUtils'
@@ -46,6 +47,9 @@ export default function TicketDetail() {
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
   const [commentType, setCommentType] = useState<'Internal' | 'External'>('Internal')
+  // โครงการที่ ticket นี้สังกัด — Ticket ก็เป็นงานของโครงการได้ (ต่างจาก Incident ตรงที่ไม่ใช่ปัญหา)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [linkingProject, setLinkingProject] = useState(false)
   const [sending, setSending] = useState(false)
   const [commentFiles, setCommentFiles] = useState<File[]>([])
   // @mention เพื่อนในทีม
@@ -93,6 +97,8 @@ export default function TicketDetail() {
     if (!id) return
     spGet<TicketMember>('HD_TicketMembers', `TicketID eq ${id}`)
       .then(setMembers).catch(() => {})
+    spGet<Project>('PM_Projects', undefined, 'Id,Title,Company,Status', 'Title asc', 500)
+      .then(setProjects).catch(() => {})
   }
 
   useEffect(() => {
@@ -312,6 +318,17 @@ export default function TicketDetail() {
     } finally { setLikeBusy(null) }
   }
 
+  async function linkProject(projectId: string) {
+    if (!ticket) return
+    setLinkingProject(true)
+    try {
+      const value = projectId ? Number(projectId) : null
+      await spUpdate('HD_Tickets', ticket.id, { ProjectID: value })
+      setTicket(prev => prev ? { ...prev, ProjectID: value ?? undefined } : prev)
+      addToast('success', value ? 'ผูกกับโครงการแล้ว' : 'นำออกจากโครงการแล้ว')
+    } catch { addToast('error', 'บันทึกไม่สำเร็จ') } finally { setLinkingProject(false) }
+  }
+
   async function updateStatus() {
     if (!ticket) return
     const isClosing = ['Resolved', 'Closed'].includes(newStatus)
@@ -496,6 +513,34 @@ export default function TicketDetail() {
             </div>
             <div><p className="text-xs text-gray-400">{tr('ticket.createdAt')}</p><p>{formatDate(ticket.Created)}</p></div>
             <div><p className="text-xs text-gray-400">Due Date</p><p>{formatDate(ticket.DueDate)}</p></div>
+          </div>
+
+          {/* โครงการที่สังกัด — Agent เปลี่ยนได้ คนอื่นเห็นเป็นลิงก์ */}
+          <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+            <span className="text-xs text-gray-400">{tr('ticket.project')}</span>
+            {isAgent ? (
+              <select value={ticket.ProjectID ? String(ticket.ProjectID) : ''} disabled={linkingProject}
+                onChange={e => linkProject(e.target.value)}
+                className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-900 disabled:opacity-50">
+                <option value="">{tr('ticket.noProject')}</option>
+                {projects.map(p => (
+                  <option key={p.id} value={String(p.id)}>
+                    {p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : ticket.ProjectID ? (
+              <Link to={`/projects/${ticket.ProjectID}`} className="text-primary-600 hover:underline font-medium">
+                {projects.find(p => p.id === ticket.ProjectID)?.Title ?? `โครงการ #${ticket.ProjectID}`}
+              </Link>
+            ) : (
+              <span className="text-gray-400 text-xs">{tr('ticket.noProject')}</span>
+            )}
+            {isAgent && ticket.ProjectID && (
+              <Link to={`/projects/${ticket.ProjectID}`} className="text-xs text-primary-600 hover:underline">
+                {tr('ticket.openProject')} →
+              </Link>
+            )}
           </div>
 
           {ticket.IsAcknowledged && (() => {

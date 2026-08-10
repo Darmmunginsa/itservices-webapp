@@ -67,6 +67,8 @@ export interface ProjectIncident {
   AssignedEmail?: string
   IncidentDate?: string
   ResolvedDate?: string
+  SLAHours?: number        // เวลาที่ต้องแก้ให้จบ (ชม.) — วัด SLA ที่ Incident เท่านั้น
+  SLADue?: string          // เส้นตายที่คำนวณไว้ตอนบันทึก (Created + SLAHours)
   Resolution?: string
   Created: string
   CreatedByEmail?: string
