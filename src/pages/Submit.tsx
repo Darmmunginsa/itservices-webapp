@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -34,6 +35,7 @@ const EMPTY_FORM = {
   dueDate: '', daysCount: '',
   projectId: '', taskNote: '',
   incidentSeverity: 'Medium',
+  incidentSlaHours: String(SLA_BY_SEVERITY.Medium),   // SLA ตั้งต้นตามความรุนแรง
   incidentDate: new Date().toISOString().slice(0, 10),
   incidentStatus: 'Open',
   // Calendar
@@ -252,6 +254,11 @@ export default function Submit() {
           AssignedTo: (agent?.Title ?? form.assignedName) || undefined,
           AssignedEmail: form.assignedEmail || undefined,
           IncidentDate: form.incidentDate || undefined,
+          // SLA — เคสใหม่จึงนับจากตอนนี้ (ยังไม่มี Created ให้อ้าง)
+          SLAHours: form.incidentSlaHours ? Number(form.incidentSlaHours) : null,
+          SLADue: computeSlaDue(form.incidentSlaHours ? Number(form.incidentSlaHours) : null),
+          // เปิดเป็น Resolved เลย ก็ต้องรู้ว่าปิดเมื่อไหร่ ไม่งั้นวัด SLA ไม่ได้
+          ...(form.incidentStatus === 'Resolved' ? { ResolvedDate: new Date().toISOString() } : {}),
         })
         // แจ้งเตือน Assigned เมื่อสร้าง Incident (in-app) — ยกเว้นคนสร้างเอง
         if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
@@ -585,12 +592,33 @@ export default function Submit() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={lx}>{t('submit.severity')}</label>
-                    <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.incidentSeverity} onChange={v => set('incidentSeverity', v)} className={cx} />
+                    <OptionSelect category="IncidentSeverity" defaults={['Low', 'Medium', 'High', 'Critical']} value={form.incidentSeverity}
+                      onChange={v => setForm(f => ({
+                        ...f, incidentSeverity: v,
+                        // เลื่อน SLA ตามความรุนแรงให้ — เคสใหม่เสมอ จึงไม่มีของเก่าให้ทับ
+                        incidentSlaHours: String(SLA_BY_SEVERITY[v] ?? f.incidentSlaHours),
+                      }))} className={cx} />
                   </div>
                   <div>
                     <label className={lx}>{t('submit.status')}</label>
                     <OptionSelect category="IncidentStatus" defaults={['Open', 'In Progress', 'Resolved']} value={form.incidentStatus} onChange={v => set('incidentStatus', v)} className={cx} />
                   </div>
+                </div>
+
+                {/* SLA — วัดที่ Incident เท่านั้น ใช้กติกาเดียวกับหน้าโครงการ */}
+                <div>
+                  <label className={lx}>{t('submit.sla')}</label>
+                  <select value={form.incidentSlaHours} onChange={e => set('incidentSlaHours', e.target.value)} className={cx}>
+                    <option value="">{t('submit.noSla')}</option>
+                    {SLA_OPTIONS.map(o => <option key={o.hours} value={o.hours}>{o.labelTh}</option>)}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {t('submit.slaHint')}
+                    {form.incidentSlaHours && (() => {
+                      const due = computeSlaDue(Number(form.incidentSlaHours))
+                      return due ? ` · ${t('submit.slaDue')} ${new Date(due).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}` : ''
+                    })()}
+                  </p>
                 </div>
 
                 <div>
