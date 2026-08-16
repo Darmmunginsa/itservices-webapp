@@ -47,7 +47,9 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
     Promise.all([
       spGet<ProjectReferenceLink>(LINK_LIST, `ProjectID eq ${projectId}`,
         'Id,Title,ProjectID,ReferenceID,Locator,AppliedTo', 'Title asc', 500).catch(() => [] as ProjectReferenceLink[]),
-      spGet<ProjectReference>(LIST, undefined, '*', 'Title asc', 1000)
+      // $expand=AttachmentFiles — ต้องได้ชื่อไฟล์มาด้วย ไม่งั้น [[ไฟล์]] กลางเนื้อหาจะฟ้องว่าไม่พบ
+      spGet<ProjectReference>(LIST, undefined, '*,AttachmentFiles/FileName', 'Title asc', 1000, 'AttachmentFiles')
+        .catch(() => spGet<ProjectReference>(LIST, undefined, '*', 'Title asc', 1000))
         .catch(() => { setMissing(true); return [] as ProjectReference[] }),
     ]).then(([lk, lib]) => {
       setLinks(lk); setLibrary(lib); onCount?.(lk.length)
@@ -187,7 +189,8 @@ export function ReferencesPanel({ projectId, canEdit, onCount }: Props) {
                       <p className="text-xs text-primary-600 dark:text-primary-400 mt-1">ใช้กับ: {l.AppliedTo}</p>
                     )}
                     {/* เนื้อหาโชว์บนการ์ดเลย — สรุปสาระ + คลิปที่เล่นได้ในหน้า */}
-                    <ReferenceContent summary={r?.Summary} media={r?.Media} compact />
+                    <ReferenceContent summary={r?.Summary} media={r?.Media} compact
+                      files={r ? { listName: LIST, itemId: r.id, names: (r.AttachmentFiles ?? []).map(f => f.FileName) } : undefined} />
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                       {r?.RefType && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{REF_TYPE_TH[r.RefType] ?? r.RefType}</Badge>}
                       {l.Locator && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{l.Locator}</Badge>}
