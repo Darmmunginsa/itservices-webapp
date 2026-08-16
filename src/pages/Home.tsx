@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Ticket as TicketIcon, FolderOpen, AlertTriangle, CheckCircle, Pin, X, Calendar as CalendarIcon, CalendarClock, Users } from 'lucide-react'
 import { OutlookCalendar } from '../components/calendar/OutlookCalendar'
@@ -16,8 +16,10 @@ import type { Project, Task } from '../types/project'
 import type { FocusItem, LeaveRequest } from '../types/common'
 import type { Asset as AssetType } from '../types/asset'
 import type { ProjectIncident } from '../types/project'
-import { getDueDateEmoji, getDueDateColor, getDueDateBadgeClass, daysUntil, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
+import { getDueDateEmoji, getDueDateColor, getDueDateBadgeClass, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
+import { buildDueRows, isUndated, isOverdue } from '../utils/homeDue'
+import { slaCountdown } from '../utils/sla'
 import { sendTemplateEmail } from '../services/emailService'
 import { GlobalSearch } from '../components/common/GlobalSearch'
 import { useT } from '../i18n/useT'
@@ -26,34 +28,6 @@ interface Stats {
   openTickets: number
   activeProjects: number
   openIncidents: number
-}
-
-// งานที่ใกล้ถึง/เลยกำหนด — รวมจากหลายลิสต์มาเรียงในตารางเดียว
-interface DueRow {
-  key: string
-  title: string
-  type: 'Ticket' | 'Task'
-  link: string
-  due: string
-  days: number      // ติดลบ = เลยกำหนดมาแล้วกี่วัน
-  status?: string
-}
-
-const DUE_WINDOW_DAYS = 7   // มองไปข้างหน้าแค่ 7 วัน — ไกลกว่านั้นยังไม่ต้องเร่ง
-
-function buildDueRows(tickets: Ticket[], tasks: Task[]): DueRow[] {
-  const rows: DueRow[] = []
-  for (const t of tickets) {
-    if (!t.DueDate || ['Resolved', 'Closed'].includes(t.Status)) continue
-    rows.push({ key: `tk-${t.id}`, title: t.Title, type: 'Ticket', link: `/tickets/${t.id}`, due: t.DueDate, days: daysUntil(t.DueDate), status: t.Status })
-  }
-  for (const t of tasks) {
-    if (!t.DueDate || t.IsCompleted) continue
-    rows.push({ key: `ts-${t.id}`, title: t.Title, type: 'Task', link: `/projects/${t.ProjectID}`, due: t.DueDate, days: daysUntil(t.DueDate) })
-  }
-  return rows
-    .filter(r => r.days <= DUE_WINDOW_DAYS)
-    .sort((a, b) => a.days - b.days)   // เลยกำหนดนานสุดอยู่บนสุด
 }
 
 export default function Home() {
@@ -71,8 +45,12 @@ export default function Home() {
   const [videoEmbed, setVideoEmbed] = useState('')
   // โปรเจกต์ที่ถูกเชิญเข้าร่วมทีม (PM_ProjectMembers) — ช่องทางลัดเข้าไปทำงาน
   const [invitedProjects, setInvitedProjects] = useState<Project[]>([])
-  // งานที่ถึง/เลยกำหนด (Ticket + Task ของฉัน)
-  const [dueRows, setDueRows] = useState<DueRow[]>([])
+  // งานที่ถึง/เลยกำหนด (Ticket + Task + Incident ทั้งของฉันและที่ถูกเชิญ)
+  const [myTasks, setMyTasks] = useState<Task[]>([])
+  const [myIncidents, setMyIncidents] = useState<ProjectIncident[]>([])
+  const [invitedTickets, setInvitedTickets] = useState<Ticket[]>([])
+  // เป็น state ไม่ใช่ ref — ต้องให้ประกอบรายการใหม่เมื่อรายชื่อที่ถูกเชิญโหลดเสร็จ
+  const [invitedTicketIds, setInvitedTicketIds] = useState<Set<number>>(new Set())
 
   // Load Home video URL from HD_Options (Category = HomeVideo)
   useEffect(() => {
@@ -112,6 +90,18 @@ export default function Home() {
       )
     }
 
+    // Ticket ที่ฉันถูกเชิญเข้าไป (ไม่ได้เป็นเจ้าของ) — โหลดก่อน แล้วค่อยประกอบรายการงานค้าง
+    spGet<{ id: number; TicketID: number }>('HD_TicketMembers', `AgentEmail eq '${user.email}'`, 'Id,TicketID', undefined, 500)
+      .then(rows => {
+        const ids = new Set(rows.map(r => r.TicketID).filter(Boolean))
+        setInvitedTicketIds(ids)
+        if (!ids.size) return
+        // ตั๋วที่ถูกเชิญมักไม่ได้ assign ให้เรา จึงไม่อยู่ในชุดที่โหลดไว้ — ต้องดึงเพิ่ม
+        const filter = [...ids].slice(0, 40).map(i => `Id eq ${i}`).join(' or ')
+        return spGet<Ticket>('HD_Tickets', filter, undefined, 'Created desc', 100)
+          .then(extra => setInvitedTickets(extra.filter(t => !['Resolved', 'Closed'].includes(t.Status))))
+      }).catch(() => {})
+
     // โปรเจกต์ที่ฉันถูกเชิญ → ดึงชื่อโปรเจกต์มาแสดงเป็นทางลัด (ลิสต์ยังไม่มี/พลาด → เงียบ)
     spGet<{ id: number; ProjectID: number }>('PM_ProjectMembers', `AgentEmail eq '${user.email}'`, 'Id,ProjectID', undefined, 100)
       .then(rows => {
@@ -134,14 +124,24 @@ export default function Home() {
       setMyTickets(tickets)
       setFocusItems((focus ?? []).filter(f => f.PinTarget !== 'Navigator'))
       setWarningAssets(assets.filter(a => isWarrantyExpiringSoon(a.WarrantyDate || a.ExpiryDate)))
-      setDueRows(buildDueRows(tickets ?? [], tasks ?? []))
+      setMyTasks(tasks ?? [])
+      setMyIncidents(incidents ?? [])
       if (leaves) setPendingLeaves(leaves)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [user])
 
-  const overdueCount = dueRows.filter(r => r.days < 0).length
-  const todayCount   = dueRows.filter(r => r.days === 0).length
-  const soonCount    = dueRows.filter(r => r.days > 0).length
+  // ประกอบใหม่ทุกครั้งที่ข้อมูลชุดใดชุดหนึ่งมาถึง — ตั๋วที่ถูกเชิญโหลดแยกและมาช้ากว่า
+  const dueRows = useMemo(() => buildDueRows(
+    [...myTickets, ...invitedTickets] as never,
+    myTasks as never,
+    myIncidents as never,
+    { myEmail: user?.email, invitedTicketIds },
+  ), [myTickets, invitedTickets, myTasks, myIncidents, invitedTicketIds, user?.email])
+
+  const overdueCount = dueRows.filter(r => r.days !== null && r.days < 0).length
+  const todayCount   = dueRows.filter(r => r.days !== null && r.days >= 0 && r.days < 1).length
+  const soonCount    = dueRows.filter(r => r.days !== null && r.days >= 1).length
+  const undatedCount = dueRows.filter(isUndated).length
 
   async function unpinFocus(focusId: number) {
     try {
@@ -233,6 +233,12 @@ export default function Home() {
               {t('home.dueSoon')} {soonCount}
             </span>
           )}
+          {undatedCount > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+              title={t('home.dueNoDateHint')}>
+              {t('home.dueNoDate')} {undatedCount}
+            </span>
+          )}
         </div>
       </div>
       {loading ? (
@@ -244,28 +250,54 @@ export default function Home() {
         </div>
       ) : (
         <div className="max-h-[25vh] min-h-[8rem] overflow-y-auto pr-1 space-y-1.5">
-          {dueRows.map(r => {
-            const color = getDueDateColor(r.due)
+          {dueRows.map((r, i) => {
+            const undated = isUndated(r)
+            const color = undated ? 'normal' : getDueDateColor(r.due ?? undefined)
+            const late = isOverdue(r)
+            // ขีดคั่นตรงจุดที่เริ่มเป็นงานไม่มีกำหนด — ไม่ต้องอ่านทีละแถวว่าเปลี่ยนกลุ่มตรงไหน
+            const firstUndated = undated && (i === 0 || !isUndated(dueRows[i - 1]))
             return (
-              <Link key={r.key} to={r.link}
-                className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                  r.days < 0 ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
-                <span className="text-sm flex-shrink-0">{getDueDateEmoji(color) || '🔵'}</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-12 text-center">
-                  {r.type}
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">{r.title}</span>
-                  <span className="block text-xs text-gray-400">{formatDate(r.due)}</span>
-                </span>
-                {/* ครึ่งจอกว้างไม่พอใส่ทุกอย่าง — สถานะโผล่เฉพาะจอกว้าง วันครบกำหนดสำคัญกว่า */}
-                {r.status && <Badge className={`${getStatusColor(r.status)} hidden xl:inline-flex`}>{r.status}</Badge>}
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
-                  {r.days < 0 ? `${t('home.dueLateBy')} ${Math.abs(r.days)} ${t('home.dueDays')}`
-                    : r.days === 0 ? t('home.dueToday')
-                    : `${t('home.dueIn')} ${r.days} ${t('home.dueDays')}`}
-                </span>
-              </Link>
+              <div key={r.key}>
+                {firstUndated && (
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 pt-2 pb-1 border-t border-gray-100 dark:border-gray-800 mt-1">
+                    {t('home.dueNoDate')} ({undatedCount})
+                  </p>
+                )}
+                <Link to={r.link}
+                  className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
+                    late ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
+                  <span className="text-sm flex-shrink-0">
+                    {r.type === 'Incident' ? '🚨' : undated ? '⚪' : getDueDateEmoji(color) || '🔵'}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-14 text-center">
+                    {r.type}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm text-gray-900 dark:text-gray-100 truncate">
+                      {r.title}
+                      {/* ถูกเชิญ = ไม่ใช่งานของเราโดยตรง แต่เคยหลุดหายไปเลย จึงต้องบอกให้ชัด */}
+                      {r.invited && (
+                        <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 align-middle">
+                          {t('home.dueInvited')}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block text-xs text-gray-400">
+                      {undated ? t('home.dueNoDateHint') : formatDate(r.due ?? undefined)}
+                    </span>
+                  </span>
+                  {r.status && <Badge className={`${getStatusColor(r.status)} hidden xl:inline-flex`}>{r.status}</Badge>}
+                  {!undated && (
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
+                      {r.type === 'Incident'
+                        ? slaCountdown((r.days as number) * 24)
+                        : (r.days as number) < 0 ? `${t('home.dueLateBy')} ${Math.abs(Math.round(r.days as number))} ${t('home.dueDays')}`
+                        : (r.days as number) < 1 ? t('home.dueToday')
+                        : `${t('home.dueIn')} ${Math.round(r.days as number)} ${t('home.dueDays')}`}
+                    </span>
+                  )}
+                </Link>
+              </div>
             )
           })}
         </div>

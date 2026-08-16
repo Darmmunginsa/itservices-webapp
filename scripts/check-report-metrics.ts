@@ -5,6 +5,7 @@ import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks } from '../src/utils/richNote'
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
+import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows, incidentSla } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
@@ -261,6 +262,57 @@ const running = incidentSla(
   presetRange('this-month', TODAY), TODAY)
 eq([running.judged, running.running, running.pct], [0, 1, null],
   'a clock still ticking is not a verdict and stays out of the denominator')
+
+// -- กล่องงานค้างบนหน้าหลัก (utils/homeDue) --
+const hNow = new Date(2026, 7, 9, 12, 0)
+const hAt = (days: number) => new Date(hNow.getTime() + days * 86400000).toISOString()
+
+const dueRows = buildDueRows(
+  [
+    { id: 1, Title: 'ตั๋วเลยกำหนด',  Status: 'Open', DueDate: hAt(-3), AssignedEmail: 'me@x.com' },
+    { id: 2, Title: 'ตั๋วไม่มีกำหนด', Status: 'Open', AssignedEmail: 'me@x.com' },
+    { id: 3, Title: 'ตั๋วปิดแล้ว',    Status: 'Closed', DueDate: hAt(-1), AssignedEmail: 'me@x.com' },
+    { id: 4, Title: 'ตั๋วที่ถูกเชิญ',  Status: 'Open', AssignedEmail: 'other@x.com' },
+    { id: 5, Title: 'ตั๋วอีกไกล',     Status: 'Open', DueDate: hAt(30), AssignedEmail: 'me@x.com' },
+  ],
+  [{ id: 9, Title: 'งานไม่มีกำหนด', ProjectID: 7 }],
+  [
+    { id: 20, Title: 'ปัญหามี SLA',    Status: 'Open', Created: hAt(-1), SLAHours: 4 },
+    { id: 21, Title: 'ปัญหาไม่มี SLA', Status: 'Open', Created: hAt(-1) },
+    { id: 22, Title: 'ปัญหาปิดแล้ว',   Status: 'Resolved', Created: hAt(-2), SLAHours: 4 },
+  ],
+  { myEmail: 'me@x.com', invitedTicketIds: new Set([4]), now: hNow },
+)
+const titles = dueRows.map(r => r.title)
+
+eq(titles.includes('ตั๋วปิดแล้ว'), false, 'closed tickets are gone')
+eq(titles.includes('ปัญหาปิดแล้ว'), false, 'resolved incidents are gone')
+eq(titles.includes('ตั๋วอีกไกล'), false, 'a due date a month out is not urgent yet')
+
+// หัวใจของรอบนี้: ของที่ไม่มีกำหนดต้องไม่หาย
+eq(titles.includes('ตั๋วไม่มีกำหนด'), true, 'a ticket with no due date still shows')
+eq(titles.includes('งานไม่มีกำหนด'), true, 'a task with no due date still shows')
+eq(titles.includes('ปัญหาไม่มี SLA'), true, 'an incident with no SLA still shows')
+eq(titles.includes('ตั๋วที่ถูกเชิญ'), true, 'a ticket I was invited to shows even though it is not assigned to me')
+eq(dueRows.find(r => r.title === 'ตั๋วที่ถูกเชิญ')!.invited, true, 'and it is marked as invited')
+eq(dueRows.find(r => r.title === 'ตั๋วไม่มีกำหนด')!.invited, false, 'my own ticket is not marked invited')
+
+// เรียง: มีกำหนดก่อน (ด่วนสุดบนสุด) แล้วค่อยของที่ไม่มีกำหนด
+eq(titles[0], 'ตั๋วเลยกำหนด', 'the most overdue comes first')
+eq(titles[1], 'ปัญหามี SLA', 'then the incident whose clock is running')
+eq(dueRows.filter(isUndated).length, 4, 'four undated items land at the end')
+eq(dueRows.slice(-4).every(isUndated), true, 'and they really are last')
+eq(dueRows.filter(isUndated)[0].type, 'Incident', 'among undated, incidents come first')
+eq(dueRows.filter(isOverdue).length, 2, 'the late ticket and the incident whose 4h SLA expired 20h ago are both overdue')
+
+// เจ้าของงาน + ถูกเชิญ = งานเดียวกัน ต้องไม่ซ้ำ
+const dup = buildDueRows(
+  [{ id: 1, Title: 'ตั๋วเดียว', Status: 'Open', AssignedEmail: 'me@x.com' }], [], [],
+  { myEmail: 'me@x.com', invitedTicketIds: new Set([1]), now: hNow })
+eq(dup.length, 1, 'assigned and invited to the same ticket yields one row')
+eq(dup[0].invited, false, 'and it reads as mine, not as an invite')
+
+eq(buildDueRows([], [], [], { now: hNow }).length, 0, 'nothing to show when there is nothing open')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
