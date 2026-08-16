@@ -7,6 +7,11 @@ import { OptionSelect } from '../components/common/OptionSelect'
 import { Modal } from '../components/common/Modal'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
+import { AttachmentSection } from '../components/common/AttachmentSection'
+import { RichNote } from '../components/common/RichNote'
+import { referencedFiles } from '../utils/richNote'
+import { SearchMultiSelect } from '../components/common/SearchSelect'
+import type { AgentProfile } from '../types/common'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate } from '../utils/dateUtils'
 import type { FocusItem } from '../types/common'
@@ -18,11 +23,18 @@ interface ToolNote {
   NoteContent: string
   Category?: string
   CreatedByEmail: string
+  SharedWith?: string        // อีเมลคั่นด้วย , — คนที่เจ้าของแชร์ให้เห็นโน้ตนี้
   Modified: string
   Created: string
+  AttachmentFiles?: { FileName: string }[]
 }
 
-const EMPTY_FORM = { title: '', category: '', noteContent: '' }
+/** อีเมลที่โน้ตถูกแชร์ให้ */
+const sharedList = (raw?: string): string[] =>
+  (raw ?? '').split(',').map(s => s.trim()).filter(Boolean)
+
+const EMPTY_FORM = { title: '', category: '', noteContent: '', sharedWith: [] as string[] }
+const NL = String.fromCharCode(10)
 
 const CATEGORY_COLORS: Record<string, string> = {
   'งานทั่วไป':   'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
@@ -40,6 +52,7 @@ export default function Tools() {
   const { user, addToast } = useAppStore()
   const tr = useT()
   const [notes, setNotes] = useState<ToolNote[]>([])
+  const [agents, setAgents] = useState<AgentProfile[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('ทั้งหมด')
@@ -53,22 +66,36 @@ export default function Tools() {
   const [focusNotes, setFocusNotes] = useState<FocusItem[]>([])
   const [pinBusy, setPinBusy] = useState<number | null>(null)
 
+  // เจ้าของโน้ตเท่านั้นที่แก้/ลบ/แนบไฟล์ได้ — คนที่ถูกแชร์ให้ดูอย่างเดียว
+  const isOwner = (n: ToolNote) => (n.CreatedByEmail ?? '').toLowerCase() === (user?.email ?? '').toLowerCase()
+
   async function load() {
     if (!user) return
     setLoading(true)
     try {
-      const data = await spGet<ToolNote>(
-        'IT_Tools',
-        `CreatedByEmail eq '${user.email}'`,
-        undefined,
-        'Modified desc',
-      )
-      setNotes(data)
+      // โน้ตของเรา + โน้ตที่คนอื่นแชร์ให้เรา — ดึงแยกกันแล้วรวม
+      // (substringof ใน SharePoint ใช้กับคอลัมน์ข้อความยาวไม่ได้เสมอไป จึงกรองฝั่งเราเอง)
+      const [mine, shared] = await Promise.all([
+        spGet<ToolNote>('IT_Tools', `CreatedByEmail eq '${user.email}'`,
+          '*,AttachmentFiles/FileName', 'Modified desc', 500, 'AttachmentFiles')
+          .catch(() => spGet<ToolNote>('IT_Tools', `CreatedByEmail eq '${user.email}'`, undefined, 'Modified desc')),
+        spGet<ToolNote>('IT_Tools', `CreatedByEmail ne '${user.email}'`,
+          '*,AttachmentFiles/FileName', 'Modified desc', 500, 'AttachmentFiles')
+          .catch(() => [] as ToolNote[]),
+      ])
+      const me = user.email.toLowerCase()
+      const sharedToMe = shared.filter(n => sharedList(n.SharedWith).some(e => e.toLowerCase() === me))
+      setNotes([...mine, ...sharedToMe])
     } catch {
       addToast('error', 'โหลดข้อมูล Tools ไม่ได้')
     } finally {
       setLoading(false)
     }
+  }
+
+  function loadAgents() {
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText', 'Title asc', 500)
+      .then(setAgents).catch(() => {})
   }
 
   async function loadFocus() {
@@ -79,7 +106,7 @@ export default function Tools() {
     } catch { /* ignore */ }
   }
 
-  useEffect(() => { load(); loadFocus() }, [user])
+  useEffect(() => { load(); loadFocus(); loadAgents() }, [user])
 
   // เปิด note อัตโนมัติเมื่อมาจากลิงก์ Focus (/tools?note=<id>)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -134,7 +161,7 @@ export default function Tools() {
 
   function openEdit(note: ToolNote) {
     setEditing(note)
-    setForm({ title: note.Title, category: note.Category ?? '', noteContent: note.NoteContent })
+    setForm({ title: note.Title, category: note.Category ?? '', noteContent: note.NoteContent, sharedWith: sharedList(note.SharedWith) })
     setShowModal(true)
     setViewing(null)
   }
@@ -147,6 +174,7 @@ export default function Tools() {
       Title: form.title.trim(),
       NoteContent: form.noteContent,
       Category: form.category || undefined,
+      SharedWith: form.sharedWith.join(', '),
     }
     try {
       if (editing) {
@@ -261,21 +289,42 @@ export default function Tools() {
                       className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(String(note.id)) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600 opacity-0 group-hover:opacity-100'}`}>
                       <Pin size={13} className={pinnedSet.has(String(note.id)) ? 'fill-current' : ''} />
                     </button>
-                    <button onClick={() => openEdit(note)}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors opacity-0 group-hover:opacity-100">
-                      <Pencil size={13} />
-                    </button>
-                    <button onClick={() => remove(note)}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                      <Trash2 size={13} />
-                    </button>
+                    {/* คนที่ถูกแชร์ให้ดูอย่างเดียว — ไม่มีปุ่มแก้/ลบ */}
+                    {isOwner(note) && (<>
+                      <button onClick={() => openEdit(note)}
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors opacity-0 group-hover:opacity-100">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => remove(note)}
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 size={13} />
+                      </button>
+                    </>)}
                   </div>
                 </div>
-                {note.Category && (
-                  <span className={`inline-block text-xs px-2 py-0.5 rounded-full mb-2 font-medium ${categoryColor(note.Category)}`}>
-                    {note.Category}
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                  {note.Category && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${categoryColor(note.Category)}`}>
+                      {note.Category}
+                    </span>
+                  )}
+                  {!isOwner(note) && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                      title={`เจ้าของ: ${note.CreatedByEmail}`}>
+                      แชร์มาให้
+                    </span>
+                  )}
+                  {isOwner(note) && sharedList(note.SharedWith).length > 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      🔗 แชร์ {sharedList(note.SharedWith).length}
+                    </span>
+                  )}
+                  {(note.AttachmentFiles ?? []).length > 0 && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                      📎 {(note.AttachmentFiles ?? []).length}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-4 whitespace-pre-wrap leading-relaxed">
                   {note.NoteContent}
                 </p>
@@ -300,14 +349,26 @@ export default function Tools() {
               )}
               <span className="text-xs text-gray-400 ml-auto">{tr('tools.lastEdit')}: {formatDate(viewing.Modified)}</span>
             </div>
-            <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto font-sans">
-              {viewing.NoteContent}
-            </pre>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto">
+              {/* หัวข้อ/ลิงก์/ไฟล์แนบกลางเนื้อหา — ชุดเดียวกับแหล่งอ้างอิง */}
+              <RichNote text={viewing.NoteContent} defaultOpenFirst={false} className="!text-sm"
+                files={{ listName: 'IT_Tools', itemId: viewing.id, names: (viewing.AttachmentFiles ?? []).map(f => f.FileName) }} />
+            </div>
+            <div className="mt-3">
+              <AttachmentSection listName="IT_Tools" itemId={viewing.id} readOnly={!isOwner(viewing)} />
+            </div>
+            {sharedList(viewing.SharedWith).length > 0 && (
+              <p className="text-xs text-gray-400 mt-2">
+                🔗 แชร์ให้: {sharedList(viewing.SharedWith).join(', ')}
+              </p>
+            )}
             <div className="flex justify-end gap-2 mt-4">
               <Button variant="ghost" onClick={() => setViewing(null)}>{tr('common.close')}</Button>
-              <Button onClick={() => openEdit(viewing)} className="flex items-center gap-2">
-                <Pencil size={14} /> {tr('common.edit')}
-              </Button>
+              {isOwner(viewing) && (
+                <Button onClick={() => openEdit(viewing)} className="flex items-center gap-2">
+                  <Pencil size={14} /> {tr('common.edit')}
+                </Button>
+              )}
             </div>
           </div>
         )}
@@ -345,7 +406,63 @@ export default function Tools() {
               rows={14}
               placeholder={tr('tools.contentPlaceholder')}
             />
+            <p className="text-[11px] text-gray-400 mt-1">
+              หัวข้อใหม่ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">## ชื่อหัวข้อ</code> ·
+              รายการย่อย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">-</code> ·
+              วาง URL ได้เลย · แทรกไฟล์แนบด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[[ชื่อไฟล์.png]]</code>
+            </p>
           </div>
+
+          {/* แชร์ให้เพื่อนในทีม — เห็นอย่างเดียว แก้ไม่ได้ */}
+          <div>
+            <SearchMultiSelect
+              label="แชร์ให้ (เห็นอย่างเดียว)"
+              options={agents
+                .filter(a => a.EmailText && a.EmailText.toLowerCase() !== (user?.email ?? '').toLowerCase())
+                .map(a => ({ value: a.EmailText as string, label: a.Title }))}
+              selected={form.sharedWith}
+              onToggle={v => setForm(f => ({
+                ...f,
+                sharedWith: f.sharedWith.includes(v) ? f.sharedWith.filter(x => x !== v) : [...f.sharedWith, v],
+              }))}
+            />
+            <p className="text-[11px] text-amber-600 mt-1">
+              ⚠ การแชร์นี้คุมที่หน้าจอเท่านั้น — คนที่เข้า SharePoint ตรงยังเห็นได้ทุกโน้ต อย่าเก็บรหัสผ่านไว้ที่นี่
+            </p>
+          </div>
+
+          {/* ไฟล์แนบ — แนบได้หลังบันทึกครั้งแรก (ต้องมี id ก่อน) */}
+          {editing ? (
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-2">
+              <AttachmentSection listName="IT_Tools" itemId={editing.id} />
+              {(editing.AttachmentFiles ?? []).length > 0 && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1">แทรกไฟล์ลงในเนื้อหา (กดเพื่อเพิ่มท้ายเนื้อหา)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(editing.AttachmentFiles ?? []).map(f => (
+                      <button key={f.FileName} type="button"
+                        onClick={() => setForm(fm => ({
+                          ...fm,
+                          noteContent: fm.noteContent + (!fm.noteContent || fm.noteContent.endsWith(NL) ? '' : NL) + '[[' + f.FileName + ']]' + NL,
+                        }))}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-400 text-gray-600 dark:text-gray-300">
+                        + {f.FileName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(() => {
+                const attached = (editing.AttachmentFiles ?? []).map(f => f.FileName.toLowerCase())
+                const missingFiles = referencedFiles(form.noteContent).filter(n => !attached.includes(n.toLowerCase()))
+                return missingFiles.length > 0 ? (
+                  <p className="text-[11px] text-amber-600">⚠ เนื้อหาอ้างถึงไฟล์ที่ยังไม่ได้แนบ: {missingFiles.join(', ')}</p>
+                ) : null
+              })()}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-400">แนบไฟล์ได้หลังบันทึกโน้ตแล้ว (กดแก้ไขอีกครั้ง)</p>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>{tr('common.cancel')}</Button>
             <Button type="submit" disabled={saving}>

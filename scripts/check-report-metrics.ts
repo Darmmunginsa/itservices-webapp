@@ -3,7 +3,7 @@
 //   npm run check:report
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
-import { parseSections, parseInline, countLinks } from '../src/utils/richNote'
+import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
@@ -313,6 +313,20 @@ eq(dup.length, 1, 'assigned and invited to the same ticket yields one row')
 eq(dup[0].invited, false, 'and it reads as mine, not as an invite')
 
 eq(buildDueRows([], [], [], { now: hNow }).length, 0, 'nothing to show when there is nothing open')
+
+// -- ไฟล์แนบกลางเนื้อหา [[ชื่อไฟล์]] --
+eq(parseInline('ดูรูป [[diagram.png]] ประกอบ')[1], { type: 'file', name: 'diagram.png' }, 'file token becomes a file segment')
+eq(parseInline('[[ a.png ]]')[0], { type: 'file', name: 'a.png' }, 'spaces around the name are trimmed')
+eq(parseInline('[[]]').length, 1, 'an empty token stays plain text, not a broken file')
+eq(parseInline('ก่อน [[a.png]] กลาง [[b.pdf]] หลัง').filter(x => x.type === 'file').length, 2, 'several files in one line')
+eq(parseInline('[[a.png]]')[0].type, 'file', 'a filename with a dot is not mistaken for a url')
+eq(parseInline('[ชื่อ](https://a.dev) และ [[a.png]]').map(x => x.type), ['link', 'text', 'file'],
+  'named links and file tokens coexist in order')
+eq(countLinks('[[a.png]] https://a.dev'), 1, 'a file token is not counted as a link')
+
+eq(referencedFiles('[[a.png]] x [[b.pdf]] y [[a.png]]'), ['a.png', 'b.pdf'], 'referenced files are listed once each')
+eq(referencedFiles('ไม่มีไฟล์'), [], 'no tokens, no files')
+eq(referencedFiles(undefined), [], 'no content, no files')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

@@ -17,6 +17,7 @@ export interface ProjectReference {
   Media?: string             // คลิป/ลิงก์ บรรทัดละ 1 ใส่ได้ไม่จำกัด — "ชื่อ | url" ตั้งชื่อได้
   Created?: string
   Author?: { Title: string }  // SP Created By — ใครเป็นคนเพิ่มเข้าคลัง
+  AttachmentFiles?: { FileName: string }[]   // ชื่อไฟล์แนบ (ผ่าน $expand) — ใช้แทรกในเนื้อหา
 }
 
 // ลิสต์เชื่อมโครงการ ↔ แหล่งอ้างอิง (PM_ProjectReferences) — แบบเดียวกับ PM_ProjectAssets

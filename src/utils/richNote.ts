@@ -3,6 +3,7 @@
 //   ## หัวข้อ            → หัวข้อใหม่
 //   - รายการ             → bullet
 //   [ชื่อ](url) หรือ url  → ลิงก์ (กดได้)
+//   [[ไฟล์.png]]          → แทรกไฟล์แนบของรายการนั้นตรงตำแหน่งนี้ (รูปแสดงเลย ไฟล์อื่นเป็นปุ่มโหลด)
 
 export interface NoteSection {
   heading: string        // '' = ย่อหน้านำก่อนหัวข้อแรก
@@ -33,11 +34,13 @@ export function parseSections(raw: string | undefined): NoteSection[] {
 export type InlineSeg =
   | { type: 'text'; text: string }
   | { type: 'link'; text: string; href: string }
+  | { type: 'file'; name: string }
 
 // URL ที่ก็อปมาแล้วมีวงเล็บ/จุด/จุลภาคติดท้าย เป็นเรื่องปกติ ต้องตัดออกจาก href
 const TRAILING = /[.,;:!?)\]}"'»]+$/
 const URL_RE = /(https?:\/\/[^\s<>"']+|www\.[^\s<>"']+)/gi
 const MD_LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+|www\.[^\s)]+)\)/g
+const FILE_RE = /\[\[([^\]]+)\]\]/g
 
 const href = (u: string): string => (/^https?:\/\//i.test(u) ? u : `https://${u}`)
 
@@ -47,13 +50,21 @@ export function parseInline(raw: string): InlineSeg[] {
   if (!text) return []
   const segs: InlineSeg[] = []
 
-  // รอบแรก: [ชื่อ](url) — ทำก่อนเพื่อไม่ให้ url ข้างในถูกจับซ้ำ
+  // รอบแรก: [[ไฟล์]] และ [ชื่อ](url) — ทำก่อนเพื่อไม่ให้เนื้อในถูกจับซ้ำ
   let last = 0
   const pending: { start: number; end: number; seg: InlineSeg }[] = []
+  FILE_RE.lastIndex = 0
+  for (let m = FILE_RE.exec(text); m; m = FILE_RE.exec(text)) {
+    const name = m[1].trim()
+    if (name) pending.push({ start: m.index, end: m.index + m[0].length, seg: { type: 'file', name } })
+  }
   MD_LINK_RE.lastIndex = 0
   for (let m = MD_LINK_RE.exec(text); m; m = MD_LINK_RE.exec(text)) {
+    // ข้ามถ้าทับกับ [[ไฟล์]] ที่จับไปแล้ว
+    if (pending.some(p => m!.index >= p.start && m!.index < p.end)) continue
     pending.push({ start: m.index, end: m.index + m[0].length, seg: { type: 'link', text: m[1], href: href(m[2]) } })
   }
+  pending.sort((a, b) => a.start - b.start)
 
   const pushPlain = (chunk: string) => {
     if (!chunk) return
@@ -82,4 +93,15 @@ export function parseInline(raw: string): InlineSeg[] {
 /** จำนวนลิงก์ทั้งหมดในเนื้อหา — ใช้โชว์บนการ์ดว่ามีแหล่งอ้างอิงแทรกอยู่กี่จุด */
 export function countLinks(raw: string | undefined): number {
   return parseInline(raw ?? '').filter(s => s.type === 'link').length
+}
+
+/** ชื่อไฟล์ที่ถูกแทรกในเนื้อหา — ใช้เตือนว่าอ้างถึงไฟล์ที่ไม่ได้แนบไว้ */
+export function referencedFiles(raw: string | undefined): string[] {
+  const out: string[] = []
+  FILE_RE.lastIndex = 0
+  for (let m = FILE_RE.exec(raw ?? ''); m; m = FILE_RE.exec(raw ?? '')) {
+    const n = m[1].trim()
+    if (n && !out.includes(n)) out.push(n)
+  }
+  return out
 }

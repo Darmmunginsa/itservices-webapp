@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Play, ExternalLink } from 'lucide-react'
 import { parseMediaLinks, youtubeThumb } from '../../utils/youtube'
-import { RichNote } from '../common/RichNote'
+import { RichNote, type NoteFiles } from '../common/RichNote'
 import { parseSections } from '../../utils/richNote'
 
 
@@ -11,10 +11,11 @@ import { parseSections } from '../../utils/richNote'
  * — คลิป/ลิงก์ ใส่ได้ไม่จำกัด ยูทูบเล่นในหน้าได้เลย
  * ใช้ร่วมกันทั้งหน้าคลังและแท็บอ้างอิงในโครงการ ให้เห็นเหมือนกันทั้งสองที่
  */
-export function ReferenceContent({ summary, media, compact }: {
+export function ReferenceContent({ summary, media, compact, files }: {
   summary?: string
   media?: string
   compact?: boolean       // ในโครงการพื้นที่แคบกว่า → กริดคลิปแคบลง
+  files?: NoteFiles       // ให้ [[ชื่อไฟล์]] ในเนื้อหาแสดงรูป/ไฟล์แนบได้
 }) {
   // เก็บเฉพาะคลิปที่ผู้ใช้กดเล่น — ฝัง iframe ทุกอันตั้งแต่แรกจะหน่วงทั้งหน้า
   const [playing, setPlaying] = useState<Set<string>>(new Set())
@@ -28,7 +29,7 @@ export function ReferenceContent({ summary, media, compact }: {
 
   return (
     <div className="mt-2 space-y-2">
-      {sections.length > 0 && <RichNote text={summary} />}
+      {sections.length > 0 && <RichNote text={summary} files={files} />}
 
       {links.length > 0 && (
         <div className={`grid gap-2 ${compact ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>

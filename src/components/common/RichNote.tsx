@@ -1,13 +1,33 @@
 import { useState } from 'react'
 import { ExternalLink, ChevronRight } from 'lucide-react'
 import { parseSections, parseInline, type NoteSection } from '../../utils/richNote'
+import { AttachmentThumb } from './AttachmentThumb'
+
+/** ไฟล์แนบที่ถูกแทรกกลางเนื้อหาด้วย [[ชื่อไฟล์]] */
+export interface NoteFiles {
+  listName: string
+  itemId: number
+  names: string[]        // ชื่อไฟล์ที่แนบไว้จริง — ใช้ตรวจว่าที่อ้างถึงมีอยู่ไหม
+}
 
 /** ข้อความ 1 ย่อหน้า — URL กดได้ทั้งแบบเปล่าและแบบ [ชื่อ](url) */
-function Inline({ text }: { text: string }) {
+function Inline({ text, files }: { text: string; files?: NoteFiles }) {
   return (
     <>
       {parseInline(text).map((s, i) =>
-        s.type === 'link' ? (
+        s.type === 'file' ? (
+          files?.names.some(n => n.toLowerCase() === s.name.toLowerCase()) ? (
+            <span key={i} className="block my-1.5">
+              <AttachmentThumb listName={files.listName} itemId={files.itemId}
+                fileName={files.names.find(n => n.toLowerCase() === s.name.toLowerCase())!} />
+            </span>
+          ) : (
+            // อ้างถึงไฟล์ที่ไม่ได้แนบ (พิมพ์ผิด/ลบไฟล์ไปแล้ว) — บอกตรง ๆ ดีกว่าหายเงียบ
+            <span key={i} className="text-[11px] text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded px-1.5 py-0.5">
+              ⚠ ไม่พบไฟล์แนบ "{s.name}"
+            </span>
+          )
+        ) : s.type === 'link' ? (
           <a key={i} href={s.href} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
             className="text-primary-600 dark:text-primary-400 hover:underline break-all">
@@ -22,7 +42,7 @@ function Inline({ text }: { text: string }) {
 }
 
 /** เนื้อหาของหัวข้อหนึ่ง — รองรับ bullet ด้วย "- " หรือ "• " */
-function Body({ text }: { text: string }) {
+function Body({ text, files }: { text: string; files?: NoteFiles }) {
   const lines = text.split('\n')
   const blocks: { bullet: boolean; lines: string[] }[] = []
   for (const line of lines) {
@@ -37,10 +57,10 @@ function Body({ text }: { text: string }) {
     <>
       {blocks.map((b, i) => b.bullet ? (
         <ul key={i} className="list-disc pl-4 space-y-0.5 my-1">
-          {b.lines.map((l, j) => <li key={j}><Inline text={l} /></li>)}
+          {b.lines.map((l, j) => <li key={j}><Inline text={l} files={files} /></li>)}
         </ul>
       ) : (
-        <p key={i} className="whitespace-pre-wrap my-1"><Inline text={b.lines.join('\n')} /></p>
+        <p key={i} className="whitespace-pre-wrap my-1"><Inline text={b.lines.join('\n')} files={files} /></p>
       ))}
     </>
   )
@@ -50,10 +70,11 @@ function Body({ text }: { text: string }) {
  * โน้ตที่โตได้เรื่อย ๆ — แบ่งหัวข้อ มีสารบัญ และลิงก์กลางเนื้อหากดได้
  * หัวข้อเยอะ ๆ จะพับไว้ กดทีละหัวข้อ ไม่ต้องเลื่อนผ่านทั้งก้อน
  */
-export function RichNote({ text, defaultOpenFirst = true, className = '' }: {
+export function RichNote({ text, defaultOpenFirst = true, className = '', files }: {
   text?: string
   defaultOpenFirst?: boolean   // การ์ดเปิดหัวข้อแรกให้เห็นก่อน 1 หัวข้อ
   className?: string
+  files?: NoteFiles            // ให้ [[ชื่อไฟล์]] ในเนื้อหาแสดงไฟล์แนบได้
 }) {
   const sections = parseSections(text)
   const titled = sections.filter(s => s.heading)
@@ -93,19 +114,20 @@ export function RichNote({ text, defaultOpenFirst = true, className = '' }: {
       )}
 
       {sections.map((s, i) => (
-        <Section key={i} section={s} open={open.has(i)} onToggle={() => toggle(i)} collapsible={titled.length > 1 && !!s.heading} />
+        <Section key={i} section={s} files={files} open={open.has(i)} onToggle={() => toggle(i)} collapsible={titled.length > 1 && !!s.heading} />
       ))}
     </div>
   )
 }
 
-function Section({ section, open, onToggle, collapsible }: {
+function Section({ section, open, onToggle, collapsible, files }: {
   section: NoteSection
+  files?: NoteFiles
   open: boolean
   onToggle: () => void
   collapsible: boolean
 }) {
-  if (!section.heading) return <Body text={section.body} />
+  if (!section.heading) return <Body text={section.body} files={files} />
   return (
     <div className="mt-2 first:mt-0">
       <button onClick={collapsible ? onToggle : undefined}
@@ -117,7 +139,7 @@ function Section({ section, open, onToggle, collapsible }: {
       </button>
       {open && section.body && (
         <div className="border-l-2 border-gray-100 dark:border-gray-800 ml-1.5 mt-1 pl-2.5">
-          <Body text={section.body} />
+          <Body text={section.body} files={files} />
         </div>
       )}
     </div>

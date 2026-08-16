@@ -13,12 +13,13 @@ import { useAppStore } from '../store/useAppStore'
 import { formatCitation, formatBibliography } from '../utils/citation'
 import { ReferenceContent } from '../components/project/ReferenceContent'
 import { parseMediaLinks } from '../utils/youtube'
-import { parseSections, countLinks } from '../utils/richNote'
+import { parseSections, countLinks, referencedFiles } from '../utils/richNote'
 import { RichNote } from '../components/common/RichNote'
 import { REF_TYPES, REF_TYPE_TH, REF_TYPE_ICON, type ProjectReference, type ProjectReferenceLink } from '../types/reference'
 import { useT } from '../i18n/useT'
 
 const LIST = 'PM_References'
+const NL = String.fromCharCode(10)
 const LINK_LIST = 'PM_ProjectReferences'
 
 const EMPTY = {
@@ -54,8 +55,11 @@ export default function References() {
   function load() {
     setLoading(true)
     // select='*' — ลิสต์ที่สร้างเองอาจมีคอลัมน์ไม่ครบ ระบุชื่อคอลัมน์ตรง ๆ จะ 400 ทั้งคำขอ
-    spGet<ProjectReference>(LIST, undefined, '*', 'Title asc', 1000)
+    // $expand=AttachmentFiles — ได้ชื่อไฟล์แนบมาพร้อมกัน ไม่ต้องยิงทีละรายการ
+    spGet<ProjectReference>(LIST, undefined, '*,AttachmentFiles/FileName', 'Title asc', 1000, 'AttachmentFiles')
       .then(r => { setRows(r); setMissing(false) })
+      .catch(() => spGet<ProjectReference>(LIST, undefined, '*', 'Title asc', 1000)
+        .then(r => { setRows(r); setMissing(false) }))
       .catch(() => { setMissing(true); setRows([]) })
       .finally(() => setLoading(false))
     // ผูกอยู่กับโครงการไหนบ้าง — ลิสต์เชื่อมยังไม่มีก็ไม่เป็นไร
@@ -277,6 +281,12 @@ export default function References() {
     },
   ]
 
+  // ชื่อไฟล์แนบของรายการ — ใช้ให้ [[ชื่อไฟล์]] ในเนื้อหาหาไฟล์เจอ
+  const noteFiles = (r: ProjectReference) => ({
+    listName: LIST, itemId: r.id,
+    names: (r.AttachmentFiles ?? []).map(f => f.FileName),
+  })
+
   const inputCx = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelCx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
@@ -392,7 +402,7 @@ export default function References() {
                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 break-words">{citation}</p>
                               )}
                               {/* เนื้อหาโชว์บนการ์ดเลย ไม่ต้องกดเปิด */}
-                              <ReferenceContent summary={r.Summary} media={r.Media} />
+                              <ReferenceContent summary={r.Summary} media={r.Media} files={noteFiles(r)} />
                               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {(r.Topics || '').split(',').map(t => t.trim()).filter(Boolean).map(t => (
                                   <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
@@ -503,7 +513,7 @@ export default function References() {
               </a>
             )}
 
-            <ReferenceContent summary={detail.Summary} media={detail.Media} />
+            <ReferenceContent summary={detail.Summary} media={detail.Media} files={noteFiles(detail)} />
 
             {(usageByRef.get(detail.id) ?? []).length > 0 && (
               <div>
@@ -640,7 +650,8 @@ export default function References() {
             <p className="text-[11px] text-gray-400 mt-1">
               เพิ่มหัวข้อใหม่ด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">## ชื่อหัวข้อ</code> ·
               รายการย่อยด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">-</code> ·
-              วาง URL ตรงไหนก็กดได้ หรือตั้งชื่อลิงก์ด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[ชื่อ](url)</code>
+              วาง URL ตรงไหนก็กดได้ หรือตั้งชื่อลิงก์ด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[ชื่อ](url)</code> ·
+              แทรกไฟล์แนบด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[[ชื่อไฟล์.png]]</code>
             </p>
           </div>
 
@@ -650,8 +661,33 @@ export default function References() {
           </div>
 
           {editing && (
-            <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+            <div className="pt-1 border-t border-gray-100 dark:border-gray-800 space-y-2">
               <AttachmentSection listName={LIST} itemId={editing.id} />
+              {/* กดชื่อไฟล์เพื่อแทรกลงในเนื้อหา — พิมพ์ [[ชื่อไฟล์]] เองก็ได้ แต่พิมพ์ผิดง่าย */}
+              {(editing.AttachmentFiles ?? []).length > 0 && (
+                <div>
+                  <p className="text-[11px] text-gray-500 mb-1">แทรกไฟล์ลงในเนื้อหา (กดเพื่อเพิ่มท้ายเนื้อหา)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(editing.AttachmentFiles ?? []).map(f => (
+                      <button key={f.FileName} type="button"
+                        onClick={() => set('Summary', form.Summary + (!form.Summary || form.Summary.endsWith(NL) ? '' : NL) + '[[' + f.FileName + ']]' + NL)}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-400 text-gray-600 dark:text-gray-300">
+                        + {f.FileName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* อ้างถึงไฟล์ที่ยังไม่ได้แนบ — เตือนตั้งแต่ตอนเขียน ไม่ต้องรอไปเจอบนการ์ด */}
+              {(() => {
+                const attached = (editing.AttachmentFiles ?? []).map(f => f.FileName.toLowerCase())
+                const missingFiles = referencedFiles(form.Summary).filter(n => !attached.includes(n.toLowerCase()))
+                return missingFiles.length > 0 ? (
+                  <p className="text-[11px] text-amber-600">
+                    ⚠ เนื้อหาอ้างถึงไฟล์ที่ยังไม่ได้แนบ: {missingFiles.join(', ')}
+                  </p>
+                ) : null
+              })()}
             </div>
           )}
 
