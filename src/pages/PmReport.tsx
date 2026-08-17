@@ -74,16 +74,11 @@ function Shot({ jobId, file, caption, onCaption, onRemove }: {
   )
 }
 
-/** รูปในหน้าพิมพ์ */
-function PrintShot({ jobId, f }: { jobId: number; f: FiguredShot }) {
-  const [url, setUrl] = useState('')
-  useEffect(() => {
-    let alive = true; let made = ''
-    spAttachmentBlobUrl(JOB_LIST, jobId, f.file)
-      .then(u => { if (alive) { made = u; setUrl(u) } else URL.revokeObjectURL(u) })
-      .catch(() => {})
-    return () => { alive = false; if (made) URL.revokeObjectURL(made) }
-  }, [jobId, f.file])
+/**
+ * รูปในหน้าพิมพ์ — รับ url ที่โหลดเสร็จแล้วจากพ่อ ไม่โหลดเอง
+ * ถ้าปล่อยให้โหลดตอน render แล้วเรียก window.print() ทันที ภาพจะยังมาไม่ถึงตอนพิมพ์
+ */
+function PrintShot({ url, f }: { url: string; f: FiguredShot }) {
   return (
     <div className="print-avoid-break" style={{ textAlign: 'center', marginBottom: 14 }}>
       {url && <img src={url} alt="" style={{ maxWidth: '100%', maxHeight: '11cm', objectFit: 'contain' }} />}
@@ -110,6 +105,9 @@ export default function PmReport() {
   const [armed, setArmed] = useState('')          // slot ที่พร้อมรับ Ctrl+V
   const [busySlot, setBusySlot] = useState('')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle')
+  // url ของรูปทั้งหมดสำหรับหน้าพิมพ์ — เตรียมให้เสร็จก่อนเปิด print dialog
+  const [printUrls, setPrintUrls] = useState<Record<string, string>>({})
+  const [preparing, setPreparing] = useState(false)
 
   const [showNew, setShowNew] = useState(false)
   const [newForm, setNewForm] = useState({ title: '', templateId: '' })
@@ -168,6 +166,14 @@ export default function PmReport() {
     setArmed('')
     setSaveState('idle')
     dirty.current = false
+  }
+
+  /** ปิดงาน — คืน blob url ของรูปที่เตรียมไว้สำหรับพิมพ์ ไม่ให้ค้างในหน่วยความจำ */
+  function closeJob() {
+    if (dirty.current) void save(false)
+    Object.values(printUrls).forEach(u => URL.revokeObjectURL(u))
+    setPrintUrls({})
+    setOpenJob(null); setTpl(null); setData(null)
   }
 
   const patch = (fn: (d: PmJobData) => PmJobData) => {
@@ -278,7 +284,7 @@ export default function PmReport() {
     try {
       await spDelete(JOB_LIST, job.id)
       setJobs(prev => prev.filter(j => j.id !== job.id))
-      if (openJob?.id === job.id) { setOpenJob(null); setTpl(null); setData(null) }
+      if (openJob?.id === job.id) closeJob()
       addToast('success', 'ลบแล้ว')
     } catch { addToast('error', 'ลบไม่สำเร็จ') }
   }
@@ -359,14 +365,44 @@ export default function PmReport() {
     catch (e) { setTplErr(`กลับไปโหมดฟอร์มไม่ได้: ${(e as Error).message}`) }
   }
 
-  function exportPdf() {
-    const root = document.documentElement
-    const wasDark = root.classList.contains('dark')
-    if (wasDark) root.classList.remove('dark')
-    const restore = () => { if (wasDark) root.classList.add('dark'); window.removeEventListener('afterprint', restore) }
-    window.addEventListener('afterprint', restore)
-    setTimeout(restore, 60_000)
-    window.print()
+  /**
+   * เตรียมรูปให้ครบก่อนเปิด print dialog
+   * blob url โหลดแบบ async — ถ้าสั่งพิมพ์ทันที รูปที่ยังมาไม่ถึงจะหายไปจาก PDF
+   * ตัดที่ 60 วินาที: ช้ากว่านั้นถือว่าโหลดไม่ไหว พิมพ์เท่าที่ได้ดีกว่าค้างไปเรื่อย ๆ
+   */
+  async function exportPdf() {
+    if (!openJob) return
+    setPreparing(true)
+    try {
+      const need = figures.filter(f => !printUrls[f.file])
+      if (need.length) {
+        const pairs = await Promise.all(need.map(async f => {
+          try { return [f.file, await spAttachmentBlobUrl(JOB_LIST, openJob.id, f.file)] as const }
+          catch { return [f.file, ''] as const }
+        }))
+        const next = { ...printUrls }
+        for (const [k, v] of pairs) if (v) next[k] = v
+        setPrintUrls(next)
+        // รอให้เบราว์เซอร์ decode ภาพจริง ๆ ไม่ใช่แค่มี url
+        await Promise.all(pairs.filter(([, v]) => v).map(([, v]) => new Promise<void>(res => {
+          const img = new Image()
+          img.onload = () => res(); img.onerror = () => res()
+          img.src = v
+        })))
+        const failed = pairs.filter(([, v]) => !v).length
+        if (failed) addToast('error', `โหลดรูปไม่สำเร็จ ${failed} ภาพ — จะไม่ขึ้นใน PDF`)
+      }
+      // ให้ React วาดรูปลง DOM ก่อน แล้วค่อยเปิด dialog
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
+      const root = document.documentElement
+      const wasDark = root.classList.contains('dark')
+      if (wasDark) root.classList.remove('dark')
+      const restore = () => { if (wasDark) root.classList.add('dark'); window.removeEventListener('afterprint', restore) }
+      window.addEventListener('afterprint', restore)
+      setTimeout(restore, 60_000)
+      window.print()
+    } finally { setPreparing(false) }
   }
 
   const figures = useMemo(() => (tpl && data ? numberFigures(tpl, data) : []), [tpl, data])
@@ -722,14 +758,15 @@ export default function PmReport() {
 
       {/* ── แถบเครื่องมือ ── */}
       <div className="no-print p-4 md:p-6 pb-0 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={() => { if (dirty.current) void save(false); setOpenJob(null); setTpl(null); setData(null) }}>
+        <Button size="sm" variant="ghost" onClick={closeJob}>
           ← กลับรายการ
         </Button>
         <Button size="sm" onClick={() => save(true)} disabled={saveState === 'saving'}>
           {saveState === 'saving' ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} บันทึก
         </Button>
-        <Button size="sm" variant="secondary" onClick={exportPdf}>
-          <FileDown size={14} /> พิมพ์ / บันทึก PDF
+        <Button size="sm" variant="secondary" onClick={() => void exportPdf()} disabled={preparing}>
+          {preparing ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+          {preparing ? 'กำลังเตรียมรูป...' : 'พิมพ์ / บันทึก PDF'}
         </Button>
         <span className="text-[11px] text-gray-400">
           {saveState === 'saving' ? 'กำลังบันทึก...' : saveState === 'saved' ? 'บันทึกแล้ว' : dirty.current ? 'ยังไม่บันทึก' : ''}
@@ -996,7 +1033,7 @@ export default function PmReport() {
               </tbody>
             </table>
 
-            {figuresOf(figures, d.key).map(f => <PrintShot key={f.file} jobId={openJob.id} f={f} />)}
+            {figuresOf(figures, d.key).map(f => <PrintShot key={f.file} url={printUrls[f.file] ?? ''} f={f} />)}
 
             <h3 style={{ fontSize: 12, fontWeight: 700, marginTop: 10 }}>Recommendations and Action plans</h3>
             {(data.recommendations[d.key] ?? '').trim()
