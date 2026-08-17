@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus, FileDown, Trash2, ClipboardPaste, Server, ChevronRight, Check,
-  AlertTriangle, Upload, Settings2, FileText, Loader2,
+  AlertTriangle, Upload, Settings2, FileText, Loader2, ChevronUp, ChevronDown, Copy, Pencil, Code2, ListPlus,
 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
@@ -13,12 +13,14 @@ import { resizeImageFile } from '../utils/imageFile'
 import { formatDate } from '../utils/dateUtils'
 import {
   parseTemplate, parseJobData, numberFigures, figuresOf, progressOf,
-  slotKey, shotFileName,
+  slotKey, shotFileName, serializeTemplate, emptyTemplate, newDeviceKey,
+  renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem,
   type PmTemplate, type PmJobData, type TaskResult, type InvStatus, type FiguredShot,
 } from '../utils/pmReport'
 
 const TPL_LIST = 'PM_ReportTemplates'
 const JOB_LIST = 'PM_ReportJobs'
+const NLC = String.fromCharCode(10)
 const MAX_W = 1600            // ย่อภาพก่อนอัปโหลด — เท่ากับเครื่องมือเดิม
 
 interface TplRow { id: number; Title: string; Structure?: string; IsActive?: boolean }
@@ -111,9 +113,16 @@ export default function PmReport() {
 
   const [showNew, setShowNew] = useState(false)
   const [newForm, setNewForm] = useState({ title: '', templateId: '' })
+  // ── ตัวสร้าง/แก้ template ──
   const [showTplMgr, setShowTplMgr] = useState(false)
-  const [tplForm, setTplForm] = useState({ title: '', json: '' })
+  const [tplEditId, setTplEditId] = useState<number | null>(null)   // null = สร้างใหม่
+  const [draft, setDraft] = useState<PmTemplate>(emptyTemplate())
+  const [tplMode, setTplMode] = useState<'form' | 'json'>('form')
+  const [tplJson, setTplJson] = useState('')
   const [tplErr, setTplErr] = useState('')
+  const [openDev, setOpenDev] = useState<number | null>(0)
+  const [bulk, setBulk] = useState({ dev: -1, text: '' })          // วางรายการตรวจหลายบรรทัด
+  const [bulkInv, setBulkInv] = useState('')
 
   const fileRef = useRef<HTMLInputElement>(null)
   const dirty = useRef(false)
@@ -274,24 +283,80 @@ export default function PmReport() {
     } catch { addToast('error', 'ลบไม่สำเร็จ') }
   }
 
-  // ── template ──
+  // ── ตัวสร้าง/แก้ template ──
+  function openTplNew() {
+    setTplEditId(null); setDraft(emptyTemplate()); setTplMode('form')
+    setTplJson(''); setTplErr(''); setOpenDev(0); setBulk({ dev: -1, text: '' }); setBulkInv('')
+    setShowTplMgr(true)
+  }
+
+  function openTplEdit(row: TplRow) {
+    try {
+      const t = parseTemplate(row.Structure ?? '')
+      setTplEditId(row.id); setDraft(t); setTplMode('form')
+      setTplJson(row.Structure ?? ''); setTplErr(''); setOpenDev(0)
+      setBulk({ dev: -1, text: '' }); setBulkInv('')
+      setShowTplMgr(true)
+    } catch (e) { addToast('error', `เปิดไม่ได้: ${(e as Error).message}`) }
+  }
+
+  function openTplCopy(row: TplRow) {
+    try {
+      const t = parseTemplate(row.Structure ?? '')
+      // ทำสำเนาเป็น "ของใหม่" — ลูกค้ารายใหม่มักใช้โครงเดิมแล้วแก้ชื่ออุปกรณ์
+      setTplEditId(null)
+      setDraft({ ...t, title: `${t.title} (สำเนา)` })
+      setTplMode('form'); setTplErr(''); setOpenDev(0)
+      setBulk({ dev: -1, text: '' }); setBulkInv('')
+      setShowTplMgr(true)
+    } catch (e) { addToast('error', `คัดลอกไม่ได้: ${(e as Error).message}`) }
+  }
+
+  const dr = (fn: (t: PmTemplate) => PmTemplate) => setDraft(prev => fn(structuredClone(prev)))
+
   async function saveTemplate(e: React.FormEvent) {
     e.preventDefault()
     setTplErr('')
+    // โหมด JSON: อ่านจากช่องข้อความ · โหมดฟอร์ม: ประกอบจาก draft
+    let json: string, parsed: PmTemplate
     try {
-      const parsed = parseTemplate(tplForm.json)
-      await spCreate(TPL_LIST, {
-        Title: tplForm.title.trim() || parsed.title,
-        Structure: tplForm.json,
-        IsActive: true,
-      })
-      addToast('success', `เพิ่ม template แล้ว (${parsed.devices.length} อุปกรณ์)`)
+      if (tplMode === 'json') { parsed = parseTemplate(tplJson); json = tplJson }
+      else { parsed = parseTemplate(serializeTemplate(draft)); json = serializeTemplate(draft) }
+    } catch (e2) { setTplErr((e2 as Error).message); return }
+
+    const title = (tplMode === 'json' ? parsed.title : draft.title).trim() || parsed.title
+    try {
+      if (tplEditId) {
+        await spUpdate(TPL_LIST, tplEditId, { Title: title, Structure: json })
+        addToast('success', 'บันทึก template แล้ว')
+      } else {
+        await spCreate(TPL_LIST, { Title: title, Structure: json, IsActive: true })
+        addToast('success', `เพิ่ม template แล้ว (${parsed.devices.length} อุปกรณ์)`)
+      }
       setShowTplMgr(false)
-      setTplForm({ title: '', json: '' })
       load()
-    } catch (e2) {
-      setTplErr((e2 as Error).message)
-    }
+    } catch { setTplErr('บันทึกไม่สำเร็จ') }
+  }
+
+  async function deleteTemplate(row: TplRow) {
+    const used = jobs.filter(j => j.TemplateID === row.id).length
+    const warn = used ? `
+
+มีงานที่ใช้ template นี้อยู่ ${used} งาน — งานเหล่านั้นจะเปิดไม่ได้` : ''
+    if (!window.confirm(`ลบ template "${row.Title}"?${warn}`)) return
+    try {
+      await spDelete(TPL_LIST, row.id)
+      setTemplates(prev => prev.filter(t => t.id !== row.id))
+      addToast('success', 'ลบแล้ว')
+    } catch { addToast('error', 'ลบไม่สำเร็จ') }
+  }
+
+  /** สลับโหมด — ต้องพา draft ไป-กลับให้ตรงกัน ไม่ให้ที่พิมพ์ไว้หาย */
+  function switchMode(to: 'form' | 'json') {
+    setTplErr('')
+    if (to === 'json') { setTplJson(serializeTemplate(draft)); setTplMode('json'); return }
+    try { setDraft(parseTemplate(tplJson)); setTplMode('form') }
+    catch (e) { setTplErr(`กลับไปโหมดฟอร์มไม่ได้: ${(e as Error).message}`) }
   }
 
   function exportPdf() {
@@ -328,13 +393,13 @@ export default function PmReport() {
                 <Plus size={15} /> เริ่มรายงานใหม่
               </Button>
               {canManageTpl && (
-                <Button variant="secondary" onClick={() => { setTplErr(''); setShowTplMgr(true) }}>
-                  <Settings2 size={15} /> จัดการ Template
+                <Button variant="secondary" onClick={openTplNew}>
+                  <Settings2 size={15} /> สร้าง Template
                 </Button>
               )}
               <p className="text-xs text-gray-400">
                 {templates.length === 0
-                  ? 'ยังไม่มี template — กด "จัดการ Template" แล้ววาง JSON ของ template เข้ามา'
+                  ? 'ยังไม่มี template — กด "สร้าง Template" เพื่อร่างโครงรายงาน'
                   : `${templates.length} template · ${jobs.length} งาน`}
               </p>
             </div>
@@ -376,6 +441,37 @@ export default function PmReport() {
           </>)}
         </div>
 
+        {/* ── รายการ template ── */}
+        {canManageTpl && templates.length > 0 && !missing && (
+          <Card>
+            <h3 className="text-sm font-semibold mb-2">Template ({templates.length})</h3>
+            <div className="space-y-1">
+              {templates.map(t => {
+                let info: string
+                try {
+                  const p = parseTemplate(t.Structure ?? '')
+                  info = `${p.devices.length} อุปกรณ์ · ${p.devices.reduce((n, d) => n + d.tasks.length, 0)} รายการตรวจ`
+                } catch { info = '⚠ โครงมีปัญหา' }
+                const used = jobs.filter(j => j.TemplateID === t.id).length
+                return (
+                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-gray-800 dark:text-gray-200 truncate">{t.Title}</p>
+                      <p className="text-[11px] text-gray-400">{info}{used ? ` · ใช้อยู่ ${used} งาน` : ''}</p>
+                    </div>
+                    <button onClick={() => openTplEdit(t)} title="แก้ไข"
+                      className="p-1 rounded text-gray-400 hover:text-primary-600"><Pencil size={13} /></button>
+                    <button onClick={() => openTplCopy(t)} title="ทำสำเนา (สำหรับลูกค้ารายใหม่)"
+                      className="p-1 rounded text-gray-400 hover:text-primary-600"><Copy size={13} /></button>
+                    <button onClick={() => deleteTemplate(t)} title="ลบ"
+                      className="p-1 rounded text-gray-400 hover:text-red-500"><Trash2 size={13} /></button>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        )}
+
         {/* งานใหม่ */}
         <Modal open={showNew} onClose={() => setShowNew(false)} title="เริ่มรายงานใหม่" size="md">
           <form onSubmit={createJob} className="space-y-3">
@@ -395,36 +491,220 @@ export default function PmReport() {
           </form>
         </Modal>
 
-        {/* template ใหม่ */}
-        <Modal open={showTplMgr} onClose={() => setShowTplMgr(false)} title="เพิ่ม Template" size="lg">
+        {/* ══════ ตัวสร้าง / แก้ template ══════ */}
+        <Modal open={showTplMgr} onClose={() => setShowTplMgr(false)}
+          title={tplEditId ? 'แก้ไข Template' : 'สร้าง Template'} size="xl">
           <form onSubmit={saveTemplate} className="space-y-3">
-            <p className="text-xs text-gray-500">
-              วาง JSON ของ template ได้เลย — ใช้ไฟล์ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">config/*.json</code> ของเครื่องมือ PM Report เดิมได้ตรง ๆ
-              (ต้องมี <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">devices</code> อย่างน้อย)
-            </p>
-            <div>
-              <label className={labelCx}>ชื่อ Template</label>
-              <input value={tplForm.title} onChange={e => setTplForm(f => ({ ...f, title: e.target.value }))}
-                className={inputCx} placeholder="เว้นว่างได้ — จะใช้ชื่อจากใน JSON" />
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 text-xs">
+                <button type="button" onClick={() => switchMode('form')}
+                  className={`px-3 py-1.5 font-medium ${tplMode === 'form' ? 'bg-primary-600 text-white' : 'text-gray-500'}`}>
+                  กรอกฟอร์ม
+                </button>
+                <button type="button" onClick={() => switchMode('json')}
+                  className={`px-3 py-1.5 font-medium inline-flex items-center gap-1 ${tplMode === 'json' ? 'bg-primary-600 text-white' : 'text-gray-500'}`}>
+                  <Code2 size={12} /> JSON
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                {tplMode === 'form' ? 'กรอกทีละช่อง ไม่ต้องเขียน JSON' : 'วางไฟล์ config เดิมได้ตรง ๆ'}
+              </p>
             </div>
-            <div>
-              <label className={labelCx}>JSON *</label>
-              <textarea required value={tplForm.json} onChange={e => { setTplForm(f => ({ ...f, json: e.target.value })); setTplErr('') }}
-                rows={14} className={inputCx + ' font-mono text-[12px]'} placeholder='{ "devices": [ ... ] }' />
-            </div>
+
+            {tplMode === 'json' ? (
+              <textarea required value={tplJson} onChange={e => { setTplJson(e.target.value); setTplErr('') }}
+                rows={16} className={inputCx + ' font-mono text-[12px]'} placeholder={'{ "devices": [ ... ] }'} />
+            ) : (<>
+              <div>
+                <label className={labelCx}>ชื่อรายงาน / Template *</label>
+                <input required value={draft.title} onChange={e => dr(t => { t.title = e.target.value; return t })}
+                  className={inputCx} placeholder="เช่น Preventive Maintenance — บริษัท ก" />
+              </div>
+
+              {/* ── อุปกรณ์ + รายการตรวจ ── */}
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-semibold">อุปกรณ์ ({draft.devices.length})</p>
+                  <Button type="button" size="sm" variant="secondary" className="ml-auto"
+                    onClick={() => dr(t => { t.devices.push({ key: newDeviceKey(t.devices), name: '', tasks: [] }); return t })}>
+                    <Plus size={13} /> เพิ่มอุปกรณ์
+                  </Button>
+                </div>
+
+                {draft.devices.length === 0 && (
+                  <p className="text-xs text-gray-400 py-3 text-center">ยังไม่มีอุปกรณ์ — กด "เพิ่มอุปกรณ์"</p>
+                )}
+
+                <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
+                  {draft.devices.map((d, di) => (
+                    <div key={d.key} className="border border-gray-100 dark:border-gray-800 rounded-lg">
+                      <div className="flex items-center gap-1 p-1.5">
+                        <button type="button" onClick={() => setOpenDev(openDev === di ? null : di)}
+                          className="p-1 text-gray-400 hover:text-primary-600">
+                          <ChevronRight size={13} className={`transition-transform ${openDev === di ? 'rotate-90' : ''}`} />
+                        </button>
+                        <input value={d.name} onChange={e => dr(t => { t.devices[di].name = e.target.value; return t })}
+                          placeholder={`ชื่ออุปกรณ์ ${di + 1} — เช่น HPE DL380 Gen10 (SGH123W04V)`}
+                          className="flex-1 min-w-0 text-sm bg-transparent border-b border-transparent focus:border-primary-500 focus:outline-none px-1 py-0.5" />
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{d.tasks.length} รายการ</span>
+                        <button type="button" onClick={() => dr(t => { t.devices = moveItem(t.devices, di, -1); return t })}
+                          title="ขึ้น" className="p-0.5 text-gray-300 hover:text-primary-600"><ChevronUp size={13} /></button>
+                        <button type="button" onClick={() => dr(t => { t.devices = moveItem(t.devices, di, 1); return t })}
+                          title="ลง" className="p-0.5 text-gray-300 hover:text-primary-600"><ChevronDown size={13} /></button>
+                        <button type="button"
+                          onClick={() => { if (window.confirm(`ลบอุปกรณ์ "${d.name || di + 1}" และรายการตรวจทั้งหมด?`)) dr(t => { t.devices.splice(di, 1); return t }) }}
+                          title="ลบอุปกรณ์" className="p-0.5 text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+                      </div>
+
+                      {openDev === di && (
+                        <div className="px-2 pb-2 space-y-1">
+                          {d.tasks.map((task, ti) => (
+                            <div key={ti} className="flex items-center gap-1">
+                              <span className="text-[10px] text-gray-400 w-6 text-right">{task.no}</span>
+                              <input value={task.name}
+                                onChange={e => dr(t => { t.devices[di].tasks[ti].name = e.target.value; return t })}
+                                placeholder={`รายการตรวจที่ ${ti + 1}`}
+                                className="flex-1 min-w-0 text-xs bg-transparent border-b border-gray-100 dark:border-gray-800 focus:border-primary-500 focus:outline-none px-1 py-0.5" />
+                              <button type="button" onClick={() => dr(t => { t.devices[di].tasks = renumberTasks(moveItem(t.devices[di].tasks, ti, -1)); return t })}
+                                className="p-0.5 text-gray-300 hover:text-primary-600"><ChevronUp size={12} /></button>
+                              <button type="button" onClick={() => dr(t => { t.devices[di].tasks = renumberTasks(moveItem(t.devices[di].tasks, ti, 1)); return t })}
+                                className="p-0.5 text-gray-300 hover:text-primary-600"><ChevronDown size={12} /></button>
+                              <button type="button" onClick={() => dr(t => { t.devices[di].tasks.splice(ti, 1); t.devices[di].tasks = renumberTasks(t.devices[di].tasks); return t })}
+                                className="p-0.5 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                            </div>
+                          ))}
+
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <button type="button"
+                              onClick={() => dr(t => { t.devices[di].tasks.push({ no: nextTaskNo(t.devices[di].tasks), name: '' }); return t })}
+                              className="text-[11px] text-primary-600 hover:underline inline-flex items-center gap-1">
+                              <Plus size={11} /> เพิ่มรายการตรวจ
+                            </button>
+                            <button type="button" onClick={() => setBulk({ dev: bulk.dev === di ? -1 : di, text: '' })}
+                              className="text-[11px] text-gray-500 hover:text-primary-600 inline-flex items-center gap-1">
+                              <ListPlus size={11} /> วางหลายรายการ
+                            </button>
+                            {di > 0 && (
+                              <button type="button"
+                                onClick={() => dr(t => { t.devices[di].tasks = t.devices[di - 1].tasks.map(x => ({ ...x })); return t })}
+                                className="text-[11px] text-gray-500 hover:text-primary-600">
+                                คัดลอกรายการจากอุปกรณ์ก่อนหน้า
+                              </button>
+                            )}
+                          </div>
+
+                          {bulk.dev === di && (
+                            <div className="pt-1">
+                              <textarea value={bulk.text} onChange={e => setBulk({ dev: di, text: e.target.value })}
+                                rows={4} className={inputCx + ' text-xs'}
+                                placeholder={['วางรายการตรวจ บรรทัดละ 1 รายการ', 'Checking event logs', 'Checking LED/LCD displays'].join(NLC)} />
+                              <div className="flex gap-2 mt-1">
+                                <Button type="button" size="sm"
+                                  onClick={() => {
+                                    const add = parseTaskLines(bulk.text)
+                                    if (!add.length) return
+                                    dr(t => { t.devices[di].tasks = renumberTasks([...t.devices[di].tasks, ...add]); return t })
+                                    setBulk({ dev: -1, text: '' })
+                                  }}>
+                                  เพิ่ม {parseTaskLines(bulk.text).length} รายการ
+                                </Button>
+                                <Button type="button" size="sm" variant="ghost" onClick={() => setBulk({ dev: -1, text: '' })}>ยกเลิก</Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Inventory ── */}
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-semibold">ตาราง Inventory ({draft.inventory.length})</p>
+                  <span className="text-[11px] text-gray-400">ไม่ใส่ก็ได้</span>
+                  <Button type="button" size="sm" variant="secondary" className="ml-auto"
+                    onClick={() => dr(t => { t.inventory.push({ no: String(t.inventory.length + 1).padStart(2, '0'), serial: '', role: '' }); return t })}>
+                    <Plus size={13} /> เพิ่มแถว
+                  </Button>
+                </div>
+                <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                  {draft.inventory.map((r, ri) => (
+                    <div key={ri} className="flex items-center gap-1">
+                      <span className="text-[10px] text-gray-400 w-6 text-right">{r.no}</span>
+                      <input value={r.serial} onChange={e => dr(t => { t.inventory[ri].serial = e.target.value; return t })}
+                        placeholder="Serial" className="w-32 text-xs bg-transparent border-b border-gray-100 dark:border-gray-800 focus:border-primary-500 focus:outline-none px-1 py-0.5" />
+                      <input value={r.role} onChange={e => dr(t => { t.inventory[ri].role = e.target.value; return t })}
+                        placeholder="Role / รุ่น" className="flex-1 min-w-0 text-xs bg-transparent border-b border-gray-100 dark:border-gray-800 focus:border-primary-500 focus:outline-none px-1 py-0.5" />
+                      <button type="button" onClick={() => dr(t => {
+                        t.inventory.splice(ri, 1)
+                        t.inventory = t.inventory.map((x, i) => ({ ...x, no: String(i + 1).padStart(2, '0') }))
+                        return t
+                      })} className="p-0.5 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+                <details className="mt-1">
+                  <summary className="text-[11px] text-gray-500 cursor-pointer hover:text-primary-600">วางหลายแถว (serial, role)</summary>
+                  <textarea value={bulkInv} onChange={e => setBulkInv(e.target.value)} rows={3}
+                    className={inputCx + ' text-xs mt-1'}
+                    placeholder={['SGH123W04V, HPE DL380 Gen10 (VMware ESX)', 'EZL1913S05R, HPE SN3600B (SAN Switch)'].join(NLC)} />
+                  <Button type="button" size="sm" className="mt-1"
+                    onClick={() => {
+                      const add = parseInventoryLines(bulkInv, draft.inventory.length + 1)
+                      if (!add.length) return
+                      dr(t => { t.inventory = [...t.inventory, ...add]; return t })
+                      setBulkInv('')
+                    }}>
+                    เพิ่ม {parseInventoryLines(bulkInv).length} แถว
+                  </Button>
+                </details>
+              </div>
+
+              {/* ── Version history ── */}
+              <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs font-semibold">Version History ({draft.versionHistory.length})</p>
+                  <Button type="button" size="sm" variant="secondary" className="ml-auto"
+                    onClick={() => dr(t => { t.versionHistory.push({ version: '', date: '', change: '', author: '' }); return t })}>
+                    <Plus size={13} /> เพิ่มแถว
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  {draft.versionHistory.map((v, vi) => (
+                    <div key={vi} className="flex items-center gap-1">
+                      {(['version', 'date', 'change', 'author'] as const).map(f => (
+                        <input key={f} value={v[f]} onChange={e => dr(t => { t.versionHistory[vi][f] = e.target.value; return t })}
+                          placeholder={f} className={`${f === 'change' ? 'flex-1 min-w-0' : 'w-24'} text-xs bg-transparent border-b border-gray-100 dark:border-gray-800 focus:border-primary-500 focus:outline-none px-1 py-0.5`} />
+                      ))}
+                      <button type="button" onClick={() => dr(t => { t.versionHistory.splice(vi, 1); return t })}
+                        className="p-0.5 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>)}
+
             {tplErr && <p className="text-xs text-red-500">⚠ {tplErr}</p>}
-            {!tplErr && tplForm.json.trim() && (() => {
-              try {
-                const p = parseTemplate(tplForm.json)
-                return (
-                  <p className="text-xs text-emerald-600">
-                    ✓ อ่านได้: {p.devices.length} อุปกรณ์ · {p.devices.reduce((n, d) => n + d.tasks.length, 0)} รายการตรวจ · inventory {p.inventory.length} แถว
-                  </p>
-                )
-              } catch { return null }
-            })()}
+
+            {tplMode === 'form' && draft.devices.length > 0 && (
+              <p className="text-xs text-emerald-600">
+                ✓ {draft.devices.length} อุปกรณ์ · {draft.devices.reduce((n, d) => n + d.tasks.length, 0)} รายการตรวจ · inventory {draft.inventory.length} แถว
+              </p>
+            )}
+            {tplEditId && (
+              <p className="text-[11px] text-amber-600">
+                ⚠ ลบหรือสลับลำดับรายการตรวจของ template ที่มีงานทำอยู่แล้ว จะทำให้รูปและผลของงานเก่าหาที่อยู่ไม่เจอ —
+                ถ้าจะรื้อโครงใหญ่ ให้กด "ทำสำเนา" แล้วแก้ในสำเนาแทน
+              </p>
+            )}
+
             <div className="flex gap-2">
-              <Button type="submit" className="flex-1 justify-center">บันทึก Template</Button>
+              <Button type="submit" className="flex-1 justify-center"
+                disabled={tplMode === 'form' && draft.devices.length === 0}>
+                {tplEditId ? 'บันทึกการแก้ไข' : 'สร้าง Template'}
+              </Button>
               <Button type="button" variant="ghost" onClick={() => setShowTplMgr(false)}>ยกเลิก</Button>
             </div>
           </form>

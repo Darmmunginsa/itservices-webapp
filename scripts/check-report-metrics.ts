@@ -6,7 +6,8 @@ import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
-import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName } from '../src/utils/pmReport'
+import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
+  serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows, incidentSla } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
@@ -402,6 +403,53 @@ eq(parseJobData('{broken', TPL).shots, {}, 'corrupt saved data falls back to emp
 
 eq(shotFileName('srv 1', '01', 2) === shotFileName('srv 1', '01', 2), false, 'file names are unique per upload')
 eq(/^shot_srv_1_01_2_/.test(shotFileName('srv 1', '01', 2)), true, 'and still say where they belong')
+
+// -- ตัวสร้าง template แบบกรอกฟอร์ม --
+// เก็บเป็น JSON รูปแบบเดิม → เขียนออกแล้วอ่านกลับต้องได้ของเดิม
+const round = parseTemplate(serializeTemplate(TPL))
+eq(round.title, TPL.title, 'round trip keeps the title')
+eq(round.devices.map(d => d.key), TPL.devices.map(d => d.key), 'round trip keeps device keys')
+eq(round.devices[0].tasks, TPL.devices[0].tasks, 'round trip keeps tasks')
+eq(round.inventory, TPL.inventory, 'round trip keeps inventory')
+eq(round.versionHistory, TPL.versionHistory, 'round trip keeps version history')
+
+eq(emptyTemplate().devices.length, 0, 'a new template starts with no devices')
+
+// key ต้องเป็น dev-N ไม่ผูกกับชื่อ — เปลี่ยนชื่ออุปกรณ์แล้วงานเก่าต้องยังหารูปเจอ
+eq(newDeviceKey([]), 'dev-1', 'first device key')
+eq(newDeviceKey([{ key: 'dev-1', name: 'a', tasks: [] }]), 'dev-2', 'next key skips the used one')
+eq(newDeviceKey([{ key: 'dev-2', name: 'a', tasks: [] }]), 'dev-1', 'gaps are reused')
+
+// เปลี่ยนชื่ออุปกรณ์ไม่กระทบที่อยู่ของรูป
+const renamed = structuredClone(TPL)
+renamed.devices[0].name = 'ชื่อใหม่'
+eq(slotKey(renamed.devices[0].key, '01'), slotKey(TPL.devices[0].key, '01'),
+  'renaming a device does not move where its screenshots live')
+
+// วางรายการหลายบรรทัด
+eq(parseTaskLines('a' + NL + 'b' + NL + 'c').map(t => t.no), ['01', '02', '03'], 'pasted lines get numbered')
+eq(parseTaskLines('1. ตรวจ log' + NL + '02) ตรวจ LED' + NL + '- ตรวจพัดลม').map(t => t.name),
+  ['ตรวจ log', 'ตรวจ LED', 'ตรวจพัดลม'], 'numbering and bullets copied from Word are stripped')
+eq(parseTaskLines('a' + NL + NL + '  ' + NL + 'b').length, 2, 'blank lines dropped')
+eq(parseTaskLines('').length, 0, 'nothing pasted, nothing added')
+
+eq(nextTaskNo([]), '01', 'first task number')
+eq(nextTaskNo([{ no: '01', name: 'x' }]), '02', 'next task number')
+eq(renumberTasks([{ no: '07', name: 'a' }, { no: '03', name: 'b' }]).map(t => t.no), ['01', '02'],
+  'renumbering fixes gaps after delete or reorder')
+
+// วาง inventory หลายแถว
+const inv = parseInventoryLines('SGH1, HPE DL380' + NL + 'EZL2 | SN3600B')
+eq(inv.map(r => [r.no, r.serial, r.role]), [['01', 'SGH1', 'HPE DL380'], ['02', 'EZL2', 'SN3600B']],
+  'comma and pipe both separate serial from role')
+eq(parseInventoryLines('S1, a, b')[0].role, 'a, b', 'extra commas stay part of the role')
+eq(parseInventoryLines('x', 5)[0].no, '05', 'numbering continues from the existing rows')
+
+// สลับลำดับ
+eq(moveItem(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c'], 'move down')
+eq(moveItem(['a', 'b', 'c'], 2, -1), ['a', 'c', 'b'], 'move up')
+eq(moveItem(['a', 'b'], 0, -1), ['a', 'b'], 'moving the first item up changes nothing')
+eq(moveItem(['a', 'b'], 1, 1), ['a', 'b'], 'moving the last item down changes nothing')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

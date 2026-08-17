@@ -212,3 +212,83 @@ export function shotFileName(deviceKey: string, taskNo: string, seq: number): st
   const safe = deviceKey.replace(/[^A-Za-z0-9ก-๙_-]+/g, '_').slice(0, 40)
   return `shot_${safe}_${taskNo}_${seq}_${Math.random().toString(36).slice(2, 7)}.png`
 }
+
+// ─── สร้าง/แก้ template แบบกรอกฟอร์ม ────────────────────────────────────────
+// เก็บลง SharePoint เป็น JSON รูปแบบเดียวกับเครื่องมือเดิม → วาง JSON เข้ามาก็ยังได้
+// และ template ที่สร้างจากฟอร์มก็ export กลับไปใช้กับเครื่องมือเดิมได้
+
+/** แปลง template กลับเป็น JSON รูปแบบเดิม (ให้ parseTemplate อ่านได้ และเครื่องมือเดิมก็อ่านได้) */
+export function serializeTemplate(t: PmTemplate): string {
+  return JSON.stringify({
+    title: t.title,
+    meta: t.meta,
+    version_history: t.versionHistory,
+    inventory: t.inventory,
+    devices: t.devices.map(d => ({
+      key: d.key,
+      name: d.name,
+      tasks: d.tasks.map(x => ({ no: x.no, name: x.name, label: x.name })),
+    })),
+  }, null, 2)
+}
+
+export function emptyTemplate(): PmTemplate {
+  return {
+    title: '',
+    meta: { customer: '', site: '', pm_date: '', engineer: '', so_number: '' },
+    versionHistory: [{ version: '1.0', date: '', change: 'Initial Document', author: '' }],
+    inventory: [],
+    devices: [],
+  }
+}
+
+/**
+ * key ใหม่ที่ไม่ซ้ำของใครในชุดนี้
+ * ตั้งใจให้เป็น dev-N ไม่ใช่ชื่ออุปกรณ์ — เพราะ key คือที่อยู่ของรูปและผลตรวจ
+ * ถ้าผูกกับชื่อ พอเปลี่ยนชื่ออุปกรณ์ทีหลัง งานที่ทำไว้แล้วจะหาที่อยู่ไม่เจอ
+ */
+export function newDeviceKey(devices: PmDevice[]): string {
+  const used = new Set(devices.map(d => d.key))
+  for (let i = 1; i < 10_000; i++) {
+    const k = `dev-${i}`
+    if (!used.has(k)) return k
+  }
+  return `dev-${Date.now()}`
+}
+
+/** เลข task ถัดไปแบบ 01, 02, ... */
+export const nextTaskNo = (tasks: PmTask[]): string => String(tasks.length + 1).padStart(2, '0')
+
+/** ไล่เลข task ใหม่ทั้งชุด — ใช้หลังลบหรือสลับลำดับ ไม่ให้เลขขาดหรือกลับหัว */
+export const renumberTasks = (tasks: PmTask[]): PmTask[] =>
+  tasks.map((t, i) => ({ ...t, no: String(i + 1).padStart(2, '0') }))
+
+/** วางข้อความหลายบรรทัด → รายการ task (บรรทัดละ 1 รายการ) — เร็วกว่าพิมพ์ทีละช่อง 30 รอบ */
+export function parseTaskLines(text: string): PmTask[] {
+  const lines = (text ?? '').split(/\r?\n/)
+    .map(l => l.replace(/^\s*(?:\d+[.)]\s*|[-•]\s*)/, '').trim())   // ตัด "1." "01)" "-" ที่ก็อปมาด้วย
+    .filter(Boolean)
+  return renumberTasks(lines.map(name => ({ no: '', name })))
+}
+
+/** วางข้อความหลายบรรทัด → แถว inventory (`serial, role` หรือ `serial | role`) */
+export function parseInventoryLines(text: string, startNo = 1): PmInventoryRow[] {
+  return (text ?? '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map((line, i) => {
+    const parts = line.split(/\s*[|,\t]\s*/)
+    return {
+      no: String(startNo + i).padStart(2, '0'),
+      serial: (parts[0] ?? '').trim(),
+      role: parts.slice(1).join(', ').trim(),
+    }
+  })
+}
+
+/** ย้ายรายการขึ้น/ลง — คืนชุดใหม่ ไม่แตะของเดิม */
+export function moveItem<T>(arr: T[], from: number, dir: -1 | 1): T[] {
+  const to = from + dir
+  if (from < 0 || from >= arr.length || to < 0 || to >= arr.length) return arr
+  const out = [...arr]
+  const [x] = out.splice(from, 1)
+  out.splice(to, 0, x)
+  return out
+}
