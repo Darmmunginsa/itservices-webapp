@@ -126,6 +126,10 @@
     overflow: visible !important;
     max-height: none !important;
   }
+
+  /* ขึ้นหน้าใหม่ตรงจุดที่กำหนดเอง — ใช้กับรายงาน PM ที่แยกหน้าตามอุปกรณ์ */
+  .print-break-before { break-before: page; page-break-before: always; }
+  .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
   table { break-inside: auto; }
   tr, thead { break-inside: avoid; }
   thead { display: table-header-group; }   /* หัวตารางซ้ำทุกหน้า */

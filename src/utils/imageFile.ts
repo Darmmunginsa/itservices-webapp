@@ -17,3 +17,22 @@ export async function makeSquareImageFile(src: File, size: number, prefix: strin
   // ห้ามขึ้นต้นด้วย '_' — SharePoint ปฏิเสธ (ArgumentOutOfRangeException: fileName)
   return new File([blob], `${prefix}${Date.now()}.png`, { type: 'image/png' })
 }
+
+/**
+ * ย่อภาพให้กว้างไม่เกิน maxW (คงสัดส่วน) แล้วคืนเป็น PNG File
+ * ใช้กับ screenshot ที่แคปมาลงรายงาน — จอ 4K ให้ไฟล์ 8MB/ภาพ ซึ่งเกินจำเป็น
+ * และรายงานหนึ่งฉบับมีหลายสิบภาพ ถ้าไม่ย่อจะอัปโหลดช้าและกินที่ SharePoint
+ */
+export async function resizeImageFile(src: Blob, maxW: number, fileName: string): Promise<File> {
+  const bitmap = await createImageBitmap(src)
+  const scale = Math.min(1, maxW / bitmap.width)
+  const w = Math.max(1, Math.round(bitmap.width * scale))
+  const h = Math.max(1, Math.round(bitmap.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w; canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(bitmap, 0, 0, w, h)
+  bitmap.close?.()
+  const blob: Blob = await new Promise(res => canvas.toBlob(b => res(b!), 'image/png'))
+  return new File([blob], fileName, { type: 'image/png' })
+}

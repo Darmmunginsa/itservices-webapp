@@ -6,6 +6,7 @@ import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
+import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName } from '../src/utils/pmReport'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
 import { periodStats, buildPersonRows, delta, median, closedOnTime, resolutionHours, scoreRows, incidentSla } from '../src/utils/reportMetrics'
 import type { TicketLike, PersonRow } from '../src/utils/reportMetrics'
@@ -327,6 +328,80 @@ eq(countLinks('[[a.png]] https://a.dev'), 1, 'a file token is not counted as a l
 eq(referencedFiles('[[a.png]] x [[b.pdf]] y [[a.png]]'), ['a.png', 'b.pdf'], 'referenced files are listed once each')
 eq(referencedFiles('ไม่มีไฟล์'), [], 'no tokens, no files')
 eq(referencedFiles(undefined), [], 'no content, no files')
+
+// -- เครื่องมือทำรายงาน PM (utils/pmReport) --
+// วางไฟล์ config ของเครื่องมือเดิมมาได้ตรง ๆ
+const CFG = JSON.stringify({
+  template: 'Preventive Maintenance.docx',
+  meta: { customer: '', site: '', pm_date: '', engineer: '', so_number: '' },
+  version_history: [{ version: '1.0', date: '30-September-2025', change: 'Initial Document', author: 'Darm' }],
+  inventory: [{ no: '01', serial: 'SGH123W04V', role: 'HPE DL380' }, { no: '02', serial: 'SGH123W04Z', role: 'HPE DL380' }],
+  devices: [
+    { key: 'srv1', name: 'HPE DL380 (SGH123W04V)', tasks: [{ no: '01', label: 'Event logs' }, { no: '02', name: 'LED check' }] },
+    { key: 'sw1',  name: 'SAN Switch', tasks: [{ no: '01', name: 'Port status' }] },
+  ],
+})
+const TPL = parseTemplate(CFG)
+eq(TPL.title, 'Preventive Maintenance', 'title falls back to the template filename without .docx')
+eq(TPL.devices.length, 2, 'devices parsed')
+eq(TPL.devices[0].tasks[0].name, 'Event logs', 'a task using "label" instead of "name" still reads')
+eq(TPL.inventory.length, 2, 'inventory parsed')
+eq(TPL.versionHistory[0].author, 'Darm', 'version history parsed')
+
+// ทนของที่กรอกไม่ครบ
+const loose = parseTemplate(JSON.stringify({ devices: [{ name: 'A', tasks: [{ name: 'x' }, { name: 'y' }] }] }))
+eq(loose.devices[0].key, 'A', 'a device with no key uses its name')
+eq(loose.devices[0].tasks.map(t => t.no), ['01', '02'], 'tasks with no number get numbered in order')
+
+// key ซ้ำต้องถูกแยก ไม่งั้นรูปของสองอุปกรณ์จะทับกัน
+const dupKeys = parseTemplate(JSON.stringify({ devices: [{ key: 'k', name: 'A', tasks: [] }, { key: 'k', name: 'B', tasks: [] }] }))
+eq(dupKeys.devices[0].key === dupKeys.devices[1].key, false, 'duplicate device keys are made unique')
+
+let threw = ''
+try { parseTemplate('{oops') } catch (e) { threw = (e as Error).message }
+eq(threw.length > 0, true, 'unreadable JSON reports a reason instead of crashing silently')
+try { parseTemplate('{}') } catch (e) { threw = (e as Error).message }
+eq(threw.includes('อุปกรณ์'), true, 'a template with no devices says so')
+
+// ── ตัวเลข Figure ──
+const data = emptyJobData(TPL)
+data.shots[slotKey('srv1', '01')] = [{ file: 'a.png', caption: 'A' }, { file: 'b.png', caption: 'B' }]
+data.shots[slotKey('srv1', '02')] = [{ file: 'c.png', caption: 'C' }]
+data.shots[slotKey('sw1', '01')] = [{ file: 'd.png', caption: 'D' }]
+const figs = numberFigures(TPL, data)
+eq(figs.map(f => f.figure), [1, 2, 3, 4], 'figures are numbered 1..N across the whole document')
+eq(figs.map(f => f.caption), ['A', 'B', 'C', 'D'], 'in device order, then task order, then paste order')
+eq(figuresOf(figs, 'sw1').map(f => f.figure), [4], 'the second device continues the numbering, it does not restart')
+eq(numberFigures(TPL, emptyJobData(TPL)).length, 0, 'no shots, no figures')
+
+// ── ความครบก่อนพิมพ์ ──
+const prog = progressOf(TPL, data)
+eq(prog.tasks, 3, 'three tasks in total')
+eq(prog.answered, 0, 'nothing ticked yet')
+eq(prog.shots, 4, 'four screenshots')
+eq(prog.devicesNoShot, [], 'both devices have at least one shot')
+eq(prog.devicesNoRec.length, 2, 'neither device has recommendations yet')
+eq(prog.invBlank, 2, 'no inventory status chosen yet')
+eq(prog.metaMissing.length, 5, 'every header field is still blank')
+
+data.results[slotKey('srv1', '01')] = 'Pass'
+data.recommendations['srv1'] = 'ปกติ'
+data.invStatus['SGH123W04V'] = 'Normal'
+data.meta.customer = 'ACME'
+const prog2 = progressOf(TPL, data)
+eq([prog2.answered, prog2.invBlank, prog2.devicesNoRec.length], [1, 1, 1], 'progress reflects what was filled in')
+eq(prog2.metaMissing.includes('ลูกค้า'), false, 'a filled header field drops off the missing list')
+
+const noShot = progressOf(TPL, emptyJobData(TPL))
+eq(noShot.devicesNoShot.length, 2, 'devices with no screenshot are named so they cannot be forgotten')
+
+// ── เก็บ/อ่านงานกลับ ──
+eq(parseJobData(JSON.stringify(data), TPL).results, data.results, 'saved work reads back identically')
+eq(parseJobData(undefined, TPL).shots, {}, 'a job never saved starts empty')
+eq(parseJobData('{broken', TPL).shots, {}, 'corrupt saved data falls back to empty instead of breaking the page')
+
+eq(shotFileName('srv 1', '01', 2) === shotFileName('srv 1', '01', 2), false, 'file names are unique per upload')
+eq(/^shot_srv_1_01_2_/.test(shotFileName('srv 1', '01', 2)), true, 'and still say where they belong')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
