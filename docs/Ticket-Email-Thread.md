@@ -40,9 +40,16 @@ Agent พิมพ์คอมเมนต์ External ใน Helpdesk
 
 สร้างที่ https://make.powerautomate.com → **Create** → **Automated cloud flow**
 
-### 1. Trigger
+### 1. Trigger — เลือกให้ตรงชนิดของกล่องเมล
 
-**When a new email arrives (V3)** — บัญชี `support@itservices.co.th`
+`support@itservices.co.th` เป็นกล่องแบบไหน เลือก trigger คนละตัว:
+
+| ถ้า support@ คือ | ใช้ trigger | เงื่อนไข |
+|---|---|---|
+| **Shared mailbox** (ไม่มี license ของตัวเอง) | **When a new email arrives in a shared mailbox (V2)** | บัญชีที่สร้าง flow ต้องมีสิทธิ์ **Full Access** ที่กล่องนั้น และกรอก Mailbox Address = `support@itservices.co.th` |
+| **บัญชีผู้ใช้จริง** (มี license, login ได้) | **When a new email arrives (V3)** | ต้อง**สร้าง flow ด้วยบัญชีนั้นเอง** — trigger นี้ฟังกล่องของคนที่เชื่อม connection เท่านั้น |
+
+> เลือกผิดตัวคือสาเหตุที่ flow "รันไม่เคยทำงาน" บ่อยที่สุด — ไม่มี error ให้เห็น มันแค่ไม่ถูก trigger
 
 | ช่อง | ค่า |
 |---|---|
