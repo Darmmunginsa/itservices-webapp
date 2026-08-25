@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, FolderOpen, FileSpreadsheet, X } from 'lucide-react'
+import { Plus, Edit2, Trash2, ExternalLink, Search, Copy, Check, BookOpen, Paperclip, FolderOpen, FileSpreadsheet, X, Folder, FolderPlus, ChevronRight, FolderInput, Inbox } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
@@ -16,11 +16,16 @@ import { parseMediaLinks } from '../utils/youtube'
 import { parseSections, countLinks, referencedFiles } from '../utils/richNote'
 import { RichNote } from '../components/common/RichNote'
 import { REF_TYPES, REF_TYPE_TH, REF_TYPE_ICON, type ProjectReference, type ProjectReferenceLink } from '../types/reference'
+import {
+  buildTree, flatten, subtreeIds, pathLabel, moveTargets, countsWithDescendants, ROOT,
+  type FolderRow, type FolderNode,
+} from '../utils/folderTree'
 import { useT } from '../i18n/useT'
 
 const LIST = 'PM_References'
 const NL = String.fromCharCode(10)
 const LINK_LIST = 'PM_ProjectReferences'
+const FOLDER_LIST = 'PM_RefFolders'
 
 const EMPTY = {
   Title: '', RefType: 'Book', Authors: '', Year: '', Publisher: '',
@@ -50,6 +55,16 @@ export default function References() {
   const [view, setView] = useViewMode('references')
   const [topicFilter, setTopicFilter] = useState('')
   const [detail, setDetail] = useState<ProjectReference | null>(null)   // รายละเอียดเต็ม (ใช้กับมุมมองตาราง)
+  // ── ตะกร้าเก็บ (โฟลเดอร์ซ้อนชั้น) ──
+  const [folders, setFolders] = useState<FolderRow[]>([])
+  const [folderFilter, setFolderFilter] = useState<number | null>(null)   // null = ทั้งหมด
+  const [withSub, setWithSub] = useState(true)                            // รวมโฟลเดอร์ย่อย
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [showFolderMgr, setShowFolderMgr] = useState(false)
+  const [fName, setFName] = useState('')
+  const [fParent, setFParent] = useState<number>(ROOT)
+  const [fEditId, setFEditId] = useState<number | null>(null)
+  const [movingRef, setMovingRef] = useState<ProjectReference | null>(null)
   const [preview, setPreview] = useState(false)   // ดูตัวอย่างเนื้อหาในฟอร์มก่อนบันทึก
 
   function load() {
@@ -68,6 +83,9 @@ export default function References() {
     spGet<{ id: number; Title: string }>('PM_Projects', undefined, 'Id,Title', 'Title asc', 500)
       .then(ps => setProjectNames(Object.fromEntries(ps.map(p => [p.id, p.Title]))))
       .catch(() => {})
+    // ตะกร้าเก็บ — ลิสต์ยังไม่มีก็ใช้งานได้ปกติ แค่ไม่มีโฟลเดอร์ให้เลือก
+    spGet<FolderRow>(FOLDER_LIST, undefined, 'Id,Title,ParentID,SortOrder', 'Title asc', 500)
+      .then(setFolders).catch(() => setFolders([]))
   }
   useEffect(() => { load() }, [])
 
@@ -150,14 +168,36 @@ export default function References() {
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'th'))
   }, [rows])
 
+  const tree = useMemo(() => buildTree(folders), [folders])
+
+  // นับของในแต่ละตะกร้า (รวมลูกหลาน) — แม่ที่ลูกมีของต้องไม่ขึ้น 0
+  const folderCounts = useMemo(() => {
+    const direct = new Map<number, number>()
+    for (const r of rows) {
+      const f = Number(r.FolderID ?? 0)
+      if (f) direct.set(f, (direct.get(f) ?? 0) + 1)
+    }
+    return countsWithDescendants(tree, direct)
+  }, [rows, tree])
+
+  const unfiled = useMemo(() => rows.filter(r => !Number(r.FolderID ?? 0)).length, [rows])
+
   const filtered = useMemo(() => rows.filter(r => {
+    if (folderFilter !== null) {
+      const rf = Number(r.FolderID ?? 0)
+      if (folderFilter === ROOT) { if (rf) return false }                       // ยังไม่จัดเข้าตะกร้า
+      else {
+        const allow = withSub ? subtreeIds(tree, folderFilter) : [folderFilter]
+        if (!allow.includes(rf)) return false
+      }
+    }
     if (typeFilter && (r.RefType || 'Other') !== typeFilter) return false
     if (topicFilter && !(r.Topics || '').split(',').map(x => x.trim()).includes(topicFilter)) return false
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return [r.Title, r.Authors, r.Publisher, r.Identifier, r.Summary, r.Topics, r.Media]
       .some(v => (v || '').toLowerCase().includes(q))
-  }), [rows, search, typeFilter, topicFilter])
+  }), [rows, search, typeFilter, topicFilter, folderFilter, withSub, tree])
 
   const grouped = useMemo(() => {
     const m = new Map<string, ProjectReference[]>()
@@ -177,6 +217,61 @@ export default function References() {
     return m
   }, [usage])
 
+  // ── ตะกร้าเก็บ ──
+  async function saveFolder(e: React.FormEvent) {
+    e.preventDefault()
+    const name = fName.trim()
+    if (!name) return
+    try {
+      if (fEditId) {
+        await spUpdate(FOLDER_LIST, fEditId, { Title: name, ParentID: fParent })
+        setFolders(prev => prev.map(f => f.id === fEditId ? { ...f, Title: name, ParentID: fParent } : f))
+        addToast('success', 'บันทึกตะกร้าแล้ว')
+      } else {
+        const res = await spCreate(FOLDER_LIST, { Title: name, ParentID: fParent })
+        setFolders(prev => [...prev, { id: res.id, Title: name, ParentID: fParent }])
+        // กางตะกร้าแม่ให้เห็นตัวที่เพิ่งสร้าง ไม่ต้องไปหาเอง
+        if (fParent) setExpanded(prev => new Set(prev).add(fParent))
+        addToast('success', 'สร้างตะกร้าแล้ว')
+      }
+      setFName(''); setFEditId(null); setFParent(ROOT)
+    } catch { addToast('error', 'บันทึกไม่สำเร็จ — ลิสต์ PM_RefFolders มีหรือยัง') }
+  }
+
+  async function removeFolder(node: FolderNode) {
+    const ids = subtreeIds(tree, node.id)
+    const items = rows.filter(r => ids.includes(Number(r.FolderID ?? 0)))
+    const msg = ids.length > 1
+      ? `ลบ "${node.name}" และตะกร้าย่อยอีก ${ids.length - 1} อัน?`
+      : `ลบตะกร้า "${node.name}"?`
+    const warn = items.length
+      ? `\n\nรายการ ${items.length} ชิ้นข้างในจะถูกย้ายไป "ยังไม่จัดเข้าตะกร้า" (ไม่ถูกลบ)`
+      : ''
+    if (!window.confirm(msg + warn)) return
+    try {
+      // ย้ายของออกก่อน แล้วค่อยลบตะกร้า — ลบก่อนจะเหลือของที่ชี้ไปหาตะกร้าที่ไม่มีแล้ว
+      for (const r of items) {
+        await spUpdate(LIST, r.id, { FolderID: null })
+      }
+      for (const id of ids) {
+        try { await spDelete(FOLDER_LIST, id) } catch { /* ลบไปแล้วก็ข้าม */ }
+      }
+      setRows(prev => prev.map(r => ids.includes(Number(r.FolderID ?? 0)) ? { ...r, FolderID: 0 } : r))
+      setFolders(prev => prev.filter(f => !ids.includes(f.id)))
+      if (folderFilter !== null && ids.includes(folderFilter)) setFolderFilter(null)
+      addToast('success', 'ลบตะกร้าแล้ว')
+    } catch { addToast('error', 'ลบไม่สำเร็จ') }
+  }
+
+  async function moveRefTo(r: ProjectReference, folderId: number) {
+    try {
+      await spUpdate(LIST, r.id, { FolderID: folderId || null })
+      setRows(prev => prev.map(x => x.id === r.id ? { ...x, FolderID: folderId } : x))
+      setMovingRef(null)
+      addToast('success', folderId ? `ย้ายไป "${pathLabel(tree, folderId)}" แล้ว` : 'นำออกจากตะกร้าแล้ว')
+    } catch { addToast('error', 'ย้ายไม่สำเร็จ') }
+  }
+
   async function exportExcel() {
     try {
       const XLSX = await import('xlsx')
@@ -189,6 +284,7 @@ export default function References() {
         'ครั้งที่พิมพ์': r.Edition ?? '',
         'เลขอ้างอิง': r.Identifier ?? '',
         'ตำแหน่งที่อ้างถึง': r.Locator ?? '',
+        'ตะกร้าเก็บ': pathLabel(tree, Number(r.FolderID ?? 0)),
         'หัวข้อ': r.Topics ?? '',
         'URL': r.URL ?? '',
         'จำนวนคลิป/ลิงก์': parseMediaLinks(r.Media).length,
@@ -199,7 +295,7 @@ export default function References() {
         'บรรทัดอ้างอิง': formatCitation(r),
       }))
       const ws = XLSX.utils.json_to_sheet(rowsOut)
-      ws['!cols'] = [12, 40, 24, 6, 20, 12, 20, 18, 22, 34, 14, 11, 13, 28, 60, 60].map(w => ({ wch: w }))
+      ws['!cols'] = [12, 40, 24, 6, 20, 12, 20, 18, 26, 22, 34, 14, 11, 13, 28, 60, 60].map(w => ({ wch: w }))
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'แหล่งอ้างอิง')
       XLSX.writeFile(wb, `references-${new Date().toISOString().slice(0, 10)}.xlsx`)
@@ -231,6 +327,15 @@ export default function References() {
       render: r => <span className="text-gray-500">{r.Year || '-'}</span> },
     { key: 'ident', label: 'เลขอ้างอิง', sortValue: r => r.Identifier ?? '',
       render: r => <span className="text-gray-500 truncate block max-w-[160px]">{r.Identifier || '-'}</span> },
+    {
+      key: 'folder', label: 'ตะกร้า', sortValue: r => pathLabel(tree, Number(r.FolderID ?? 0)),
+      render: r => {
+        const f = Number(r.FolderID ?? 0)
+        return f
+          ? <span className="text-gray-600 dark:text-gray-300 truncate block max-w-[200px]">{pathLabel(tree, f)}</span>
+          : <span className="text-gray-300">-</span>
+      },
+    },
     {
       key: 'sections', label: 'หัวข้อ', align: 'center',
       sortValue: r => parseSections(r.Summary).filter(x => x.heading).length,
@@ -309,6 +414,11 @@ export default function References() {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ค้นหาชื่อเรื่อง / ผู้แต่ง / ISBN / หัวข้อ..."
                 className="flex-1 bg-transparent text-sm focus:outline-none" />
             </div>
+            {canEdit && (
+              <Button variant="secondary" onClick={() => { setFName(''); setFEditId(null); setFParent(ROOT); setShowFolderMgr(true) }}>
+                <FolderPlus size={15} /> ตะกร้าเก็บ
+              </Button>
+            )}
             {rows.length > 0 && (<>
               <ViewToggle mode={view} onChange={setView} />
               <Button variant="secondary" onClick={() => copy(formatBibliography(filtered), '__all__')}
@@ -350,6 +460,82 @@ export default function References() {
                 <button onClick={() => setTopicFilter('')} className="text-xs text-gray-400 hover:text-red-500 inline-flex items-center gap-0.5">
                   <X size={11} /> ล้าง
                 </button>
+              )}
+            </div>
+          )}
+
+          {/* ── ตะกร้าเก็บ (โฟลเดอร์ซ้อนชั้น) ── */}
+          {(folders.length > 0 || unfiled > 0) && (
+            <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-2">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-[11px] text-gray-400">ตะกร้าเก็บ</span>
+                {folders.length > 0 && (
+                  <label className="flex items-center gap-1 text-[11px] text-gray-500 cursor-pointer select-none">
+                    <input type="checkbox" checked={withSub} onChange={e => setWithSub(e.target.checked)}
+                      className="w-3 h-3 accent-primary-600" />
+                    รวมตะกร้าย่อย
+                  </label>
+                )}
+                {folderFilter !== null && (
+                  <span className="text-[11px] text-primary-600">
+                    {folderFilter === ROOT ? 'ยังไม่จัดเข้าตะกร้า' : pathLabel(tree, folderFilter)}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                <button onClick={() => setFolderFilter(null)}
+                  className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${folderFilter === null ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                  ทั้งหมด ({rows.length})
+                </button>
+                {unfiled > 0 && (
+                  <button onClick={() => setFolderFilter(folderFilter === ROOT ? null : ROOT)}
+                    className={`text-xs px-2.5 py-1 rounded-lg inline-flex items-center gap-1 transition-colors ${folderFilter === ROOT ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                    <Inbox size={12} /> ยังไม่จัดเข้าตะกร้า ({unfiled})
+                  </button>
+                )}
+              </div>
+
+              {folders.length > 0 && (
+                <div className="mt-1 space-y-0.5 max-h-56 overflow-y-auto pr-1">
+                  {flatten(tree, expanded).map(n => (
+                    <div key={n.id} className="flex items-center gap-1 group/f"
+                      style={{ paddingLeft: n.depth * 14 }}>
+                      {n.children.length > 0 ? (
+                        <button onClick={() => setExpanded(prev => {
+                          const next = new Set(prev)
+                          if (next.has(n.id)) next.delete(n.id); else next.add(n.id)
+                          return next
+                        })} className="p-0.5 text-gray-400 hover:text-primary-600 flex-shrink-0">
+                          <ChevronRight size={12} className={`transition-transform ${expanded.has(n.id) ? 'rotate-90' : ''}`} />
+                        </button>
+                      ) : <span className="w-[17px] flex-shrink-0" />}
+
+                      <button onClick={() => setFolderFilter(folderFilter === n.id ? null : n.id)}
+                        className={`flex-1 min-w-0 text-left text-xs px-2 py-0.5 rounded-lg inline-flex items-center gap-1.5 transition-colors ${
+                          folderFilter === n.id ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+                        <Folder size={12} className="flex-shrink-0" />
+                        <span className="truncate">{n.name}</span>
+                        <span className={folderFilter === n.id ? 'text-white/70' : 'text-gray-400'}>
+                          ({folderCounts.get(n.id) ?? 0})
+                        </span>
+                      </button>
+
+                      {canEdit && (
+                        <span className="flex items-center gap-0.5 opacity-0 group-hover/f:opacity-100 transition-opacity flex-shrink-0">
+                          <button onClick={() => { setFEditId(null); setFParent(n.id); setFName(''); setShowFolderMgr(true) }}
+                            title="สร้างตะกร้าย่อยข้างใน" className="p-0.5 text-gray-400 hover:text-primary-600"><FolderPlus size={12} /></button>
+                          <button onClick={() => { setFEditId(n.id); setFName(n.name); setFParent(n.parentId); setShowFolderMgr(true) }}
+                            title="เปลี่ยนชื่อ / ย้าย" className="p-0.5 text-gray-400 hover:text-primary-600"><Edit2 size={12} /></button>
+                          {canDelete && (
+                            <button onClick={() => removeFolder(n)} title="ลบตะกร้า"
+                              className="p-0.5 text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
@@ -408,6 +594,11 @@ export default function References() {
                                   <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
                                 ))}
                                 {r.Identifier && <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">{r.Identifier}</Badge>}
+                                {Number(r.FolderID ?? 0) > 0 && (
+                                  <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                                    📁 {pathLabel(tree, Number(r.FolderID))}
+                                  </Badge>
+                                )}
                                 {parseSections(r.Summary).filter(x => x.heading).length > 0 && (
                                   <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                                     {parseSections(r.Summary).filter(x => x.heading).length} หัวข้อ
@@ -449,7 +640,13 @@ export default function References() {
                                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                                 {copied === String(r.id) ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
                               </button>
-                              <button onClick={() => setOpenId(open ? null : r.id)} title="สรุป / ไฟล์แนบ"
+                              {canEdit && (
+                            <button onClick={() => setMovingRef(r)} title="ย้ายเข้าตะกร้า"
+                              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
+                              <FolderInput size={13} />
+                            </button>
+                          )}
+                          <button onClick={() => setOpenId(open ? null : r.id)} title="สรุป / ไฟล์แนบ"
                                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${open ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                                 <Paperclip size={13} />
                               </button>
@@ -485,6 +682,74 @@ export default function References() {
         </>)}
       </div>
 
+      {/* ── สร้าง / แก้ตะกร้าเก็บ ── */}
+      <Modal open={showFolderMgr} onClose={() => setShowFolderMgr(false)}
+        title={fEditId ? 'แก้ไขตะกร้าเก็บ' : 'สร้างตะกร้าเก็บ'} size="md">
+        <form onSubmit={e => { void saveFolder(e); }} className="space-y-3">
+          <div>
+            <label className={labelCx}>ชื่อตะกร้า *</label>
+            <input required autoFocus value={fName} onChange={e => setFName(e.target.value)}
+              className={inputCx} placeholder="เช่น Network, Firewall, Fortigate" />
+          </div>
+          <div>
+            <label className={labelCx}>อยู่ใต้ตะกร้า</label>
+            <select value={String(fParent)} onChange={e => setFParent(Number(e.target.value))} className={inputCx}>
+              <option value="0">— ชั้นบนสุด —</option>
+              {/* ตอนแก้ไข ต้องไม่ให้เลือกตัวเองหรือลูกหลาน ไม่งั้นกิ่งจะหลุดหายทั้งกิ่ง */}
+              {(fEditId ? moveTargets(tree, fEditId) : flatten(tree)).map(n => (
+                <option key={n.id} value={String(n.id)}>
+                  {'\u00a0'.repeat(n.depth * 3)}{n.name}
+                </option>
+              ))}
+            </select>
+            {fEditId && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                ตะกร้าของตัวเองและตะกร้าย่อยไม่ขึ้นในรายการนี้ — ย้ายเข้าไปในตัวเองไม่ได้
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" className="flex-1 justify-center">{fEditId ? 'บันทึก' : 'สร้าง'}</Button>
+            <Button type="button" variant="ghost" onClick={() => setShowFolderMgr(false)}>ปิด</Button>
+          </div>
+          {!fEditId && folders.length > 0 && (
+            <p className="text-[11px] text-gray-400">
+              สร้างแล้วหน้าต่างนี้ไม่ปิด — พิมพ์ชื่อถัดไปได้เลย สร้างหลายอันรวดเดียว
+            </p>
+          )}
+        </form>
+      </Modal>
+
+      {/* ── ย้ายรายการเข้าตะกร้า ── */}
+      <Modal open={!!movingRef} onClose={() => setMovingRef(null)} title="ย้ายเข้าตะกร้าเก็บ" size="md">
+        {movingRef && (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-700 dark:text-gray-200 truncate">{movingRef.Title}</p>
+            <p className="text-[11px] text-gray-400">
+              อยู่ที่: {Number(movingRef.FolderID ?? 0) ? pathLabel(tree, Number(movingRef.FolderID)) : 'ยังไม่จัดเข้าตะกร้า'}
+            </p>
+            <div className="max-h-[45vh] overflow-y-auto space-y-0.5 border-t border-gray-100 dark:border-gray-800 pt-2">
+              <button onClick={() => void moveRefTo(movingRef, 0)}
+                className="w-full text-left text-xs px-2 py-1.5 rounded-lg inline-flex items-center gap-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300">
+                <Inbox size={12} /> — นำออกจากตะกร้า —
+              </button>
+              {flatten(tree).map(n => (
+                <button key={n.id} onClick={() => void moveRefTo(movingRef, n.id)}
+                  style={{ paddingLeft: 8 + n.depth * 14 }}
+                  className={`w-full text-left text-xs pr-2 py-1.5 rounded-lg inline-flex items-center gap-1.5 hover:bg-primary-50 dark:hover:bg-primary-900/20 ${
+                    Number(movingRef.FolderID ?? 0) === n.id ? 'text-primary-600 font-medium' : 'text-gray-600 dark:text-gray-300'}`}>
+                  <Folder size={12} className="flex-shrink-0" /> {n.name}
+                  {Number(movingRef.FolderID ?? 0) === n.id && <Check size={12} />}
+                </button>
+              ))}
+            </div>
+            {folders.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">ยังไม่มีตะกร้า — กด "ตะกร้าเก็บ" เพื่อสร้างก่อน</p>
+            )}
+          </div>
+        )}
+      </Modal>
+
       {/* รายละเอียดเต็ม — ใช้ตอนกดแถวในมุมมองตาราง */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.Title} size="lg">
         {detail && (
@@ -493,6 +758,17 @@ export default function References() {
               <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
                 {REF_TYPE_ICON[detail.RefType ?? 'Other'] ?? '🔖'} {REF_TYPE_TH[detail.RefType ?? 'Other'] ?? detail.RefType}
               </Badge>
+              {Number(detail.FolderID ?? 0) > 0 && (
+                <Badge className="bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                  📁 {pathLabel(tree, Number(detail.FolderID))}
+                </Badge>
+              )}
+              {canEdit && (
+                <button onClick={() => { const r = detail; setDetail(null); setMovingRef(r) }}
+                  className="text-[11px] text-primary-600 hover:underline inline-flex items-center gap-1">
+                  <FolderInput size={11} /> ย้ายตะกร้า
+                </button>
+              )}
               {(detail.Topics || '').split(',').map(t => t.trim()).filter(Boolean).map(t => (
                 <Badge key={t} className="bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">{t}</Badge>
               ))}

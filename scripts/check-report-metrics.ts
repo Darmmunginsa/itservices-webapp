@@ -6,6 +6,7 @@ import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
+import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
@@ -450,6 +451,68 @@ eq(moveItem(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c'], 'move down')
 eq(moveItem(['a', 'b', 'c'], 2, -1), ['a', 'c', 'b'], 'move up')
 eq(moveItem(['a', 'b'], 0, -1), ['a', 'b'], 'moving the first item up changes nothing')
 eq(moveItem(['a', 'b'], 1, 1), ['a', 'b'], 'moving the last item down changes nothing')
+
+// -- ตะกร้าเก็บแบบ sub-tree (utils/folderTree) --
+//   Network            (1)
+//     Firewall         (2)
+//       Fortigate      (3)
+//     Switch           (4)
+//   Server             (5)
+const FOLDERS = [
+  { id: 1, Title: 'Network', ParentID: 0 },
+  { id: 2, Title: 'Firewall', ParentID: 1 },
+  { id: 3, Title: 'Fortigate', ParentID: 2 },
+  { id: 4, Title: 'Switch', ParentID: 1 },
+  { id: 5, Title: 'Server', ParentID: 0 },
+]
+const TREE = buildTree(FOLDERS)
+eq(TREE.map(n => n.name), ['Network', 'Server'], 'two folders at the top')
+eq(TREE[0].children.map(n => n.name), ['Firewall', 'Switch'], 'children sorted by name')
+eq(TREE[0].children[0].children[0].name, 'Fortigate', 'nesting goes as deep as it is given')
+eq([TREE[0].depth, TREE[0].children[0].depth, TREE[0].children[0].children[0].depth], [0, 1, 2], 'depth counts from the root')
+eq(flatten(TREE).map(n => n.id), [1, 2, 3, 4, 5], 'flatten follows what is on screen, parent before children')
+
+// กางเฉพาะบางอัน
+eq(flatten(TREE, new Set([1])).map(n => n.id), [1, 2, 4, 5], 'a collapsed folder hides its children')
+eq(flatten(TREE, new Set<number>()).map(n => n.id), [1, 5], 'everything collapsed shows only the roots')
+
+eq(subtreeIds(TREE, 1), [1, 2, 3, 4], 'a subtree includes itself and every descendant')
+eq(subtreeIds(TREE, 3), [3], 'a leaf is its own subtree')
+eq(subtreeIds(TREE, 999), [], 'a folder that does not exist has no subtree')
+
+eq(pathOf(TREE, 3).map(n => n.name), ['Network', 'Firewall', 'Fortigate'], 'path from the root down')
+eq(pathLabel(TREE, 3), 'Network / Firewall / Fortigate', 'breadcrumb label')
+eq(pathLabel(TREE, 5), 'Server', 'a top-level folder is its own path')
+
+// ย้ายโฟลเดอร์ — ห้ามย้ายเข้าไปในตัวเองหรือลูกหลาน ไม่งั้นกิ่งจะหลุดหายทั้งกิ่ง
+eq(canMove(TREE, 1, 5), true, 'moving a folder under a sibling is fine')
+eq(canMove(TREE, 1, ROOT), true, 'moving to the top level is always allowed')
+eq(canMove(TREE, 1, 1), false, 'a folder cannot be its own parent')
+eq(canMove(TREE, 1, 2), false, 'a folder cannot move inside its own child')
+eq(canMove(TREE, 1, 3), false, 'nor inside a deeper descendant')
+eq(moveTargets(TREE, 1).map(n => n.id), [5], 'only folders outside its own subtree are offered')
+
+// ข้อมูลพัง — ต้องยังใช้งานได้ ไม่ใช่จอขาว
+const orphan = buildTree([{ id: 7, Title: 'Orphan', ParentID: 99 }])
+eq(orphan.map(n => n.name), ['Orphan'], 'a folder whose parent was deleted floats up instead of vanishing')
+
+const cycle = buildTree([
+  { id: 1, Title: 'A', ParentID: 2 },
+  { id: 2, Title: 'B', ParentID: 1 },
+])
+eq(cycle.length, 2, 'a cycle is broken by lifting both to the top rather than hanging')
+
+eq(buildTree([]).length, 0, 'no folders, no tree')
+eq(buildTree([{ id: 1, Title: '   ', ParentID: 0 }])[0].name, '(ไม่มีชื่อ)', 'a blank name still shows something clickable')
+
+// นับของรวมลูกหลาน — โฟลเดอร์แม่ที่ลูกมีของ ต้องไม่ขึ้น 0
+const direct = new Map([[2, 1], [3, 4], [5, 2]])
+const totals = countsWithDescendants(TREE, direct)
+eq(totals.get(3), 4, 'a leaf counts its own items')
+eq(totals.get(2), 5, 'a parent adds its children')
+eq(totals.get(1), 5, 'and the count carries all the way up')
+eq(totals.get(4), 0, 'an empty folder really is zero')
+eq(totals.get(5), 2, 'siblings are counted separately')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
