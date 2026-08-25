@@ -7,6 +7,7 @@ import { parseSections, parseInline, countLinks, referencedFiles } from '../src/
 import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } from '../src/utils/sla'
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
+import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
@@ -513,6 +514,81 @@ eq(totals.get(2), 5, 'a parent adds its children')
 eq(totals.get(1), 5, 'and the count carries all the way up')
 eq(totals.get(4), 0, 'an empty folder really is zero')
 eq(totals.get(5), 2, 'siblings are counted separately')
+
+// -- คลังความรู้สาธารณะ (utils/kb) --
+const SITE: SiteMeta = { siteTitle: 'iT Services Knowledge', org: 'iT Services', contact: 'support@itservices.co.th', homeUrl: 'https://itservices.co.th' }
+const ART: KbArticle = {
+  id: 7,
+  ArticleCode: 'ITS000123',
+  Title: 'พิมพ์ในช่องค้นหาไม่ได้เมื่อเผยแพร่ Explorer เป็น App',
+  Product: 'Citrix VDA',
+  Tags: 'Citrix, Explorer, Search',
+  ArticleStatus: 'Published',
+  Summary: 'พิมพ์ในช่องค้นหาไม่ได้',
+  Resolution: ['## ตรวจ Windows patch', '- ยืนยันว่า KB5014021 ติดตั้งแล้ว', 'ดูรายละเอียดที่ https://example.com/kb', '[[reg.png]]'].join(NL),
+  Cause: 'บั๊กของ MS',
+  Modified: '2026-08-17T10:00:00Z',
+  Created: '2026-03-31T04:05:00Z',
+  AttachmentFiles: [{ FileName: 'reg.png' }],
+}
+
+// ลิงก์ต้องยึดรหัสบทความ ไม่ใช่ชื่อเรื่อง — ลิงก์ที่ส่งลูกค้าไปแล้วต้องใช้ได้ตลอด
+eq(articleSlug(ART), 'its000123', 'slug comes from the article code')
+eq(articleFile(ART), 'its000123.html', 'file name follows the slug')
+eq(articleSlug({ ...ART, Title: 'เปลี่ยนชื่อเรื่องใหม่หมด' }), 'its000123', 'renaming the title does not change the link')
+eq(articleSlug({ id: 9, Title: 'x' }), 'article-9', 'no code falls back to the id, still stable')
+eq(articleSlug({ id: 9, Title: 'x', ArticleCode: 'ITS/123 456' }), 'its123456', 'unsafe characters are stripped from the file name')
+
+eq(assetPath(ART, 'reg.png'), 'assets/its000123/reg.png', 'images live under their own article folder')
+eq(assetPath(ART, 'a b?.png'), 'assets/its000123/a_b_.png', 'unsafe image names are made safe')
+
+// เนื้อหาผู้ใช้ถูกเผยแพร่สาธารณะ — ต้องหนี HTML ทุกจุด
+eq(esc('<script>alert(1)</script>'), '&lt;script&gt;alert(1)&lt;/script&gt;', 'tags are escaped')
+eq(esc('a & b "c" \'d\''), 'a &amp; b &quot;c&quot; &#39;d&#39;', 'ampersand and quotes are escaped')
+const evil = articleHtml({ ...ART, Title: '<img src=x onerror=alert(1)>' }, SITE)
+eq(evil.indexOf('<img src=x onerror') === -1, true, 'a script-ish title cannot break out into real markup')
+eq(evil.indexOf('&lt;img src=x onerror') > -1, true, 'it appears as text instead')
+
+// เนื้อหา → HTML
+const files = new Set(['reg.png'])
+const h = noteHtml(ART.Resolution, ART, files)
+eq(h.indexOf('<h3>ตรวจ Windows patch</h3>') > -1, true, 'headings become h3')
+eq(h.indexOf('<ul><li>') > -1, true, 'dashes become a list')
+eq(h.indexOf('href="https://example.com/kb"') > -1, true, 'urls become links')
+eq(h.indexOf('src="assets/its000123/reg.png"') > -1, true, 'attached images point at the exported file')
+eq(noteHtml('[[missing.png]]', ART, files), '', 'a reference to an unattached file is dropped, not shown as a warning to the public')
+eq(noteHtml('', ART, files), '', 'empty content produces nothing')
+eq(noteHtml(undefined, ART, files), '', 'missing content produces nothing')
+
+// หน้าบทความ
+const page = articleHtml(ART, SITE)
+eq(page.startsWith('<!doctype html>'), true, 'a complete standalone page')
+eq(page.indexOf('ITS000123') > -1, true, 'the code is shown to the reader')
+eq(page.indexOf('อาการ / รายละเอียด') > -1, true, 'details section')
+eq(page.indexOf('วิธีแก้ไข') > -1, true, 'resolution section')
+eq(page.indexOf('สาเหตุ') > -1, true, 'cause section')
+eq(page.indexOf('style.css') > -1, true, 'links the shared stylesheet')
+eq(articleHtml({ id: 1, Title: 'ว่าง' }, SITE).indexOf('วิธีแก้ไข'), -1, 'a section with no content is left out entirely')
+
+// หน้ารวม + ค้นหา
+const idx = indexHtml([ART], SITE)
+eq(idx.indexOf('its000123.html') > -1, true, 'the index links to the article')
+eq(idx.indexOf('search.json') > -1, true, 'the reader-side search loads its data file')
+const si = searchIndex([ART])
+eq(si[0].f, 'its000123.html', 'search entries point at the file')
+eq(si[0].t, si[0].t.toLowerCase(), 'search text is lowercased once at build time')
+eq(si[0].t.indexOf('citrix') > -1, true, 'tags are searchable')
+eq(si[0].t.indexOf('kb5014021') > -1, true, 'the resolution body is searchable')
+
+// ตรวจก่อนเผยแพร่
+eq(articleIssues(ART), [], 'a complete article has nothing outstanding')
+eq(articleIssues({ id: 1, Title: '' }).length, 4, 'an empty article lists everything missing')
+eq(articleIssues({ id: 1, Title: 'a', ArticleCode: 'X', Summary: 's', Resolution: 'r' }), [], 'cause is optional')
+
+eq(isPublished(ART), true, 'published')
+eq(isPublished({ ...ART, ArticleStatus: 'Draft' }), false, 'drafts are not published')
+eq(isPublished({ id: 1, Title: 'x' }), false, 'no status means not published')
+eq(tagList(ART), ['Citrix', 'Explorer', 'Search'], 'tags split on commas')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
