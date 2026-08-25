@@ -8,6 +8,7 @@ import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } fr
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
 import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
+import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
 import { presetRange, previousRange, buildBuckets, pickBucket, inRange, fromDateInput } from '../src/utils/period'
@@ -589,6 +590,74 @@ eq(isPublished(ART), true, 'published')
 eq(isPublished({ ...ART, ArticleStatus: 'Draft' }), false, 'drafts are not published')
 eq(isPublished({ id: 1, Title: 'x' }), false, 'no status means not published')
 eq(tagList(ART), ['Citrix', 'Explorer', 'Search'], 'tags split on commas')
+
+// -- ข้อความตอบกลับตอนปิดงาน (utils/closeTemplate) --
+const BODY = ['เรียน คุณ{{customer_name}}', '', '{{ticket_number}} แก้ไขแล้ว', '{{resolution}}', '', 'อ่านเพิ่มเติม', '{{kb_links}}', '', '{{agent_name}}'].join(NL)
+
+const full = renderClose(BODY, {
+  customer_name: 'สมชาย', ticket_number: 'HD-001', resolution: 'รีสตาร์ต service',
+  kb_links: '- วิธีแก้' + NL + '  https://x.dev/its1.html', agent_name: 'ดาร์ม',
+})
+eq(full.indexOf('เรียน คุณสมชาย') > -1, true, 'placeholders are filled')
+eq(full.indexOf('{{') === -1, true, 'no placeholder is left behind')
+eq(full.indexOf('อ่านเพิ่มเติม') > -1, true, 'the lead-in stays when links exist')
+
+// ไม่ได้แนบบทความ — บรรทัดลิงก์และหัวข้อนำต้องหายไปด้วย ไม่ใช่ค้างเป็น "อ่านเพิ่มเติม:" ลอย ๆ
+const noKb = renderClose(BODY, { customer_name: 'สมชาย', ticket_number: 'HD-001', resolution: 'รีสตาร์ต', agent_name: 'ดาร์ม' })
+eq(noKb.indexOf('{{kb_links}}') === -1, true, 'the empty link placeholder is removed')
+eq(noKb.indexOf('อ่านเพิ่มเติม') > -1, true, 'a plain lead-in line is left for the writer to see')
+eq(/\n\n\n/.test(noKb), false, 'no triple blank line is left where the block was cut')
+eq(noKb.startsWith('เรียน'), true, 'no leading blank lines')
+eq(noKb.endsWith('ดาร์ม'), true, 'no trailing blank lines')
+
+eq(renderClose('- {{kb_links}}', {}), '', 'a bullet whose only content is an empty variable disappears entirely')
+eq(renderClose('{{a}}: {{b}}', {}), '', 'a line of only empty variables and punctuation disappears')
+eq(renderClose('คงที่ {{missing}}', {}), 'คงที่', 'text next to an empty variable is kept')
+eq(renderClose(undefined, {}), '', 'no template, no output')
+eq(renderClose('ไม่มีตัวแปร', {}), 'ไม่มีตัวแปร', 'a template without variables passes through')
+
+// ลิงก์บทความ — ต้องตรงกับชื่อไฟล์ที่หน้า "สร้างเว็บ" ปล่อยออกมา
+const A = { id: 5, code: 'ITS000123', title: 'พิมพ์ค้นหาไม่ได้' }
+eq(kbUrl('https://itservices.co.th/kb', A), 'https://itservices.co.th/kb/its000123.html', 'public link matches the exported file name')
+eq(kbUrl('https://itservices.co.th/kb/', A), 'https://itservices.co.th/kb/its000123.html', 'a trailing slash does not double up')
+eq(kbUrl('https://x.dev', { id: 9, code: '', title: 't' }), 'https://x.dev/article-9.html', 'no code falls back to the id, same as the exporter')
+eq(kbUrl('', A), 'its000123.html', 'no base url still yields the file name')
+
+eq(kbLinksBlock([], 'https://x.dev'), '', 'nothing selected, nothing rendered')
+eq(kbLinksBlock([A], 'https://x.dev'), '- พิมพ์ค้นหาไม่ได้' + NL + '  https://x.dev/its000123.html', 'one link with its title above it')
+eq(kbLinksBlock([A, { id: 6, code: 'ITS000124', title: 'อีกเรื่อง' }], 'https://x.dev').split(NL).length, 4, 'two links use two lines each')
+
+eq(kbBaseMissing(''), true, 'an unset base url is flagged before links go out')
+eq(kbBaseMissing('  '), true, 'whitespace counts as unset')
+eq(kbBaseMissing('https://x.dev'), false, 'a set base url is fine')
+
+// เลือก template ตามชนิดงาน
+const TPLS: CloseTemplate[] = [
+  { id: 1, Title: 'ทั้งคู่', AppliesTo: 'Both' },
+  { id: 2, Title: 'เฉพาะ Ticket', AppliesTo: 'Ticket' },
+  { id: 3, Title: 'เฉพาะ Incident', AppliesTo: 'Incident' },
+  { id: 4, Title: 'ปิดใช้งาน', AppliesTo: 'Both', IsActive: false },
+  { id: 5, Title: 'ไม่ระบุ' },
+]
+eq(templatesFor(TPLS, 'Ticket').map(t => t.id), [1, 2, 5], 'ticket sees Both, Ticket and unspecified')
+eq(templatesFor(TPLS, 'Incident').map(t => t.id), [1, 3, 5], 'incident sees Both, Incident and unspecified')
+eq(templatesFor(TPLS, 'Ticket').some(t => t.id === 4), false, 'a disabled template is never offered')
+eq(scopeOf({ id: 1, Title: 'x' }), 'Both', 'no scope means both')
+eq(scopeOf({ id: 1, Title: 'x', AppliesTo: 'อะไรก็ไม่รู้' }), 'Both', 'an unrecognised scope falls back to both')
+
+// ประเภทที่ตรงกันขึ้นก่อน แต่ตัวอื่นยังเลือกได้
+const CATS: CloseTemplate[] = [
+  { id: 1, Title: 'ทั่วไป', AppliesTo: 'Both' },
+  { id: 2, Title: 'เครือข่าย', AppliesTo: 'Both', Category: 'Network' },
+]
+eq(templatesFor(CATS, 'Ticket', 'Network').map(t => t.id), [2, 1], 'a matching category is offered first')
+eq(templatesFor(CATS, 'Ticket', 'Network').length, 2, 'and the rest are still available')
+
+// template สำเร็จรูปต้องใช้ได้จริง
+eq(DEFAULT_TEMPLATES.length > 0, true, 'ships with starter templates')
+eq(DEFAULT_TEMPLATES.every(t => t.Body.indexOf('{{resolution}}') > -1), true, 'each starter includes the resolution')
+eq(renderClose(DEFAULT_TEMPLATES[0].Body, { customer_name: 'ก', ticket_number: 'HD-1', title: 'x', resolution: 'y', agent_name: 'z' }).indexOf('{{') === -1,
+  true, 'a starter template with no KB links still renders clean')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

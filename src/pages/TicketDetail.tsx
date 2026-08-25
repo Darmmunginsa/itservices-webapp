@@ -9,6 +9,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
+import { CloseReply } from '../components/common/CloseReply'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
@@ -59,6 +60,7 @@ export default function TicketDetail() {
   const [mentionStart, setMentionStart] = useState(-1)
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
   const [resolutionNote, setResolutionNote] = useState('')
+  const [replyOnClose, setReplyOnClose] = useState(true)
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
   const [reassigning, setReassigning] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(true)
@@ -345,6 +347,44 @@ export default function TicketDetail() {
         Status: newStatus,
         ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
       } : prev)
+      // ปิดงานพร้อมตอบลูกค้า — บันทึกเป็นคอมเมนต์ "ถึงลูกค้า" แล้วส่งเข้าเธรดเมลเดิม
+      // (เส้นทางเดียวกับ sendComment ฝั่ง External เพื่อให้ลูกค้าเห็นในเมลฉบับเดิม)
+      if (isClosing && replyOnClose && isAgent && resolutionNote.trim()) {
+        try {
+          await spCreate('HD_TicketComments', {
+            Title: resolutionNote.slice(0, 100),
+            TicketID: ticket.id,
+            CommentText: resolutionNote,
+            CommentType: 'External',
+            CommentDate: new Date().toISOString(),
+            ParentID: 0,
+          })
+          loadComments()
+          const me = user?.email?.toLowerCase() ?? ''
+          const submitterEmail = ticket.Author?.EMail || ticket.CreatedByEmail
+          const customer = [ticket.CustomerEmail, submitterEmail].find(e => e && e.toLowerCase() !== me)
+          if (customer) {
+            const cc = [ticket.AssignedEmail, submitterEmail, ...members.map(m => m.AgentEmail)]
+              .filter((e): e is string => !!e && e.toLowerCase() !== me && e.toLowerCase() !== customer.toLowerCase())
+            const res = await sendTemplateEmail('comment_added', {
+              ticket_number: ticket.TicketNumber,
+              ticket_title: ticket.Title,
+              customer_name: ticket.CustomerName || '',
+              assigned_name: ticket.AssignedToName || '-',
+              comment_text: resolutionNote.replace(/\n/g, '<br>'),
+              link: window.location.origin,
+            }, [customer], cc)
+            if (res.ok) addToast('success', `ปิดงานและส่งถึงลูกค้าแล้ว (${customer})`)
+            else if (res.reason === 'no-template') addToast('error', 'ปิดงานแล้ว แต่ยังไม่ได้ส่งเมล — ตั้ง template "Comment Added" ก่อน')
+            else addToast('error', 'ปิดงานแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็นข้อความนี้')
+          } else {
+            addToast('success', 'ปิดงานแล้ว (ไม่ได้ส่งเมล — ไม่พบอีเมลลูกค้า)')
+          }
+        } catch {
+          addToast('error', 'ปิดงานแล้ว แต่บันทึกข้อความตอบกลับไม่สำเร็จ')
+        }
+      }
+
       // แจ้งเตือนภายใน (in-app) — agent + ผู้แจ้ง + สมาชิก ยกเว้นคนที่กดเอง
       {
         const actorEmail = user?.email?.toLowerCase() ?? ''
@@ -746,13 +786,36 @@ export default function TicketDetail() {
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     {tr('ticket.resolution')} {newStatus === 'Resolved' || newStatus === 'Closed' ? tr('ticket.recommendFill') : ''}
                   </label>
+                  {/* เลือกข้อความสำเร็จรูป + แนบลิงก์บทความ แล้วค่อยแก้ข้อความได้ */}
+                  <CloseReply
+                    kind="Ticket"
+                    category={ticket.Category}
+                    vars={{
+                      ticket_number: ticket.TicketNumber ?? '',
+                      title: ticket.Title,
+                      customer_name: ticket.CustomerName || '',
+                      agent_name: user?.displayName ?? '',
+                      resolution: resolutionNote,
+                    }}
+                    value={resolutionNote}
+                    onChange={setResolutionNote}
+                    className="mb-2"
+                  />
                   <textarea
                     value={resolutionNote}
                     onChange={e => setResolutionNote(e.target.value)}
-                    rows={3}
+                    rows={8}
                     placeholder={tr('ticket.resolutionPlaceholder')}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
+                  {/* ปิดงานคือจังหวะที่ลูกค้ารอคำตอบอยู่ — ให้ส่งได้จากตรงนี้เลย */}
+                  {isAgent && (
+                    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 mt-2 cursor-pointer select-none">
+                      <input type="checkbox" checked={replyOnClose} onChange={e => setReplyOnClose(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-primary-600" />
+                      ส่งข้อความนี้ถึงลูกค้าด้วย (เพิ่มเป็นคอมเมนต์ "ถึงลูกค้า" และส่งอีเมลในเธรดเดิม)
+                    </label>
+                  )}
                 </div>
               )}
             </div>

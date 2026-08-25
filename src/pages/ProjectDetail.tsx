@@ -9,6 +9,7 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
+import { CloseReply } from '../components/common/CloseReply'
 import { ReferencesPanel } from '../components/project/ReferencesPanel'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
@@ -1955,9 +1956,25 @@ export default function ProjectDetail() {
           </div>
           <div>
             <label className={lc}>{tr('pd.howToFix')}</label>
+            {/* ปิดเคสแล้วค่อยเลือกข้อความตอบกลับ — ตอนยังไม่ปิดไม่ต้องรก */}
+            {incidentForm.status === 'Resolved' && (
+              <CloseReply
+                kind="Incident"
+                vars={{
+                  ticket_number: project?.Title ?? '',
+                  title: incidentForm.title,
+                  customer_name: project?.Company ?? '',
+                  agent_name: user?.displayName ?? '',
+                  resolution: incidentForm.resolution,
+                }}
+                value={incidentForm.resolution}
+                onChange={v => setIncidentForm(f => ({ ...f, resolution: v }))}
+                className="mb-2"
+              />
+            )}
             <textarea value={incidentForm.resolution}
               onChange={e => setIncidentForm(f => ({ ...f, resolution: e.target.value }))}
-              rows={2} className={ic} placeholder={tr('ticket.resolutionPlaceholder')} />
+              rows={incidentForm.status === 'Resolved' ? 8 : 2} className={ic} placeholder={tr('ticket.resolutionPlaceholder')} />
           </div>
           <Button type="submit" disabled={savingIncident} className="w-full justify-center">
             {savingIncident ? tr('common.saving') : editingIncident ? tr('common.saveEdit') : tr('pd.saveIncident')}
