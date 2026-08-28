@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAppStore } from '../../store/useAppStore'
 
@@ -25,11 +25,21 @@ interface Spark {
 export function Celebration() {
   const nonce = useAppStore(s => s.celebration)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // ปิดป้ายด้วย "nonce ที่แสดงจบแล้ว" แทน boolean — setState จึงเกิดใน callback ของ timer
+  // ไม่ใช่ในตัว effect ตรง ๆ ซึ่งทำให้ render ซ้อนกัน
+  const [doneNonce, setDoneNonce] = useState(0)
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  const quiet = reduced && nonce > 0 && doneNonce !== nonce
 
   useEffect(() => {
     if (!nonce) return
     // เคารพการตั้งค่าของเครื่อง — บางคนเวียนหัวกับภาพเคลื่อนไหว และนี่ไม่ใช่ข้อมูลที่จำเป็น
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // Windows: ตั้งค่า > การช่วยการเข้าถึง > เอฟเฟ็กต์ภาพ > เอฟเฟ็กต์ภาพเคลื่อนไหว
+    // แต่ต้องมีอะไรตอบกลับบ้าง ไม่ใช่เงียบไปเฉย ๆ จนคนคิดว่าระบบพัง
+    if (reduced) {
+      const t = window.setTimeout(() => setDoneNonce(nonce), 1800)
+      return () => clearTimeout(t)
+    }
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
@@ -97,13 +107,24 @@ export function Celebration() {
       cancelAnimationFrame(raf)
       timers.forEach(clearTimeout)
     }
-  }, [nonce])
+  }, [nonce, reduced])
 
   if (!nonce) return null
 
   return createPortal(
-    <canvas ref={canvasRef} aria-hidden
-      className="fixed inset-0 z-[300] pointer-events-none w-full h-full" />,
+    <>
+      <canvas ref={canvasRef} aria-hidden
+        className="fixed inset-0 z-[300] pointer-events-none w-full h-full" />
+      {/* เครื่องที่ปิดภาพเคลื่อนไหวไว้ — ป้ายนิ่ง ๆ แทนพลุ ยังรู้ว่าปิดงานสำเร็จ */}
+      {quiet && (
+        <div className="fixed inset-0 z-[300] pointer-events-none flex items-center justify-center">
+          <div className="px-6 py-4 rounded-2xl bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 shadow-xl text-center">
+            <p className="text-3xl leading-none">🎉</p>
+            <p className="mt-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">ปิดงานสำเร็จ</p>
+          </div>
+        </div>
+      )}
+    </>,
     document.body,
   )
 }
