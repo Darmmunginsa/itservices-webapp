@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
 import { Header } from '../components/layout/Header'
@@ -6,6 +6,8 @@ import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
+import { getDirectoryPeople, DirectoryConsentError } from '../services/graph'
+import { mergePeople, type DirectoryPerson } from '../utils/people'
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { createNotification } from '../services/notificationService'
@@ -17,6 +19,13 @@ import type { Contract } from '../types/ticket'
 import type { Project } from '../types/project'
 
 type SubmitType = 'Ticket' | 'Task' | 'Incident'
+
+// เก็บรายชื่อไว้แค่ช่วง session — ปิดแท็บแล้วหาย จะได้ไม่ค้างเมื่อมีคนเข้า/ออกบริษัท
+const DIR_CACHE = 'hdDirectoryPeople'
+
+function readCachedDirectory(): DirectoryPerson[] {
+  try { return JSON.parse(sessionStorage.getItem(DIR_CACHE) ?? '[]') } catch { return [] }
+}
 
 const DEPARTMENTS = ['IT', 'HR', 'บัญชี/การเงิน', 'ฝ่ายขาย', 'ฝ่ายการตลาด', 'Operations', 'ผู้บริหาร', 'อื่นๆ']
 const DEFAULT_CATEGORIES = ['IT Hardware', 'IT Software', 'Network', 'Access & Account', 'IT Security', 'Other']
@@ -51,8 +60,15 @@ export default function Submit() {
   const [trackItem, setTrackItem] = useState(false)
   const [isOnlineMeeting, setIsOnlineMeeting] = useState(false)
 
+  const cachedDirectory = useMemo(() => readCachedDirectory(), [])
+
   // Multi-select for calendar attendees
   const [calInternalEmails, setCalInternalEmails] = useState<string[]>([])
+  // รายชื่อคนทั้งองค์กร — โหลดครั้งเดียวต่อ session แล้วเก็บไว้ ไม่ยิงซ้ำทุกครั้งที่เข้าหน้านี้
+  const [directory, setDirectory] = useState<DirectoryPerson[]>(cachedDirectory)
+  // เริ่มที่ loading เลยเมื่อยังไม่มีของใน cache — จะได้ไม่ต้อง setState ใน effect
+  const [dirState, setDirState] = useState<'idle' | 'loading' | 'need-consent' | 'error'>(
+    cachedDirectory.length ? 'idle' : 'loading')
   const [calCustomerEmails, setCalCustomerEmails] = useState<string[]>([])
 
   // Master data
@@ -291,6 +307,27 @@ export default function Submit() {
   const lx = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
 
+  async function loadDirectory(interactive: boolean) {
+    try {
+      const people = await getDirectoryPeople(interactive) as DirectoryPerson[]
+      setDirectory(people)
+      setDirState('idle')
+      try { sessionStorage.setItem(DIR_CACHE, JSON.stringify(people)) } catch { /* โควตาเต็มก็ไม่เป็นไร */ }
+    } catch (e) {
+      setDirState(e instanceof DirectoryConsentError ? 'need-consent' : 'error')
+    }
+  }
+
+  // ลองดึงเงียบ ๆ ครั้งแรก — เคยยินยอมแล้วจะได้เลย ยังไม่เคยก็ไม่รบกวน
+  useEffect(() => {
+    // loadDirectory เป็น async — setState เกิดหลัง await ทั้งหมด ไม่ได้ยิงตอน effect ทำงาน
+    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+    if (directory.length === 0) void loadDirectory(false)
+  }, [])
+
+  // ทีมซัพพอร์ตขึ้นก่อน แล้วต่อด้วยคนอื่นในองค์กร
+  const internalPeopleOptions = mergePeople(agents, directory)
+
   // Searchable dropdown options — agent: value = EmailText
   const agentOptions = agents
     .map(a => ({ value: a.EmailText ?? '', label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}` }))
@@ -344,15 +381,33 @@ export default function Submit() {
 
         {/* Internal attendees */}
         <div>
-          <label className={lx}>{t('submit.internalAttendees')}</label>
+          <label className={lx}>
+            {t('submit.internalAttendees')}
+            {directory.length > 0 && (
+              <span className="ml-1 font-normal text-gray-400">· ทั้งองค์กร {internalPeopleOptions.length} คน</span>
+            )}
+          </label>
           <SearchMultiSelect
             label="Internal"
-            options={agentOptions}
+            options={internalPeopleOptions}
             selected={calInternalEmails}
             onToggle={v => setCalInternalEmails(prev =>
               prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]
             )}
           />
+          {/* ยังไม่ได้ยินยอมให้อ่านรายชื่อ — เลือกจากทีมซัพพอร์ตได้ตามปกติ แต่บอกว่ามีทางขยาย */}
+          {dirState === 'need-consent' && (
+            <button type="button" onClick={() => { setDirState('loading'); loadDirectory(true) }}
+              className="text-xs text-primary-600 hover:underline mt-1">
+              + แสดงรายชื่อทุกคนในองค์กร (ต้องกดยินยอมครั้งเดียว)
+            </button>
+          )}
+          {dirState === 'loading' && <p className="text-xs text-gray-400 mt-1">กำลังโหลดรายชื่อ...</p>}
+          {dirState === 'error' && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+              โหลดรายชื่อทั้งองค์กรไม่สำเร็จ — ยังเลือกจากทีมซัพพอร์ตได้ตามปกติ
+            </p>
+          )}
           {calInternalEmails.length > 0 && (
             <p className="text-xs text-gray-400 mt-1 truncate">{calInternalEmails.join(', ')}</p>
           )}

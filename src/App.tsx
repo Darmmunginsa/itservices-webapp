@@ -6,7 +6,7 @@ import { EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
 import { msalInstance, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
-import { setGraphTokenGetter } from './services/graph'
+import { setGraphTokenGetter, setDirectoryTokenGetter, DIRECTORY_SCOPES } from './services/graph'
 import { spGet } from './services/sharepoint'
 import { resolvePages } from './services/permissions'
 import { setActivityUser, logActivity } from './services/activityLog'
@@ -134,8 +134,26 @@ function AppContent() {
       }
     }
 
+    // สิทธิ์อ่านรายชื่อคนทั้งองค์กร — ขอแยกใบ และขอตอนใช้จริงเท่านั้น
+    // ถ้าเอาไปรวมกับ scope ปฏิทิน/เมล tenant ที่ยังไม่ได้ consent จะใช้ทั้งสองอย่างไม่ได้เลย
+    const getDirectoryToken = async (interactive: boolean): Promise<string> => {
+      try {
+        const result = await instance.acquireTokenSilent({
+          scopes: DIRECTORY_SCOPES, account, redirectUri: REDIRECT_URI,
+        })
+        return result.accessToken
+      } catch (e) {
+        if (interactive && e instanceof InteractionRequiredAuthError) {
+          const result = await instance.acquireTokenPopup({ scopes: DIRECTORY_SCOPES, redirectUri: REDIRECT_URI })
+          return result.accessToken
+        }
+        throw e
+      }
+    }
+
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
+    setDirectoryTokenGetter(getDirectoryToken)
 
     // SP consent is already handled inside login() — here we only need
     // acquireTokenSilent (no popup). Load profile immediately after.

@@ -127,3 +127,47 @@ export async function createCalendarEvent(event: {
   if (!res.ok) throw new Error(`Graph create event failed: ${res.status}`)
   return res.json()
 }
+
+// ── รายชื่อคนทั้ง domain ────────────────────────────────────────────────────
+// ใช้ token คนละใบกับ calendar/mail โดยตั้งใจ: สิทธิ์ User.ReadBasic.All อาจยัง
+// ไม่ได้ consent ในบาง tenant ถ้าเอาไปรวมกับ scope เดิม การขอ token จะพังทั้งชุด
+// แล้วปฏิทินกับเมลจะใช้ไม่ได้ไปด้วย ทั้งที่ไม่เกี่ยวกัน
+
+export const DIRECTORY_SCOPES = ['User.ReadBasic.All']
+
+let _getDirToken: ((interactive: boolean) => Promise<string>) | null = null
+export function setDirectoryTokenGetter(fn: (interactive: boolean) => Promise<string>) {
+  _getDirToken = fn
+}
+
+/** ยังขอสิทธิ์อ่านรายชื่อไม่ได้ = ต้องให้ผู้ใช้กดยินยอมก่อน ไม่ใช่ความผิดพลาด */
+export class DirectoryConsentError extends Error {}
+
+const DIR_SELECT = 'displayName,mail,userPrincipalName,jobTitle,department,userType'
+const DIR_PAGE_CAP = 10   // 10 × 999 ≈ 10,000 คน — กันวนไม่รู้จบใน tenant ใหญ่
+
+/**
+ * ดึงรายชื่อคนในองค์กรจาก Microsoft 365
+ * interactive = true จะเด้งหน้าต่างขอความยินยอมถ้ายังไม่เคยให้
+ */
+export async function getDirectoryPeople(interactive = false): Promise<Record<string, string>[]> {
+  if (!_getDirToken) throw new DirectoryConsentError('Directory token getter not initialized')
+  let token: string
+  try {
+    token = await _getDirToken(interactive)
+  } catch {
+    throw new DirectoryConsentError('ยังไม่ได้รับสิทธิ์อ่านรายชื่อในองค์กร')
+  }
+
+  const people: Record<string, string>[] = []
+  let url = `https://graph.microsoft.com/v1.0/users?$select=${DIR_SELECT}&$top=999`
+  for (let page = 0; page < DIR_PAGE_CAP && url; page++) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (res.status === 401 || res.status === 403) throw new DirectoryConsentError('ไม่มีสิทธิ์อ่านรายชื่อในองค์กร')
+    if (!res.ok) throw new Error(`Graph users failed: ${res.status}`)
+    const json = await res.json()
+    people.push(...(json.value ?? []))
+    url = json['@odata.nextLink'] ?? ''
+  }
+  return people
+}

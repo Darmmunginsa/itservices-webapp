@@ -10,6 +10,7 @@ import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets
 import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
 import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
 import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
+import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -741,6 +742,51 @@ eq(sniffImage(bytes()), null, 'an empty file is safe')
 eq(browserCanRender('image/heic'), false, 'HEIC cannot be drawn by the browser')
 eq(browserCanRender('image/png'), true, 'PNG can be drawn')
 eq(browserCanRender('image/webp'), true, 'WEBP can be drawn')
+
+
+
+// -- รวมรายชื่อทีมซัพพอร์ต + คนทั้งองค์กร (utils/people) --
+const AGENTS = [
+  { Title: 'สมชาย ใจดี', EmailText: 'somchai@itservices.co.th', SupportGroup: 'Network' },
+  { Title: 'สุดา รักงาน', EmailText: 'suda@itservices.co.th' },
+]
+const DIR = [
+  { displayName: 'สมชาย ใจดี', mail: 'Somchai@itservices.co.th', department: 'IT' },
+  { displayName: 'อารีย์ บัญชี', mail: 'aree@itservices.co.th', department: 'บัญชี' },
+  { displayName: 'ห้องประชุมใหญ่', mail: 'room-a@itservices.co.th', userType: 'Member' },
+  { displayName: 'ลูกค้าภายนอก', mail: 'guest@acme.co.th', userType: 'Guest' },
+  { displayName: 'No Reply', mail: 'noreply@itservices.co.th' },
+  { displayName: 'ไม่มีเมล' },
+]
+
+const merged = mergePeople(AGENTS, DIR)
+eq(merged.slice(0, 2).every(o => o.isAgent), true, 'support team comes first')
+eq(merged[0].label, 'สมชาย ใจดี · Network', 'an agent keeps its support group in the label')
+eq(merged.filter(o => o.value.toLowerCase() === 'somchai@itservices.co.th').length, 1,
+  'the same person listed in both sources appears once')
+eq(merged.some(o => o.value === 'aree@itservices.co.th'), true, 'someone outside the support team is included')
+eq(merged.find(o => o.value === 'aree@itservices.co.th')?.label, 'อารีย์ บัญชี · บัญชี',
+  'the department is shown so people with similar names can be told apart')
+
+// ที่ต้องไม่โผล่
+eq(merged.some(o => o.value === 'guest@acme.co.th'), false, 'a guest is not an internal attendee')
+eq(merged.some(o => o.value === 'noreply@itservices.co.th'), false, 'a no-reply mailbox is not a person')
+eq(merged.length, 4, 'accounts with no usable mail are dropped')
+
+eq(isRealPerson({ mail: 'a@b.com' }), true, 'a plain mailbox is a person')
+eq(isRealPerson({ userPrincipalName: 'a_acme.co.th#EXT#@its.onmicrosoft.com' }), false,
+  'an external UPN is excluded even without userType')
+eq(isRealPerson({ displayName: 'ไม่มีเมล' }), false, 'no address means it cannot be invited')
+eq(personEmail({ userPrincipalName: 'x@y.com' }), 'x@y.com', 'the UPN is used when mail is empty')
+
+// เรียงชื่อคนนอกทีมตามตัวอักษร เพื่อให้หาเจอ
+const sorted = mergePeople([], [
+  { displayName: 'ขวัญ', mail: 'k@x.com' },
+  { displayName: 'กมล', mail: 'g@x.com' },
+])
+eq(sorted.map(o => o.label).join(','), 'กมล,ขวัญ', 'the rest are sorted by name')
+
+eq(mergePeople([], []).length, 0, 'no sources means no options, not a crash')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
