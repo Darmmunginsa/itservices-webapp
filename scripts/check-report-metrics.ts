@@ -11,6 +11,7 @@ import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexH
 import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
 import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
 import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
+import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions } from '../src/utils/customerGroups'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -787,6 +788,51 @@ const sorted = mergePeople([], [
 eq(sorted.map(o => o.label).join(','), 'กมล,ขวัญ', 'the rest are sorted by name')
 
 eq(mergePeople([], []).length, 0, 'no sources means no options, not a crash')
+
+
+
+// -- กลุ่มลูกค้าตามโครงการ (utils/customerGroups) --
+const PROJ = [
+  { id: 1, Title: '#VDI' },
+  { id: 2, Title: '#Backup' },
+  { id: 3, Title: '#ยังไม่มีใคร' },
+]
+const MEMBERS = [
+  { id: 1, Title: 'สมชาย', CustomerEmail: 'somchai@acme.co.th', ProjectID: 1, Company: 'ACME' },
+  { id: 2, Title: 'อารีย์', CustomerEmail: 'aree@acme.co.th', ProjectID: 1 },
+  { id: 3, Title: 'สมชาย ซ้ำ', CustomerEmail: 'SOMCHAI@acme.co.th', ProjectID: 1 },
+  { id: 4, Title: 'กมล', CustomerEmail: 'kamol@beta.co.th', ProjectID: 2 },
+  { id: 5, Title: 'ไม่มีเมล', ProjectID: 1 },
+]
+
+const groups = buildGroups(PROJ, MEMBERS)
+eq(groups.length, 2, 'a project with nobody in it is not offered as a group')
+const vdi = groups.find(g => g.projectId === 1)!
+eq(vdi.emails.length, 2, 'the same address twice counts once')
+eq(vdi.label, '#VDI · 2 คน', 'the group says how many it will add')
+eq(customersOf(MEMBERS, 1).some(m => !m.CustomerEmail), false, 'a contact with no address is not in the group')
+
+// กดกลุ่ม
+eq(toggleGroup(vdi, []).length, 2, 'picking a group adds everyone in it')
+eq(groupFullySelected(vdi, ['somchai@acme.co.th', 'aree@acme.co.th']), true, 'a fully picked group knows it')
+eq(groupFullySelected(vdi, ['somchai@acme.co.th']), false, 'a partly picked group is not full')
+// เลือกไว้บางคนแล้วกดกลุ่ม ต้องเติมให้ครบ ไม่ใช่เพิ่มซ้ำ
+eq(toggleGroup(vdi, ['somchai@acme.co.th']).length, 2, 'picking a partly selected group tops it up without duplicating')
+// กดซ้ำตอนครบแล้ว = เอาออก แต่ต้องไม่แตะคนที่เลือกเองนอกกลุ่ม
+const mixed = toggleGroup(vdi, ['somchai@acme.co.th', 'aree@acme.co.th', 'outsider@x.com'])
+eq(mixed.join(','), 'outsider@x.com', 'removing a group leaves individually picked people alone')
+// ตัวพิมพ์เล็กใหญ่ต้องไม่ทำให้เชิญซ้ำ
+eq(toggleGroup(vdi, ['SOMCHAI@acme.co.th']).length, 2, 'case differences do not create a duplicate invite')
+
+// รายชื่อรายคนต้องมีผู้ติดต่อในโครงการด้วย ไม่งั้นเลือกกลุ่มแล้วเห็นอีเมลลอย ๆ ไม่มีชื่อ
+const CONTRACTS = [{ Title: 'บริษัท ก', Company: 'ACME', CustomerEmail: 'contract@acme.co.th' }]
+const opts = customerOptions(CONTRACTS, MEMBERS)
+eq(opts.some(o => o.value === 'somchai@acme.co.th'), true, 'a project contact appears in the individual list')
+eq(opts.filter(o => o.value.toLowerCase() === 'somchai@acme.co.th').length, 1, 'the individual list has no duplicates')
+eq(opts.find(o => o.value === 'somchai@acme.co.th')?.label, 'สมชาย (ACME)', 'the company is shown when known')
+eq(opts.find(o => o.value === 'aree@acme.co.th')?.label, 'อารีย์', 'no company means just the name')
+eq(opts[0].value, 'contract@acme.co.th', 'contract customers keep their place at the top')
+eq(customerOptions([], []).length, 0, 'no data means no options, not a crash')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

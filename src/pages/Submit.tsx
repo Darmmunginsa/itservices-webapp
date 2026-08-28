@@ -8,6 +8,7 @@ import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { getDirectoryPeople, DirectoryConsentError } from '../services/graph'
 import { mergePeople, type DirectoryPerson } from '../utils/people'
+import { buildGroups, toggleGroup, customerOptions, type ProjectCustomer } from '../utils/customerGroups'
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { createNotification } from '../services/notificationService'
@@ -76,6 +77,8 @@ export default function Submit() {
   const [agents, setAgents] = useState<AgentProfile[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
+  // ผู้ติดต่อฝั่งลูกค้าที่ผูกไว้กับโครงการ — ใช้ทำกลุ่มให้เลือกทีเดียวทั้งชุด
+  const [projectCustomers, setProjectCustomers] = useState<ProjectCustomer[]>([])
   const [activeProjectsOnly, setActiveProjectsOnly] = useState(true)
 
   const [searchParams] = useSearchParams()
@@ -94,6 +97,9 @@ export default function Submit() {
     // Include Active + Inactive contracts, exclude only Expired
     spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc')
       .then(setContracts).catch(() => {})
+    // ยังไม่ได้สร้างลิสต์นี้ก็ไม่เป็นไร — แค่ไม่มีกลุ่มให้เลือก
+    spGet<ProjectCustomer>('PM_ProjectCustomers', undefined, undefined, 'Title asc', 2000)
+      .then(setProjectCustomers).catch(() => {})
   }, [])
 
   // กรอง Active อย่างเดียวก็จริง แต่โครงการที่เลือกไว้แล้วต้องอยู่ในลิสต์เสมอ
@@ -340,10 +346,9 @@ export default function Submit() {
   }))
 
   // Contract multi-select (calendar attendees) — value = CustomerEmail
-  const contractEmailOptions = contracts
-    .filter(c => c.CustomerEmail)
-    .map(c => ({ value: c.CustomerEmail ?? '', label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
-    .filter(o => o.value)
+  // รวมลูกค้าจากสัญญา + ผู้ติดต่อในโครงการ ไม่งั้นเลือกกลุ่มมาแล้วจะเห็นอีเมลลอย ๆ ไม่มีชื่อ
+  const contractEmailOptions = customerOptions(contracts, projectCustomers)
+  const customerGroups = buildGroups(projects, projectCustomers)
 
   // Calendar section shared by Ticket and Task
   function CalendarSection() {
@@ -419,6 +424,9 @@ export default function Submit() {
           <SearchMultiSelect
             label="ลูกค้า"
             options={contractEmailOptions}
+            groups={customerGroups}
+            onToggleGroup={g => setCalCustomerEmails(prev => toggleGroup(
+              { ...g, projectId: 0 }, prev))}
             selected={calCustomerEmails}
             onToggle={v => setCalCustomerEmails(prev =>
               prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]

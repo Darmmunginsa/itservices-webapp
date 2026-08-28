@@ -141,14 +141,23 @@ export function SearchSelect({
 }
 
 // ── Multi-value searchable select (replaces MultiCheckList) ──────────────────
+/** กลุ่มที่กดครั้งเดียวแล้วเลือกได้หลายคนพร้อมกัน */
+export interface SelectGroup {
+  key: string
+  label: string
+  emails: string[]
+}
+
 interface SearchMultiSelectProps {
   label: string
   options: SelectOption[]
   selected: string[]
   onToggle: (value: string) => void
+  groups?: SelectGroup[]
+  onToggleGroup?: (group: SelectGroup) => void
 }
 
-export function SearchMultiSelect({ label, options, selected, onToggle }: SearchMultiSelectProps) {
+export function SearchMultiSelect({ label, options, selected, onToggle, groups, onToggleGroup }: SearchMultiSelectProps) {
   const tr = useT()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -157,6 +166,13 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
   const filtered = query.trim()
     ? options.filter(o => o.label.toLowerCase().includes(query.toLowerCase()))
     : options
+  const filteredGroups = (groups ?? []).filter(g =>
+    !query.trim() || g.label.toLowerCase().includes(query.toLowerCase()))
+  const lowerSelected = new Set(selected.map(e => e.toLowerCase()))
+  const groupState = (g: SelectGroup): 'none' | 'some' | 'all' => {
+    const hit = g.emails.filter(e => lowerSelected.has(e.toLowerCase())).length
+    return hit === 0 ? 'none' : hit === g.emails.length ? 'all' : 'some'
+  }
 
   useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -194,7 +210,29 @@ export function SearchMultiSelect({ label, options, selected, onToggle }: Search
             />
           </div>
           <div className="max-h-44 overflow-y-auto">
-            {filtered.length === 0 ? (
+            {/* กลุ่มอยู่บนสุด — คนที่มาเปิดช่องนี้ส่วนใหญ่ตั้งใจเชิญทั้งชุดอยู่แล้ว */}
+            {filteredGroups.length > 0 && onToggleGroup && (
+              <>
+                <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-gray-400">กลุ่มตามโครงการ</p>
+                {filteredGroups.map(g => {
+                  const st = groupState(g)
+                  return (
+                    <button key={g.key} type="button" onClick={() => onToggleGroup(g)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 text-left">
+                      <span className={`w-4 h-4 flex-shrink-0 rounded border text-[10px] leading-none flex items-center justify-center ${
+                        st === 'all' ? 'bg-primary-600 border-primary-600 text-white'
+                        : st === 'some' ? 'bg-primary-100 dark:bg-primary-900/40 border-primary-400 text-primary-600'
+                        : 'border-gray-300 dark:border-gray-600'}`}>
+                        {st === 'all' ? '✓' : st === 'some' ? '–' : ''}
+                      </span>
+                      <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{g.label}</span>
+                    </button>
+                  )
+                })}
+                {filtered.length > 0 && <div className="border-t border-gray-100 dark:border-gray-800 my-1" />}
+              </>
+            )}
+            {filtered.length === 0 && filteredGroups.length === 0 ? (
               <p className="text-xs text-gray-400 p-3 text-center">{tr('ss.noItems')}</p>
             ) : (
               filtered.map(item => (
