@@ -1,3 +1,4 @@
+import { sniffImage } from '../utils/fileSniff'
 import { SHAREPOINT_API, SHAREPOINT_URL } from '../config/msal'
 import { logActivity } from './activityLog'
 
@@ -238,7 +239,7 @@ export async function spAttachmentBlobUrl(listName: string, itemId: number, file
   return URL.createObjectURL(blob)
 }
 
-export interface AttachmentBlob { url: string; type: string; size: number }
+export interface AttachmentBlob { url: string; type: string; size: number; isImage: boolean }
 
 /**
  * เหมือน spAttachmentBlobUrl แต่คืนชนิดไฟล์จริงมาด้วย
@@ -252,5 +253,14 @@ export async function spAttachmentBlob(listName: string, itemId: number, fileNam
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
   if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
   const blob = await res.blob()
-  return { url: URL.createObjectURL(blob), type: blob.type, size: blob.size }
+  // SharePoint คืน Content-Type เป็น application/octet-stream ให้ไฟล์แนบเกือบทุกไฟล์
+  // เชื่อ header ไม่ได้ และเชื่อชื่อไฟล์ก็ไม่ได้ — อ่านไบต์แรกดูเองจึงจบ
+  const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer())
+  const sniffed = sniffImage(head)
+  return {
+    url: URL.createObjectURL(blob),
+    type: sniffed ?? blob.type,
+    size: blob.size,
+    isImage: !!sniffed,
+  }
 }

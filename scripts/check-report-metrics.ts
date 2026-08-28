@@ -9,6 +9,7 @@ import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
 import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
 import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
+import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -710,6 +711,36 @@ eq(hasQuoted(['ตามนี้ครับ', '> บรรทัดหนึ�
 // ถ้าตัดแล้วไม่เหลืออะไร แปลว่าอ่านผิด — ต้องคืนของเดิม ไม่ใช่คืนค่าว่าง
 const ALLQUOTE = ['', 'From: x', 'Sent: y', 'เนื้อความ'].join(NL)
 eq(stripQuoted(ALLQUOTE).length > 0, true, 'a message that is nothing but quotes still shows something')
+
+
+
+// -- ดูว่าไฟล์แนบเป็นรูปหรือไม่ จากไบต์จริง (utils/fileSniff) --
+// ชื่อไฟล์เชื่อไม่ได้ และ SharePoint คืน Content-Type เป็น octet-stream เกือบทุกไฟล์
+const bytes = (...n: number[]) => new Uint8Array(n)
+const strBytes = (s: string) => new Uint8Array([...s].map(c => c.charCodeAt(0)))
+
+eq(sniffImage(bytes(0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10)), 'image/png', 'PNG is detected')
+eq(sniffImage(bytes(0xff, 0xd8, 0xff, 0xe0)), 'image/jpeg', 'JPEG is detected')
+// Outlook ตั้งชื่อรูปที่ paste มาเป็น .jfif — เนื้อในเป็น JPEG ธรรมดา
+eq(sniffImage(bytes(0xff, 0xd8, 0xff, 0xe1)), 'image/jpeg', 'a .jfif from Outlook is just JPEG inside')
+eq(sniffImage(bytes(0x47, 0x49, 0x46, 0x38, 0x39, 0x61)), 'image/gif', 'GIF is detected')
+eq(sniffImage(bytes(0x42, 0x4d, 0, 0)), 'image/bmp', 'BMP is detected')
+eq(sniffImage(strBytes('RIFF____WEBPVP8 ')), 'image/webp', 'WEBP is detected')
+eq(sniffImage(strBytes('....ftypheic....')), 'image/heic', 'an iPhone .heic is detected')
+eq(sniffImage(strBytes('....ftypavif....')), 'image/avif', 'AVIF is detected')
+eq(sniffImage(strBytes('<svg xmlns="http://')), 'image/svg+xml', 'SVG is detected')
+
+// ที่ต้องไม่ใช่รูป
+eq(sniffImage(strBytes('%PDF-1.7')), null, 'a PDF is not an image')
+eq(sniffImage(bytes(0x50, 0x4b, 3, 4)), null, 'a zip/docx is not an image')
+eq(sniffImage(strBytes('เรียนคุณสมชาย')), null, 'plain text is not an image')
+eq(sniffImage(bytes(1, 2)), null, 'a file too short to judge is not an image')
+eq(sniffImage(bytes()), null, 'an empty file is safe')
+
+// เบราว์เซอร์วาดไม่ได้ ต้องรู้ล่วงหน้า ไม่ใช่ปล่อยให้กรอบรูปพัง
+eq(browserCanRender('image/heic'), false, 'HEIC cannot be drawn by the browser')
+eq(browserCanRender('image/png'), true, 'PNG can be drawn')
+eq(browserCanRender('image/webp'), true, 'WEBP can be drawn')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

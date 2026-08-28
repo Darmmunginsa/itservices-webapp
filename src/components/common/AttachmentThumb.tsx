@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Download, X } from 'lucide-react'
 import { spAttachmentBlob } from '../../services/sharepoint'
+import { browserCanRender } from '../../utils/fileSniff'
 
 interface Props {
   listName: string
@@ -32,7 +33,7 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
   // ผูกทุกสถานะไว้กับ key ของไฟล์ แทนที่จะรีเซ็ตตอน props เปลี่ยน
   // เพราะการ setState ตรง ๆ ใน effect ทำให้ render ซ้อนกันโดยไม่จำเป็น
   const key = `${listName}|${itemId}|${fileName}`
-  const [blob, setBlob] = useState<{ key: string; url: string; type: string; size: number } | null>(null)
+  const [blob, setBlob] = useState<{ key: string; url: string; type: string; size: number; isImage: boolean } | null>(null)
   const [failedKey, setFailedKey] = useState('')
   // เบราว์เซอร์วาดรูปไม่ออก (เช่น .heic บน Chrome) — ตกลงมาเป็นลิงก์ดาวน์โหลดแทน
   const [brokenKey, setBrokenKey] = useState('')
@@ -45,7 +46,7 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
       .then(b => {
         if (!active) { URL.revokeObjectURL(b.url); return }
         made = b.url
-        setBlob({ key: `${listName}|${itemId}|${fileName}`, url: b.url, type: b.type, size: b.size })
+        setBlob({ key: `${listName}|${itemId}|${fileName}`, url: b.url, type: b.type, size: b.size, isImage: b.isImage })
       })
       .catch(() => { if (active) setFailedKey(`${listName}|${itemId}|${fileName}`) })
     return () => { active = false; if (made) URL.revokeObjectURL(made) }
@@ -53,14 +54,15 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
 
   const loaded = blob?.key === key ? blob : null
   const url = loaded?.url ?? ''
-  const type = loaded?.type ?? ''
   const size = loaded?.size ?? 0
   const err = failedKey === key
   const cantRender = brokenKey === key
 
-  const looksImage = IMG_RE.test(fileName)
-  // MIME ชนะชื่อไฟล์เสมอเมื่อโหลดเสร็จแล้ว
-  const isImg = (type ? type.startsWith('image/') : looksImage) && !cantRender
+  // ก่อนโหลดเสร็จเดาจากชื่อ เพื่อวางกรอบ placeholder ให้ถูก
+  // โหลดเสร็จแล้วใช้ผลจากไบต์จริง ซึ่งตอบได้ทั้งไฟล์ที่ชื่อแปลกและไฟล์ที่ไม่มีนามสกุล
+  // .heic รู้ตั้งแต่ต้นว่าเบราว์เซอร์วาดไม่ได้ — ไม่ต้องรอให้กรอบรูปพังก่อนแล้วค่อยถอย
+  const unsupported = !!loaded?.isImage && !browserCanRender(loaded.type)
+  const isImg = (loaded ? loaded.isImage : IMG_RE.test(fileName)) && !cantRender && !unsupported
 
   if (isImg && !err) {
     if (!url) return <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 animate-pulse" />
@@ -100,9 +102,9 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
   }
   return url
     ? <a href={url} download={fileName} rel="noopener noreferrer"
-        title={cantRender ? 'เบราว์เซอร์เปิดรูปชนิดนี้ไม่ได้ — ดาวน์โหลดไปเปิดในเครื่อง' : label}
+        title={cantRender || unsupported ? 'เบราว์เซอร์เปิดรูปชนิดนี้ไม่ได้ — ดาวน์โหลดไปเปิดในเครื่อง' : label}
         className="flex items-center gap-1 text-xs text-primary-600 hover:underline px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">
-        {cantRender ? '🖼️' : '📎'} {label}
+        {cantRender || unsupported ? '🖼️' : '📎'} {label}
       </a>
     : <span className="flex items-center gap-1 text-xs text-gray-400 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {fileName}</span>
 }
