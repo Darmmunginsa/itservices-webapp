@@ -266,7 +266,7 @@ export default function Home() {
                 )}
                 <Link to={r.link}
                   className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                    late ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10' : 'border-l-4 border-transparent'}`}>
+                    late ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10 urgent-row' : 'border-l-4 border-transparent'}`}>
                   <span className="text-sm flex-shrink-0">
                     {r.type === 'Incident' ? '🚨' : undated ? '⚪' : getDueDateEmoji(color) || '🔵'}
                   </span>
@@ -289,7 +289,7 @@ export default function Home() {
                   </span>
                   {r.status && <Badge className={`${getStatusColor(r.status)} hidden xl:inline-flex`}>{r.status}</Badge>}
                   {!undated && (
-                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)}`}>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${getDueDateBadgeClass(color)} ${late ? 'urgent-badge' : ''}`}>
                       {r.type === 'Incident'
                         ? slaCountdown((r.days as number) * 24)
                         : (r.days as number) < 0 ? `${t('home.dueLateBy')} ${Math.abs(Math.round(r.days as number))} ${t('home.dueDays')}`

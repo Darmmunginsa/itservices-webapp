@@ -17,6 +17,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { BottomNav } from './components/layout/BottomNav'
 import { Ticker } from './components/layout/Ticker'
 import { ToastContainer } from './components/common/Toast'
+import { Celebration } from './components/common/Celebration'
 import { CalendarDrawer } from './components/calendar/CalendarDrawer'
 import { DateTaskModal } from './components/common/DateTaskModal'
 import { FloatingFocus } from './components/common/FloatingFocus'
@@ -235,6 +236,7 @@ function AppContent() {
         <BottomNav />
         <div className="no-print">
           <ToastContainer />
+      <Celebration />
           <DateTaskModal />
           <FloatingFocus />
           <TaskPlanner />

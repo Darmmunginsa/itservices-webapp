@@ -45,7 +45,7 @@ export default function TicketDetail() {
   // เดิมยิงไป /my-work ตายตัว คนที่เข้ามาจากโครงการจึงหลุดออกจากโครงการทุกครั้ง
   const location = useLocation()
   const from = (location.state as { from?: string; fromLabel?: string } | null) ?? null
-  const { user, addToast } = useAppStore()
+  const { user, addToast, celebrate } = useAppStore()
   const tr = useT()
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [comments, setComments] = useState<TicketComment[]>([])
@@ -408,6 +408,8 @@ export default function TicketDetail() {
         }
       }
       addToast('success', 'อัปเดตสถานะแล้ว')
+      // ปิดได้แล้วค่อยฉลอง — ไม่ใช่ทุกการเปลี่ยนสถานะ ไม่งั้นพลุจะกลายเป็นเรื่องน่ารำคาญ
+      if (isClosing && !['Resolved', 'Closed'].includes(ticket.Status)) celebrate()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 

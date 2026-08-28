@@ -78,7 +78,7 @@ export default function ProjectDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user, addToast } = useAppStore()
+  const { user, addToast, celebrate } = useAppStore()
   const tr = useT()
   const [project, setProject] = useState<Project | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -445,6 +445,8 @@ export default function ProjectDetail() {
     try {
       await spUpdate('PM_Tasks', task.id, { IsCompleted: !task.IsCompleted })
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, IsCompleted: !t.IsCompleted } : t))
+      // ติ๊กเสร็จเท่านั้น — ติ๊กกลับเป็นยังไม่เสร็จไม่ใช่เรื่องน่าฉลอง
+      if (!task.IsCompleted) celebrate()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 
@@ -679,6 +681,8 @@ export default function ProjectDetail() {
           })
         }
       }
+      // เพิ่งเปลี่ยนเป็นแก้ไขเสร็จเท่านั้น — แก้เคสที่ปิดไปแล้วไม่ต้องยิงพลุซ้ำ
+      if (incidentForm.status === 'Resolved' && editingIncident?.Status !== 'Resolved') celebrate()
       setShowIncidentModal(false)
       load()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingIncident(false) }

@@ -27,6 +27,8 @@ interface AppState {
   cardOpacity: number
   mobileNavOpen: boolean
   toasts: Toast[]
+  /** นับครั้งที่ปิดงานสำเร็จ — ขยับทีไร Celebration ยิงพลุรอบใหม่ */
+  celebration: number
   setUser: (user: UserProfile | null) => void
   toggleDarkMode: () => void
   setAccentColor: (color: AccentColor) => void
@@ -35,6 +37,7 @@ interface AppState {
   setCardStyle: (hex: string | null, opacity: number) => void
   setMobileNavOpen: (open: boolean) => void
   addToast: (type: Toast['type'], message: string) => void
+  celebrate: () => void
   removeToast: (id: string) => void
   dateTaskModal: DateMatch | null
   openDateTaskModal: (match: DateMatch) => void
@@ -162,6 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   })(),
   cardOpacity: Number(localStorage.getItem('cardOpacity') ?? '100'),
   toasts: [],
+  celebration: 0,
   dateTaskModal: null,
 
   setUser: (user) => {
@@ -274,6 +278,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeToast: (id) => set((s) => ({
     toasts: s.toasts.filter(t => t.id !== id),
   })),
+
+  celebrate: () => set((s) => ({ celebration: s.celebration + 1 })),
 
   openDateTaskModal: (match) => set({ dateTaskModal: match }),
   closeDateTaskModal: () => set({ dateTaskModal: null }),
