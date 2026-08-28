@@ -4,7 +4,7 @@ import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem, spGetAtta
 import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
 import { useAppStore } from '../../store/useAppStore'
-import { SmartText } from './SmartText'
+import { QuotedText } from './QuotedText'
 import { Button } from './Button'
 import { timeAgo } from '../../utils/dateUtils'
 import { useT } from '../../i18n/useT'
@@ -196,7 +196,8 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 font-medium">{tr('ticket.internal')}</span>
             )}
           </div>
-          <SmartText text={c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          {/* พับเนื้อเมลเก่าที่ติดมากับการตอบกลับ — ของเดิมยังกดดูได้ */}
+          <QuotedText text={c.CommentText ?? ''} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {c.AttachmentFiles.map(f => (

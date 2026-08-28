@@ -10,6 +10,7 @@ import { SearchSelect } from '../components/common/SearchSelect'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
 import { CloseReply } from '../components/common/CloseReply'
+import { QuotedText } from '../components/common/QuotedText'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
@@ -492,7 +493,8 @@ export default function TicketDetail() {
               </span>
             )}
           </div>
-          <SmartText text={relayed?.body ?? c.CommentText} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          {/* เมลตอบกลับพ่วงบทสนทนาเก่ามาเสมอ — พับไว้ ไม่งั้นคอมเมนต์เดียวยาวกว่าทั้งเธรด */}
+          <QuotedText text={relayed?.body ?? c.CommentText ?? ''} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {c.AttachmentFiles.map(f => (

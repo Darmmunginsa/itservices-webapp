@@ -8,6 +8,7 @@ import { slaInfo, slaDue, computeSlaDue, slaFailed, slaJudged, slaCountdown } fr
 import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
 import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
+import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -658,6 +659,58 @@ eq(DEFAULT_TEMPLATES.length > 0, true, 'ships with starter templates')
 eq(DEFAULT_TEMPLATES.every(t => t.Body.indexOf('{{resolution}}') > -1), true, 'each starter includes the resolution')
 eq(renderClose(DEFAULT_TEMPLATES[0].Body, { customer_name: 'ก', ticket_number: 'HD-1', title: 'x', resolution: 'y', agent_name: 'z' }).indexOf('{{') === -1,
   true, 'a starter template with no KB links still renders clean')
+
+
+// -- ตัดเนื้อเมลเก่าที่ติดมากับการตอบกลับ (utils/emailQuote) --
+const OUTLOOK = [
+  'ได้เลยครับ ผมลองแล้วใช้ได้',
+  '',
+  'From: support@itservices.co.th',
+  'Sent: Monday, March 3, 2026 10:00 AM',
+  'To: somchai@acme.co.th',
+  'Subject: RE: [HD-00123] เข้า VPN ไม่ได้',
+  '',
+  'เรียนคุณสมชาย ทางทีมได้แก้ไขแล้ว',
+].join(NL)
+eq(stripQuoted(OUTLOOK), 'ได้เลยครับ ผมลองแล้วใช้ได้', 'Outlook reply keeps only the new text')
+eq(quotedLines(OUTLOOK) > 3, true, 'the old mail is kept aside, not thrown away')
+eq(splitQuoted(OUTLOOK).quoted.indexOf('เรียนคุณสมชาย') > -1, true, 'the quoted part still holds the old body in full')
+
+const GMAIL = ['ขอบคุณครับ', '', 'On Mon, 3 Mar 2026 at 10:00, IT Services <support@itservices.co.th> wrote:',
+  '> เรียนคุณสมชาย', '> ทางทีมได้แก้ไขแล้ว'].join(NL)
+eq(stripQuoted(GMAIL), 'ขอบคุณครับ', 'Gmail-style "On ... wrote:" is cut')
+
+const ORIG = ['ยังไม่ได้ครับ', '', '-----Original Message-----', 'From: x', 'Sent: y'].join(NL)
+eq(stripQuoted(ORIG), 'ยังไม่ได้ครับ', 'the Original Message separator is cut')
+
+const THAI = ['รับทราบครับ', '', 'จาก: support@itservices.co.th', 'ส่ง: 3 มีนาคม 2569',
+  'ถึง: somchai@acme.co.th', 'เรื่อง: RE: HD-00123', '', 'เนื้อความเก่า'].join(NL)
+eq(stripQuoted(THAI), 'รับทราบครับ', 'Thai Outlook headers are cut too')
+
+// คอมเมนต์ที่ระบบเราเขียนเอง ขึ้นต้น "จาก: ชื่อ (เวลา)" — ห้ามโดนตัด
+const RELAY = ['จาก: สมชาย ใจดี (3 มี.ค. 2569 10:00)', '', 'ยังเข้าไม่ได้เลยครับ'].join(NL)
+eq(hasQuoted(RELAY), false, 'our own relay header is not mistaken for a quoted mail')
+eq(stripQuoted(RELAY), RELAY, 'a relayed comment survives whole')
+
+// "From:" ลอย ๆ ที่ไม่มี header อื่นตาม ไม่ใช่เมลเก่า
+eq(hasQuoted(['ลองดูแล้ว', 'From: the docs it says X'].join(NL)), false,
+  'a bare From: line without mail headers is left alone')
+
+// ข้อความธรรมดาไม่ควรถูกแตะ
+eq(hasQuoted('แก้เรียบร้อยแล้วครับ'), false, 'a plain comment has nothing to fold')
+eq(stripQuoted(''), '', 'empty text is safe')
+eq(stripQuoted(undefined), '', 'undefined is safe')
+
+// ยกคำพูดบรรทัดเดียวไม่ใช่เมลเก่า — แต่หลายบรรทัดติดกันใช่
+eq(hasQuoted(['ตามที่คุณบอกว่า', '> ปิดเครื่องแล้วเปิดใหม่', 'ผมทำแล้วครับ'].join(NL)), false,
+  'a single quoted line is a quotation, not a mail thread')
+eq(hasQuoted(['ตามนี้ครับ', '> บรรทัดหนึ่ง', '> บรรทัดสอง'].join(NL)), true,
+  'a run of quoted lines is a mail thread')
+
+// ถ้าตัดแล้วไม่เหลืออะไร แปลว่าอ่านผิด — ต้องคืนของเดิม ไม่ใช่คืนค่าว่าง
+const ALLQUOTE = ['', 'From: x', 'Sent: y', 'เนื้อความ'].join(NL)
+eq(stripQuoted(ALLQUOTE).length > 0, true, 'a message that is nothing but quotes still shows something')
+
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
