@@ -93,7 +93,7 @@ export default function ProjectDetail() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [tab, setTab] = useState<'tasks' | 'tickets' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'comments' | 'files' | 'customers'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'tickets' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'files' | 'customers'>('tasks')
   // Ticket ที่ผูกกับโครงการนี้ — คำขอให้ทำบางอย่าง (ไม่ใช่ปัญหา จึงไม่มี SLA)
   const [tickets, setTickets] = useState<Ticket[]>([])
   // จำนวนแหล่งอ้างอิง — ให้ panel รายงานกลับมาโชว์บนแท็บ (โหลดแยกจาก load() หลัก)
@@ -307,7 +307,12 @@ export default function ProjectDetail() {
   }, [id, user?.email])
 
   // เปิดแท็บ comments อัตโนมัติเมื่อมาจากลิงก์แจ้งเตือน (?tab=comments)
-  useEffect(() => { if (searchParams.get('tab') === 'comments') setTab('comments') }, [searchParams])
+  // ลิงก์เก่าจากอีเมล/แจ้งเตือนยังชี้ ?tab=comments — คอมเมนต์ไม่ใช่แท็บแล้ว จึงเลื่อนไปหาแทน
+  useEffect(() => {
+    if (searchParams.get('tab') !== 'comments') return
+    const el = document.getElementById('project-comments')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [searchParams])
 
   // ── Asset linking ───────────────────────────────────────────────────────────
   async function linkAsset(asset: Asset) {
@@ -1330,12 +1335,17 @@ export default function ProjectDetail() {
           </Card>
         )}
 
+        {/* งานอยู่ซ้าย คอมเมนต์อยู่ขวาแบ่งครึ่ง — คุยกันไปพร้อมกับดูงานได้ ไม่ต้องสลับแท็บ
+            จอแคบกว่า lg ให้เรียงลงล่างแทน ไม่งั้นสองคอลัมน์แคบจนอ่านไม่ได้ทั้งคู่ */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <div className="space-y-4 min-w-0">
+
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'tickets', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'comments', 'files', 'customers'] as const).map(t => (
+          {(['tasks', 'tickets', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'files', 'customers'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'tickets' ? `🎫 Tickets (${tickets.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'comments' ? 'Comments' : t === 'customers' ? '👥 ลูกค้า' : tr('ticket.attachments')}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'tickets' ? `🎫 Tickets (${tickets.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'customers' ? '👥 ลูกค้า' : tr('ticket.attachments')}
             </button>
           ))}
         </div>
@@ -1511,18 +1521,6 @@ export default function ProjectDetail() {
         })()}
 
         {/* ── Assets (linked IT_Assets) ── */}
-        {tab === 'comments' && project && (
-          <CommentSection
-            listName="PM_Comments"
-            parentField="ProjectID"
-            parentId={project.id}
-            titleLabel={project.Title}
-            linkPath={`/projects/${id}?tab=comments`}
-            mentionCandidates={agents.map(a => ({ name: a.Title, email: a.EmailText })).filter(c => c.email)}
-            notifyEmails={[...new Set([project.CreatedByEmail, ...members.map(m => m.AgentEmail), ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
-          />
-        )}
-
         {/* ── Files (project-level attachments) ── */}
         {/* กลุ่มลูกค้า — ตั้งที่นี่ แล้วเลือกทั้งชุดได้ตอนสร้าง Ticket/Task */}
         {tab === 'customers' && (
@@ -1567,6 +1565,24 @@ export default function ProjectDetail() {
             }
           </div>
         )}
+
+          </div>
+
+          {/* คอมเมนต์ — ติดหนึบไว้ด้านบนตอนเลื่อนดูงานยาว ๆ */}
+          <div id="project-comments" className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            {project && (
+              <CommentSection
+                listName="PM_Comments"
+                parentField="ProjectID"
+                parentId={project.id}
+                titleLabel={project.Title}
+                linkPath={`/projects/${id}?tab=comments`}
+                mentionCandidates={agents.map(a => ({ name: a.Title, email: a.EmailText })).filter(c => c.email)}
+                notifyEmails={[...new Set([project.CreatedByEmail, ...members.map(m => m.AgentEmail), ...tasks.map(t => t.AssignedEmail), ...incidents.map(i => i.AssignedEmail)].filter(Boolean) as string[])]}
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── รายละเอียด Task / Incident / Note — ลอยกลางจอ ── */}
