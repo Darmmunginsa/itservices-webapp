@@ -49,6 +49,13 @@ export function Celebration() {
   const play = mode === 'always' ? true : mode === 'off' ? false : !osReduced
   const quiet = !play && nonce > 0 && doneNonce !== nonce
 
+  // บอก CSS ว่าเอฟเฟกต์เปิดอยู่ไหม — ไฟที่แถวงานเลยกำหนดใช้ค่านี้ตัดสิน
+  // ต้องมาจากสวิตช์ของผู้ใช้ ไม่ใช่ media query ล้วน ไม่งั้นเครื่องที่ปิด
+  // ภาพเคลื่อนไหวไว้จะไม่เห็นไฟเลยทั้งที่สั่งเปิดเอง
+  useEffect(() => {
+    document.documentElement.dataset.fx = play ? 'on' : 'off'
+  }, [play])
+
   useEffect(() => {
     if (!nonce) return
     if (!play) {

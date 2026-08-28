@@ -268,7 +268,8 @@ export default function Home() {
                   className={`flex items-center gap-2.5 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
                     late ? 'border-l-4 border-red-500 bg-red-50/50 dark:bg-red-900/10 urgent-row' : 'border-l-4 border-transparent'}`}>
                   <span className="text-sm flex-shrink-0">
-                    {r.type === 'Incident' ? '🚨' : undated ? '⚪' : getDueDateEmoji(color) || '🔵'}
+                    {/* เลยกำหนดแล้วคือไฟไหม้ ไม่ว่าจะเป็นงานชนิดไหน */}
+                    {late ? '🔥' : r.type === 'Incident' ? '🚨' : undated ? '⚪' : getDueDateEmoji(color) || '🔵'}
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 flex-shrink-0 w-14 text-center">
                     {r.type}
