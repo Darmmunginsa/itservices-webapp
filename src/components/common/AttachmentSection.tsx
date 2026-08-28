@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Paperclip, Upload, Trash2 } from 'lucide-react'
-import { spGetAttachments, spUploadAttachment, spAttachmentUrl, spDeleteAttachment } from '../../services/sharepoint'
+import { Paperclip, Upload, Trash2 } from 'lucide-react'
+import { spGetAttachments, spUploadAttachment, spDeleteAttachment } from '../../services/sharepoint'
+import { AttachmentThumb } from './AttachmentThumb'
 import { useT } from '../../i18n/useT'
 
 interface Props {
@@ -82,22 +83,17 @@ export function AttachmentSection({ listName, itemId, readOnly = false }: Props)
       ) : files.length === 0 ? (
         <p className="text-xs text-gray-400 italic pl-4">{tr('attach.none')}</p>
       ) : (
-        <div className="space-y-1 pl-4">
+        // รูปที่มากับเมลเคยขึ้นเป็นแค่ชื่อไฟล์ ต้องกดเปิดทีละอันถึงจะรู้ว่าเป็นรูปอะไร
+        // ตอนนี้ให้ AttachmentThumb ตัดสินเอง (มันดู MIME จริง ไม่ใช่นามสกุล)
+        // ไม่ใช่รูป → มันคืนลิงก์ดาวน์โหลดมาเหมือนเดิม
+        <div className="flex flex-wrap items-start gap-2 pl-4">
           {files.map(f => (
-            <div key={f.FileName} className="flex items-center gap-1.5 group">
-              <a
-                href={spAttachmentUrl(f.ServerRelativeUrl)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline min-w-0 flex-1"
-              >
-                <Download size={11} className="flex-shrink-0" />
-                <span className="truncate">{f.FileName}</span>
-              </a>
+            <div key={f.FileName} className="relative group">
+              <AttachmentThumb listName={listName} itemId={itemId} fileName={f.FileName} />
               {!readOnly && (
                 <button type="button" onClick={() => handleDelete(f.FileName)} title={tr('assets.delete')}
-                  className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                  <Trash2 size={12} />
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                  <Trash2 size={11} />
                 </button>
               )}
             </div>

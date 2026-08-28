@@ -237,3 +237,20 @@ export async function spAttachmentBlobUrl(listName: string, itemId: number, file
   const blob = await res.blob()
   return URL.createObjectURL(blob)
 }
+
+export interface AttachmentBlob { url: string; type: string; size: number }
+
+/**
+ * เหมือน spAttachmentBlobUrl แต่คืนชนิดไฟล์จริงมาด้วย
+ * ชื่อไฟล์เชื่อไม่ได้เสมอ — รูปที่มากับเมลบางทีชื่อ .jfif .heic หรือไม่มีนามสกุลเลย
+ * ถ้าดูแต่นามสกุล รูปจะกลายเป็นลิงก์ชื่อไฟล์เฉย ๆ ทั้งที่แสดงเป็นรูปได้
+ */
+export async function spAttachmentBlob(listName: string, itemId: number, fileName: string): Promise<AttachmentBlob> {
+  if (!_getToken) throw new Error('Token getter not initialized')
+  const token = await _getToken()
+  const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')/$value`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
+  const blob = await res.blob()
+  return { url: URL.createObjectURL(blob), type: blob.type, size: blob.size }
+}
