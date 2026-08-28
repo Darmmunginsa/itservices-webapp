@@ -5,38 +5,53 @@ import { useAppStore } from '../../store/useAppStore'
 /**
  * พลุเต็มจอตอนปิดงานได้
  *
- * ปิดงานคือช่วงเดียวของวันที่มีอะไรให้ดีใจ — ให้มันรู้สึกได้หน่อย
+ * ปิดงานคือช่วงเดียวของวันที่มีอะไรให้ดีใจ — ให้มันรู้สึกได้จริง ๆ
  *
- * วาดด้วย canvas ใบเดียวแล้วถอดทิ้ง ไม่ค้างไว้กิน CPU
- * pointer-events: none เสมอ เพราะคนกดปิดงานแล้วมักจะทำงานต่อทันที
+ * วาดด้วย canvas ใบเดียว ยิงจรวดขึ้นจากขอบล่างพร้อมหางไฟ แล้วระเบิดเป็นดอก
+ * ใช้ globalCompositeOperation = 'lighter' ให้ประกายที่ทับกันสว่างขึ้นเหมือนไฟจริง
+ *
+ * pointer-events: none เสมอ เพราะคนกดปิดงานแล้วมักทำงานต่อทันที
  * ไม่ควรต้องรอให้แอนิเมชันจบก่อนถึงจะกดอะไรได้
  */
 
-const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#facc15']
-const DURATION = 2600
-const GRAVITY = 0.055
-const DRAG = 0.985
+const COLORS = [
+  '#ff3b30', '#ff9500', '#ffd60a', '#34c759', '#00c7be',
+  '#0a84ff', '#5e5ce6', '#bf5af2', '#ff2d92', '#ffffff',
+]
+const DURATION = 5200          // ยิงถึงวินาทีที่ ~3.6 แล้วปล่อยให้ดอกสุดท้ายจางหมด
+const LAUNCH_UNTIL = 3600
+const GRAVITY = 0.038
+const DRAG = 0.988
+const TRAIL = 0.14             // ยิ่งน้อยยิ่งเห็นหางยาว
 
 interface Spark {
-  x: number; y: number; vx: number; vy: number
-  color: string; life: number; size: number
+  x: number; y: number; px: number; py: number
+  vx: number; vy: number
+  color: string; life: number; decay: number; size: number
+  twinkle: boolean
+}
+interface Rocket {
+  x: number; y: number; px: number; py: number
+  vx: number; vy: number
+  color: string; targetY: number; big: boolean
 }
 
 export function Celebration() {
   const nonce = useAppStore(s => s.celebration)
+  const mode = useAppStore(s => s.celebrationFx)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // ปิดป้ายด้วย "nonce ที่แสดงจบแล้ว" แทน boolean — setState จึงเกิดใน callback ของ timer
   // ไม่ใช่ในตัว effect ตรง ๆ ซึ่งทำให้ render ซ้อนกัน
   const [doneNonce, setDoneNonce] = useState(0)
-  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-  const quiet = reduced && nonce > 0 && doneNonce !== nonce
+
+  const osReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  // 'always' = ผู้ใช้สั่งเองว่าเอาพลุ ให้ชนะค่าเครื่อง · 'auto' = ตามค่าเครื่อง · 'off' = ไม่เอาเลย
+  const play = mode === 'always' ? true : mode === 'off' ? false : !osReduced
+  const quiet = !play && nonce > 0 && doneNonce !== nonce
 
   useEffect(() => {
     if (!nonce) return
-    // เคารพการตั้งค่าของเครื่อง — บางคนเวียนหัวกับภาพเคลื่อนไหว และนี่ไม่ใช่ข้อมูลที่จำเป็น
-    // Windows: ตั้งค่า > การช่วยการเข้าถึง > เอฟเฟ็กต์ภาพ > เอฟเฟ็กต์ภาพเคลื่อนไหว
-    // แต่ต้องมีอะไรตอบกลับบ้าง ไม่ใช่เงียบไปเฉย ๆ จนคนคิดว่าระบบพัง
-    if (reduced) {
+    if (!play) {
       const t = window.setTimeout(() => setDoneNonce(nonce), 1800)
       return () => clearTimeout(t)
     }
@@ -52,54 +67,116 @@ export function Celebration() {
     ctx.scale(dpr, dpr)
 
     const sparks: Spark[] = []
-    const burst = (x: number, y: number) => {
-      const color = COLORS[Math.floor(Math.random() * COLORS.length)]
-      const n = 48 + Math.floor(Math.random() * 20)
-      for (let i = 0; i < n; i++) {
-        const a = (Math.PI * 2 * i) / n + Math.random() * 0.2
-        const speed = 4.5 + Math.random() * 7.5
-        sparks.push({
-          x, y,
-          vx: Math.cos(a) * speed,
-          vy: Math.sin(a) * speed,
-          color: Math.random() < 0.25 ? COLORS[Math.floor(Math.random() * COLORS.length)] : color,
-          life: 1,
-          size: 1.8 + Math.random() * 2.4,
-        })
+    const rockets: Rocket[] = []
+    const rand = (a: number, b: number) => a + Math.random() * (b - a)
+    const pick = () => COLORS[Math.floor(Math.random() * COLORS.length)]
+
+    function launch() {
+      const big = Math.random() < 0.35
+      const x = rand(W * 0.08, W * 0.92)
+      rockets.push({
+        x, y: H + 10, px: x, py: H + 10,
+        vx: rand(-0.9, 0.9),
+        vy: -rand(9.5, 13.5),
+        color: pick(),
+        targetY: rand(H * 0.08, H * 0.45),
+        big,
+      })
+    }
+
+    function explode(x: number, y: number, color: string, big: boolean) {
+      const n = big ? 150 : 90
+      // สองวงซ้อน วงในช้าวงนอกเร็ว ทำให้ดอกมีมิติแทนที่จะเป็นวงแบน ๆ
+      for (let ring = 0; ring < 2; ring++) {
+        const count = ring === 0 ? Math.round(n * 0.4) : n
+        const base = ring === 0 ? (big ? 3.5 : 2.5) : (big ? 8.5 : 6)
+        for (let i = 0; i < count; i++) {
+          const a = (Math.PI * 2 * i) / count + rand(-0.08, 0.08)
+          const speed = base * rand(0.55, 1.15)
+          sparks.push({
+            x, y, px: x, py: y,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            // ส่วนใหญ่สีเดียวกันทั้งดอก แซมสีอื่นนิดหน่อยให้ไม่แบน
+            color: Math.random() < 0.18 ? pick() : color,
+            life: 1,
+            decay: rand(0.0055, 0.011),
+            size: rand(1.4, 3.0),
+            twinkle: Math.random() < 0.4,
+          })
+        }
       }
     }
 
-    // ยิงทีละลูกให้ไล่กันขึ้น เหมือนพลุจริง ดีกว่าระเบิดพร้อมกันหมดแล้วจบ
+    // ยิงถี่ ๆ แบบสุ่มจังหวะ ให้เหมือนชุดพลุจริงมากกว่าการนับจังหวะเป๊ะ ๆ
     const timers: number[] = []
-    const shots = [0, 220, 430, 700, 980, 1250, 1500]
-    shots.forEach((delay, i) => {
-      timers.push(window.setTimeout(() => {
-        burst(W * (0.12 + Math.random() * 0.76), H * (0.18 + Math.random() * 0.42))
-        if (i === 0) burst(W * 0.5, H * 0.3)
-      }, delay))
-    })
+    let at = 0
+    while (at < LAUNCH_UNTIL) {
+      timers.push(window.setTimeout(launch, at))
+      // ท้าย ๆ ยิงรัวขึ้น เป็นชุดปิดท้าย
+      at += at > LAUNCH_UNTIL * 0.7 ? rand(90, 190) : rand(170, 380)
+    }
+    // เปิดฉากด้วยหลายลูกพร้อมกัน จะได้ไม่เงียบตอนเริ่ม
+    timers.push(window.setTimeout(launch, 60))
+    timers.push(window.setTimeout(launch, 110))
 
     let raf = 0
     const started = performance.now()
     const frame = (now: number) => {
       const elapsed = now - started
-      ctx.clearRect(0, 0, W, H)
-      for (const s of sparks) {
+
+      // ลบทีละนิดแทนการล้างทั้งเฟรม — ของเดิมจึงเหลือค้างเป็นหางไฟ
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillStyle = `rgba(0,0,0,${TRAIL})`
+      ctx.fillRect(0, 0, W, H)
+      ctx.globalCompositeOperation = 'lighter'
+
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i]
+        r.px = r.x; r.py = r.y
+        r.x += r.vx
+        r.y += r.vy
+        r.vy += GRAVITY * 3.2
+        ctx.strokeStyle = r.color
+        ctx.lineWidth = 2.4
+        ctx.beginPath()
+        ctx.moveTo(r.px, r.py)
+        ctx.lineTo(r.x, r.y)
+        ctx.stroke()
+        // ระเบิดตอนหมดแรงพุ่ง ดูเป็นธรรมชาติกว่าไประเบิดที่ความสูงตายตัว
+        if (r.y <= r.targetY || r.vy >= -0.6) {
+          explode(r.x, r.y, r.color, r.big)
+          rockets.splice(i, 1)
+        }
+      }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i]
+        s.px = s.x; s.py = s.y
         s.vx *= DRAG
         s.vy = s.vy * DRAG + GRAVITY
         s.x += s.vx
         s.y += s.vy
-        s.life -= 0.0085
-        if (s.life <= 0) continue
-        ctx.globalAlpha = Math.max(0, s.life)
-        ctx.fillStyle = s.color
+        s.life -= s.decay
+        if (s.life <= 0) { sparks.splice(i, 1); continue }
+        // ประกายบางเม็ดวิบวับตอนใกล้ดับ เหมือนปลายดอกพลุจริง
+        const a = s.twinkle && s.life < 0.55 ? s.life * (0.4 + Math.random() * 0.6) : s.life
+        ctx.globalAlpha = Math.max(0, a)
+        ctx.strokeStyle = s.color
+        ctx.lineWidth = s.size
+        ctx.lineCap = 'round'
         ctx.beginPath()
-        ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2)
-        ctx.fill()
+        ctx.moveTo(s.px, s.py)
+        ctx.lineTo(s.x, s.y)
+        ctx.stroke()
       }
       ctx.globalAlpha = 1
+
       if (elapsed < DURATION) raf = requestAnimationFrame(frame)
-      else ctx.clearRect(0, 0, W, H)
+      else {
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.clearRect(0, 0, W, H)
+      }
     }
     raf = requestAnimationFrame(frame)
 
@@ -107,7 +184,7 @@ export function Celebration() {
       cancelAnimationFrame(raf)
       timers.forEach(clearTimeout)
     }
-  }, [nonce, reduced])
+  }, [nonce, play])
 
   if (!nonce) return null
 
@@ -115,7 +192,7 @@ export function Celebration() {
     <>
       <canvas ref={canvasRef} aria-hidden
         className="fixed inset-0 z-[300] pointer-events-none w-full h-full" />
-      {/* เครื่องที่ปิดภาพเคลื่อนไหวไว้ — ป้ายนิ่ง ๆ แทนพลุ ยังรู้ว่าปิดงานสำเร็จ */}
+      {/* ไม่เล่นภาพเคลื่อนไหว — ป้ายนิ่ง ๆ แทนพลุ ยังรู้ว่าปิดงานสำเร็จ */}
       {quiet && (
         <div className="fixed inset-0 z-[300] pointer-events-none flex items-center justify-center">
           <div className="px-6 py-4 rounded-2xl bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 shadow-xl text-center">

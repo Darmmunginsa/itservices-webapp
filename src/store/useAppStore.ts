@@ -29,6 +29,8 @@ interface AppState {
   toasts: Toast[]
   /** นับครั้งที่ปิดงานสำเร็จ — ขยับทีไร Celebration ยิงพลุรอบใหม่ */
   celebration: number
+  /** always = เอาพลุเสมอ · auto = ตามค่าเครื่อง · off = ไม่เอา */
+  celebrationFx: 'always' | 'auto' | 'off' 
   setUser: (user: UserProfile | null) => void
   toggleDarkMode: () => void
   setAccentColor: (color: AccentColor) => void
@@ -38,6 +40,7 @@ interface AppState {
   setMobileNavOpen: (open: boolean) => void
   addToast: (type: Toast['type'], message: string) => void
   celebrate: () => void
+  setCelebrationFx: (m: 'always' | 'auto' | 'off') => void
   removeToast: (id: string) => void
   dateTaskModal: DateMatch | null
   openDateTaskModal: (match: DateMatch) => void
@@ -166,6 +169,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   cardOpacity: Number(localStorage.getItem('cardOpacity') ?? '100'),
   toasts: [],
   celebration: 0,
+  // ตั้งต้นเป็น always เพราะเจ้าของระบบขอไว้ชัดเจน — ใครไม่ไหวปิดได้จากเมนูโปรไฟล์
+  celebrationFx: ((localStorage.getItem('celebrationFx') as 'always' | 'auto' | 'off') ?? 'always'),
   dateTaskModal: null,
 
   setUser: (user) => {
@@ -280,6 +285,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   })),
 
   celebrate: () => set((s) => ({ celebration: s.celebration + 1 })),
+
+  setCelebrationFx: (m) => { localStorage.setItem('celebrationFx', m); set({ celebrationFx: m }) },
 
   openDateTaskModal: (match) => set({ dateTaskModal: match }),
   closeDateTaskModal: () => set({ dateTaskModal: null }),

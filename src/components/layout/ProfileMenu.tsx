@@ -14,7 +14,7 @@ const ACCENT_OPTIONS: { value: AccentColor; bg: string; label: string }[] = [
 ]
 
 export function ProfileMenu() {
-  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor, customAccent, customBg, setCustomAccent, setCustomBg, cardBg, cardOpacity, setCardStyle, lang, setLang } = useAppStore()
+  const { user, isDarkMode, toggleDarkMode, accentColor, setAccentColor, customAccent, customBg, setCustomAccent, setCustomBg, cardBg, cardOpacity, setCardStyle, lang, setLang, celebrationFx, setCelebrationFx, celebrate } = useAppStore()
   const { logout } = useAuth()
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -117,6 +117,27 @@ export function ProfileMenu() {
                 <button key={l} onClick={() => setLang(l)}
                   className={`px-2.5 py-1 font-medium transition-colors ${lang === l ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                   {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* พลุตอนปิดงาน — ตั้งต้นเปิดไว้ ใครไม่ไหวปิดได้ตรงนี้ ไม่ต้องไปแก้ค่าเครื่อง */}
+          <div className="border-t border-gray-100 dark:border-gray-800 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">🎆 พลุตอนปิดงาน</span>
+              <button type="button" onClick={celebrate}
+                className="text-[11px] text-primary-600 hover:underline">ลองดู</button>
+            </div>
+            <div className="flex gap-1">
+              {([
+                { v: 'always', label: 'เปิด' },
+                { v: 'auto', label: 'ตามเครื่อง' },
+                { v: 'off', label: 'ปิด' },
+              ] as const).map(o => (
+                <button key={o.v} type="button" onClick={() => setCelebrationFx(o.v)}
+                  className={`flex-1 px-2 py-1 rounded-lg text-[11px] transition-colors ${celebrationFx === o.v ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                  {o.label}
                 </button>
               ))}
             </div>
