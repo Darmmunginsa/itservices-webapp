@@ -11,7 +11,7 @@ import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexH
 import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
 import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
 import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
-import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions } from '../src/utils/customerGroups'
+import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -833,6 +833,24 @@ eq(opts.find(o => o.value === 'somchai@acme.co.th')?.label, 'สมชาย (AC
 eq(opts.find(o => o.value === 'aree@acme.co.th')?.label, 'อารีย์', 'no company means just the name')
 eq(opts[0].value, 'contract@acme.co.th', 'contract customers keep their place at the top')
 eq(customerOptions([], []).length, 0, 'no data means no options, not a crash')
+
+
+
+// -- เลือกลูกค้าจากทะเบียนเข้าโครงการ (availableContacts) --
+const REG = [
+  { id: 1, Title: 'สมชาย', CustomerEmail: 'somchai@acme.co.th', Company: 'ACME' },
+  { id: 2, Title: 'กมล', CustomerEmail: 'kamol@beta.co.th', Company: 'BETA' },
+  { id: 3, Title: 'ไม่มีเมล', CustomerEmail: '' },
+]
+const IN_PROJECT = [{ id: 9, Title: 'สมชาย', CustomerEmail: 'SOMCHAI@acme.co.th', ProjectID: 1 }]
+
+eq(availableContacts(REG, IN_PROJECT).length, 1, 'someone already in the project is not offered again')
+eq(availableContacts(REG, IN_PROJECT)[0].Title, 'กมล', 'the remaining contact is offered')
+eq(availableContacts(REG, []).length, 2, 'a contact with no address is never offered')
+eq(availableContacts(REG, [], 'beta').length, 1, 'search matches the company')
+eq(availableContacts(REG, [], 'KAMOL').length, 1, 'search ignores letter case')
+eq(availableContacts(REG, [], 'acme.co.th').length, 1, 'search matches the address')
+eq(availableContacts(REG, [], 'ไม่มีอยู่จริง').length, 0, 'a search with no match returns nothing, not everything')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

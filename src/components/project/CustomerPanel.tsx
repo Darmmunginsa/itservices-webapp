@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Users } from 'lucide-react'
+import { Plus, Trash2, Users, Search, UserPlus } from 'lucide-react'
 import { Card } from '../common/Card'
 import { Button } from '../common/Button'
 import { spGet, spCreate, spDelete } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
-import { customersOf, type ProjectCustomer } from '../../utils/customerGroups'
+import { customersOf, availableContacts, type ProjectCustomer } from '../../utils/customerGroups'
+import type { Contract } from '../../types/ticket'
 
 const LIST = 'PM_ProjectCustomers'
 
@@ -28,6 +29,11 @@ export function CustomerPanel({ projectId, projectTitle, canEdit }: Props) {
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', company: '' })
   const [saving, setSaving] = useState(false)
+  // เลือกจากทะเบียนลูกค้าที่มีอยู่แล้ว ดีกว่าให้พิมพ์อีเมลเอง — พิมพ์ผิดตัวเดียวก็ไม่ถึงคนรับ
+  const [contacts, setContacts] = useState<Contract[]>([])
+  const [picking, setPicking] = useState(false)
+  const [pickQuery, setPickQuery] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
 
   // ไม่ตั้ง loading ตรงนี้ — ค่าเริ่มต้นเป็น true อยู่แล้ว และการ setState ตรง ๆ ใน effect
   // ทำให้ render ซ้อนกันโดยเปล่าประโยชน์
@@ -38,6 +44,11 @@ export function CustomerPanel({ projectId, projectTitle, canEdit }: Props) {
       .finally(() => setLoading(false))
   }
   useEffect(load, [projectId])
+
+  useEffect(() => {
+    spGet<Contract>('HD_Contracts', "Status ne 'Expired'", undefined, 'Title asc', 2000)
+      .then(setContacts).catch(() => {})
+  }, [])
 
   const members = customersOf(rows, projectId)
 
@@ -65,6 +76,36 @@ export function CustomerPanel({ projectId, projectTitle, canEdit }: Props) {
     } catch { addToast('error', 'เพิ่มไม่สำเร็จ') } finally { setSaving(false) }
   }
 
+  // คนที่ยังไม่ได้อยู่ในโครงการนี้เท่านั้น — โชว์คนที่เพิ่มไปแล้วให้กดซ้ำได้ก็หลอกตาเปล่า ๆ
+  const pickable = availableContacts(contacts, members, pickQuery)
+
+  async function addPicked() {
+    if (picked.length === 0) return
+    setSaving(true)
+    let ok = 0
+    let failed = 0
+    for (const email of picked) {
+      const c = contacts.find(x => (x.CustomerEmail ?? '').toLowerCase() === email.toLowerCase())
+      try {
+        await spCreate(LIST, {
+          Title: c?.Title || email,
+          CustomerEmail: email,
+          Company: c?.Company || undefined,
+          ProjectID: projectId,
+        })
+        ok++
+      } catch { failed++ }
+    }
+    setPicked([])
+    setPickQuery('')
+    setPicking(false)
+    setSaving(false)
+    load()
+    // บอกจำนวนที่พลาดด้วย ไม่งั้นคนคิดว่าเพิ่มครบแล้วทั้งที่ขาดไป
+    if (failed) addToast('error', `เพิ่มได้ ${ok} คน · ไม่สำเร็จ ${failed} คน`)
+    else addToast('success', `เพิ่ม ${ok} คนแล้ว`)
+  }
+
   async function remove(m: ProjectCustomer) {
     if (!window.confirm(`เอา "${m.Title || m.CustomerEmail}" ออกจากกลุ่มลูกค้าของโครงการนี้?`)) return
     try {
@@ -73,6 +114,8 @@ export function CustomerPanel({ projectId, projectTitle, canEdit }: Props) {
       addToast('success', 'เอาออกแล้ว')
     } catch { addToast('error', 'เอาออกไม่สำเร็จ') }
   }
+
+  const ic = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
 
   if (missing) {
     return (
@@ -85,12 +128,55 @@ export function CustomerPanel({ projectId, projectTitle, canEdit }: Props) {
     )
   }
 
-  const ic = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
-
   return (
     <div className="space-y-3">
-      {canEdit && !adding && (
-        <Button size="sm" onClick={() => setAdding(true)}><Plus size={14} /> เพิ่มผู้ติดต่อ</Button>
+      {canEdit && !adding && !picking && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => setPicking(true)}><UserPlus size={14} /> เลือกจากทะเบียนลูกค้า</Button>
+          <Button size="sm" variant="secondary" onClick={() => setAdding(true)}><Plus size={14} /> พิมพ์เอง</Button>
+        </div>
+      )}
+
+      {picking && (
+        <Card>
+          <div className="relative mb-2">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input autoFocus value={pickQuery} onChange={e => setPickQuery(e.target.value)}
+              placeholder="ค้นหาชื่อ / อีเมล / บริษัท" className={ic + ' pl-8'} />
+          </div>
+          {contacts.length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              ยังไม่มีข้อมูลในทะเบียนลูกค้า — เพิ่มได้ที่หน้า "ลูกค้า / Contacts" หรือกด "พิมพ์เอง"
+            </p>
+          ) : pickable.length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">
+              {pickQuery ? 'ไม่พบลูกค้าที่ค้นหา' : 'ลูกค้าในทะเบียนถูกเพิ่มเข้าโครงการนี้ครบแล้ว'}
+            </p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto -mx-1">
+              {pickable.map(c => {
+                const email = c.CustomerEmail ?? ''
+                const on = picked.includes(email)
+                return (
+                  <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                    <input type="checkbox" checked={on} className="rounded accent-primary-600 flex-shrink-0"
+                      onChange={() => setPicked(prev => on ? prev.filter(e => e !== email) : [...prev, email])} />
+                    <span className="min-w-0">
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{c.Title}</span>
+                      <span className="text-xs text-gray-400 ml-2">{email}{c.Company ? ` · ${c.Company}` : ''}</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" onClick={addPicked} disabled={saving || picked.length === 0}>
+              {saving ? 'กำลังเพิ่ม...' : `เพิ่ม ${picked.length} คน`}
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => { setPicking(false); setPicked([]); setPickQuery('') }}>ยกเลิก</Button>
+          </div>
+        </Card>
       )}
 
       {adding && (

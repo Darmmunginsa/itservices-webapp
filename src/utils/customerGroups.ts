@@ -99,3 +99,22 @@ export function customerOptions(
   for (const m of members) add(clean(m.CustomerEmail), m.Title || clean(m.CustomerEmail), m.Company)
   return out
 }
+
+/**
+ * ลูกค้าในทะเบียนที่ยังไม่ได้อยู่ในโครงการนี้ (กรองด้วยคำค้นได้)
+ * ที่ต้องตัดคนที่เพิ่มไปแล้วออก เพราะโชว์ให้กดซ้ำก็ได้แค่รายการซ้ำในกลุ่ม
+ */
+export function availableContacts<T extends { Title?: string; Company?: string; CustomerEmail?: string }>(
+  contacts: T[],
+  already: ProjectCustomer[],
+  query = '',
+): T[] {
+  const taken = new Set(already.map(m => clean(m.CustomerEmail).toLowerCase()))
+  const q = query.trim().toLowerCase()
+  return contacts.filter(c => {
+    const email = clean(c.CustomerEmail)
+    if (!email || taken.has(email.toLowerCase())) return false
+    if (!q) return true
+    return [c.Title, c.Company, email].some(v => (v ?? '').toLowerCase().includes(q))
+  })
+}
