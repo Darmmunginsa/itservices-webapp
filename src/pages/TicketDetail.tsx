@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useLocation } from 'react-router-dom'
 import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -41,6 +41,10 @@ function parseRelayed(textIn: string): { name: string; when?: string; body: stri
 
 export default function TicketDetail() {
   const { id } = useParams()
+  // เปิด Ticket จากหน้าไหน ปุ่มย้อนกลับต้องพากลับหน้านั้น
+  // เดิมยิงไป /my-work ตายตัว คนที่เข้ามาจากโครงการจึงหลุดออกจากโครงการทุกครั้ง
+  const location = useLocation()
+  const from = (location.state as { from?: string; fromLabel?: string } | null) ?? null
   const { user, addToast } = useAppStore()
   const tr = useT()
   const [ticket, setTicket] = useState<Ticket | null>(null)
@@ -521,7 +525,9 @@ export default function TicketDetail() {
 
   return (
     <div>
-      <Header title={ticket.TicketNumber ?? 'Ticket'} backTo="/my-work" backLabel={tr('ticket.myWork')} />
+      <Header title={ticket.TicketNumber ?? 'Ticket'}
+        backTo={from?.from ?? '/my-work'}
+        backLabel={from?.fromLabel ?? tr('ticket.myWork')} />
       <div className="p-4 md:p-6 max-w-4xl space-y-5">
 
         {/* Main Info */}

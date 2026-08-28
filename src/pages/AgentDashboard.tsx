@@ -177,7 +177,7 @@ export default function AgentDashboard() {
           <DataTable
             rows={filtered}
             rowKey={t => t.id}
-            onRowClick={t => navigate(`/tickets/${t.id}`)}
+            onRowClick={t => navigate(`/tickets/${t.id}`, { state: { from: '/dashboard' } })}
             emptyText="ไม่มี Ticket"
             rowClass={t => getDueDateRowClass(getDueDateColor(t.DueDate, t.Status === 'Closed'))}
             columns={ticketColumns}

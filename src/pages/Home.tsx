@@ -33,6 +33,7 @@ interface Stats {
 export default function Home() {
   const { user, addToast, permSource } = useAppStore()
   const t = useT()
+  const homeLabel = t('nav.home')
   const [stats, setStats] = useState<Stats>({ openTickets: 0, activeProjects: 0, openIncidents: 0 })
   const [focusItems, setFocusItems] = useState<FocusItem[]>([])
   const [warningAssets, setWarningAssets] = useState<AssetType[]>([])
@@ -441,6 +442,7 @@ export default function Home() {
               <div className="space-y-2">
                 {myTickets.slice(0, 5).map(t => (
                   <Link key={t.id} to={`/tickets/${t.id}`}
+                    state={{ from: '/', fromLabel: homeLabel }}
                     className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                     <span className="text-base flex-shrink-0">{getDueDateEmoji(getDueDateColor(t.DueDate, false))}</span>
                     <div className="flex-1 min-w-0">

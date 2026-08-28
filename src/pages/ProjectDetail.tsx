@@ -1460,6 +1460,7 @@ export default function ProjectDetail() {
                   const color = getDueDateColor(t.DueDate, ['Resolved', 'Closed'].includes(t.Status))
                   return (
                     <Link key={t.id} to={`/tickets/${t.id}`}
+                      state={{ from: `/projects/${id}`, fromLabel: project.Title }}
                       className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-md transition-shadow ${getDueDateRowClass(color)}`}>
                       <div className="flex items-start gap-2">
                         <div className="min-w-0 flex-1">

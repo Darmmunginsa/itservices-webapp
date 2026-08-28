@@ -161,7 +161,7 @@ export default function MyWork() {
       <div key={t.id} className={`flex flex-col gap-2 p-3 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow ${getDueDateRowClass(color)}`}>
         <div className="flex items-start gap-2">
           <span className="text-base flex-shrink-0">{getDueDateEmoji(color)}</span>
-          <Link to={`/tickets/${t.id}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{t.Title}</Link>
+          <Link to={`/tickets/${t.id}`} state={{ from: '/my-work' }} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{t.Title}</Link>
           <button onClick={() => pinFocus('Ticket', t)} className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 ${pinnedSet.has(`Ticket|${t.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin"><Pin size={14} /></button>
         </div>
         <span className="text-xs text-gray-400">{t.TicketNumber}</span>
@@ -396,7 +396,7 @@ export default function MyWork() {
               ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noTickets')}</p>
               : view === 'table'
                 ? <DataTable rows={filteredTickets} columns={ticketTableCols} rowKey={t => t.id}
-                    onRowClick={t => navigate(`/tickets/${t.id}`)} emptyText={tr('mywork.noTickets')}
+                    onRowClick={t => navigate(`/tickets/${t.id}`, { state: { from: '/my-work' } })} emptyText={tr('mywork.noTickets')}
                     rowClass={t => getDueDateRowClass(getDueDateColor(t.DueDate, t.Status === 'Closed'))} />
                 : <Columns cols={TICKET_COLS.filter(c => showAllTickets || !DONE_TICKET_STATUSES.has(c.key))} items={filteredTickets} keyOf={t => t.Status} render={t => ticketCard(t)} />
         )}
