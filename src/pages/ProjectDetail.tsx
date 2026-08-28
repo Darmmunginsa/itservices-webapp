@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom'
-import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, ChevronUp, Monitor, UserPlus, X, ImagePlus, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, ChevronUp, Monitor, UserPlus, X, ImagePlus, AlertTriangle, Maximize2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { SmartText } from '../components/common/SmartText'
@@ -773,7 +773,6 @@ export default function ProjectDetail() {
   function renderTaskCard(task: Task) {
     const color = getDueDateColor(task.DueDate, task.IsCompleted)
     const ak = `task-${task.id}`
-    const isOpen = expandedKey === ak
     return (
       <div key={task.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${getDueDateRowClass(color)}`}>
         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
@@ -788,10 +787,19 @@ export default function ProjectDetail() {
               {task.IsAcknowledged && <span className="text-green-600 flex items-center gap-0.5"><CheckCircle2 size={10} /> {tr('tracking.ack')}</span>}
             </div>
           </div>
-          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Maximize2 size={13} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-0.5" />
         </div>
-        {isOpen && (
-          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5 space-y-2">
+      </div>
+    )
+  }
+
+  // เนื้อหาเต็มของ Task — แสดงในโมดัลกลางจอ ไม่ใช่กางในการ์ด
+  // การกางในการ์ดทำให้เนื้อหายาว ๆ ถูกบีบอยู่ในคอลัมน์แคบ และดันการ์ดอื่นเลื่อนหนี
+  function renderTaskDetail(task: Task) {
+    const ak = `task-${task.id}`
+    return (
+          <div className="space-y-2">
+            {task.DueDate && <p className="text-xs text-gray-500">{tr('common.dueDate')}: {formatDate(task.DueDate)}</p>}
             {task.AssignedTo && <p className="text-xs text-gray-500">{tr('pd.assignee')}: {task.AssignedTo}</p>}
             {task.TaskNote && <p className="text-xs text-gray-600 dark:text-gray-300 italic">{task.TaskNote}</p>}
             <div className="flex items-center gap-1 flex-wrap">
@@ -807,11 +815,11 @@ export default function ProjectDetail() {
                   className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
                   <Paperclip size={14} />
                 </button>
-                <button onClick={() => openEditTask(task)} title={tr('common.edit')}
+                <button onClick={() => { setExpandedKey(null); openEditTask(task) }} title={tr('common.edit')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                   <Edit2 size={14} />
                 </button>
-                <button onClick={() => deleteTask(task.id)} title={tr('assets.delete')}
+                <button onClick={() => { setExpandedKey(null); deleteTask(task.id) }} title={tr('assets.delete')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
                   <Trash2 size={14} />
                 </button>
@@ -819,14 +827,11 @@ export default function ProjectDetail() {
             </div>
             {attachKey === ak && <AttachmentSection listName="PM_Tasks" itemId={task.id} />}
           </div>
-        )}
-      </div>
     )
   }
 
   function renderIncidentCard(inc: ProjectIncident) {
     const ak = `incident-${inc.id}`
-    const isOpen = expandedKey === ak
     const isResolved = ['Resolved', 'Closed', 'Done', 'Completed'].includes(inc.Status)
     return (
       <div key={inc.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${isResolved ? 'opacity-60' : ''}`}>
@@ -851,12 +856,23 @@ export default function ProjectDetail() {
               {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
             </div>
           </div>
-          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <Maximize2 size={13} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-0.5" />
         </div>
-        {isOpen && (
-          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5 space-y-2">
-            {inc.Description && <p className="text-xs text-gray-600 dark:text-gray-300">{inc.Description}</p>}
-            {inc.Resolution && <p className="text-xs text-green-600">✓ {inc.Resolution}</p>}
+      </div>
+    )
+  }
+
+  function renderIncidentDetail(inc: ProjectIncident) {
+    const ak = `incident-${inc.id}`
+    return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
+              <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
+              {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
+            </div>
+            {inc.Description && <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{inc.Description}</p>}
+            {inc.Resolution && <p className="text-sm text-green-600 whitespace-pre-wrap">✓ {inc.Resolution}</p>}
             <div className="flex items-center gap-1">
               <button onClick={() => pinFocusItem('Incident', inc)} title="Pin"
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
@@ -866,12 +882,12 @@ export default function ProjectDetail() {
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
                 <Paperclip size={14} />
               </button>
-              <button onClick={() => openEditIncident(inc)} title={tr('common.edit')}
+              <button onClick={() => { setExpandedKey(null); openEditIncident(inc) }} title={tr('common.edit')}
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                 <Edit2 size={14} />
               </button>
               {isBossAdmin && (
-                <button onClick={() => deleteIncident(inc.id)} title={tr('assets.delete')}
+                <button onClick={() => { setExpandedKey(null); deleteIncident(inc.id) }} title={tr('assets.delete')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
                   <Trash2 size={14} />
                 </button>
@@ -879,9 +895,52 @@ export default function ProjectDetail() {
             </div>
             {attachKey === ak && <AttachmentSection listName="PM_Incidents" itemId={inc.id} />}
           </div>
-        )}
+    )
+  }
+
+  function renderNoteDetail(note: Note) {
+    const ak = `note-${note.id}`
+    const canEdit = user?.role === 'Admin' || note.NoteBy === user?.displayName
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-gray-400">{note.NoteBy} • {formatDate(note.Created)}</p>
+        {note.NoteText && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300" />}
+        <div className="flex items-center gap-2 text-gray-400 border-t border-gray-100 dark:border-gray-800 pt-2.5">
+          <button onClick={() => toggleAttach('note', note.id)} title={tr('pd.attach')}
+            className={`hover:text-primary-600 transition-colors ${attachKey === ak ? 'text-primary-600' : ''}`}>
+            <Paperclip size={14} />
+          </button>
+          {canEdit && (<>
+            <button onClick={() => { setExpandedKey(null); openEditNote(note) }} className="hover:text-primary-600 transition-colors"><Edit2 size={14} /></button>
+            <button onClick={() => { setExpandedKey(null); deleteNote(note.id) }} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
+          </>)}
+        </div>
+        {attachKey === ak && <AttachmentSection listName="PM_Notes" itemId={note.id} />}
       </div>
     )
+  }
+
+  /**
+   * รายละเอียดของสิ่งที่กำลังเปิดอยู่ — ทั้งสามชนิดใช้โมดัลใบเดียวกัน
+   * ยึด id ไม่ใช่ตัว object เพราะข้อมูลถูกโหลดใหม่ได้ระหว่างเปิดอยู่
+   */
+  function openedDetail(): { title: string; body: React.ReactNode } | null {
+    if (!expandedKey) return null
+    const [kind, rawId] = expandedKey.split('-')
+    const id = Number(rawId)
+    if (kind === 'task') {
+      const t = tasks.find(x => x.id === id)
+      return t ? { title: t.Title, body: renderTaskDetail(t) } : null
+    }
+    if (kind === 'incident') {
+      const i = incidents.find(x => x.id === id)
+      return i ? { title: i.Title, body: renderIncidentDetail(i) } : null
+    }
+    if (kind === 'note') {
+      const n = notes.find(x => x.id === id)
+      return n ? { title: n.Title || tr('pd.untitled'), body: renderNoteDetail(n) } : null
+    }
+    return null
   }
 
   const PD_TASK_COLS = [
@@ -1303,34 +1362,16 @@ export default function ProjectDetail() {
               : <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {notes.map(note => {
                     const ak = `note-${note.id}`
-                    const isOpen = expandedKey === ak
-                    const canEdit = user?.role === 'Admin' || note.NoteBy === user?.displayName
                     return (
                       <div key={note.id} className="subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
                         <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{note.Title || tr('pd.untitled')}</p>
-                            {!isOpen && note.NoteText && <p className="text-xs text-gray-400 truncate mt-0.5">{(note.NoteText).split('\n')[0]}</p>}
-                            {isOpen && note.NoteText && <SmartText text={note.NoteText} className="text-sm text-gray-700 dark:text-gray-300 mt-1.5" />}
+                            {note.NoteText && <p className="text-xs text-gray-400 truncate mt-0.5">{(note.NoteText).split('\n')[0]}</p>}
                             <p className="text-xs text-gray-400 mt-1">{note.NoteBy} • {formatDate(note.Created)}</p>
                           </div>
-                          <ChevronDown size={15} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          <Maximize2 size={13} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-0.5" />
                         </div>
-                        {isOpen && (
-                          <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2.5">
-                            <div className="flex items-center gap-2 text-gray-400">
-                              <button onClick={() => toggleAttach('note', note.id)} title={tr('pd.attach')}
-                                className={`hover:text-primary-600 transition-colors ${attachKey === ak ? 'text-primary-600' : ''}`}>
-                                <Paperclip size={14} />
-                              </button>
-                              {canEdit && (<>
-                                <button onClick={() => openEditNote(note)} className="hover:text-primary-600 transition-colors"><Edit2 size={14} /></button>
-                                <button onClick={() => deleteNote(note.id)} className="text-red-400 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
-                              </>)}
-                            </div>
-                            {attachKey === ak && <div className="mt-2"><AttachmentSection listName="PM_Notes" itemId={note.id} /></div>}
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -1527,6 +1568,16 @@ export default function ProjectDetail() {
           </div>
         )}
       </div>
+
+      {/* ── รายละเอียด Task / Incident / Note — ลอยกลางจอ ── */}
+      {(() => {
+        const d = openedDetail()
+        return (
+          <Modal open={!!d} onClose={() => { setExpandedKey(null); setAttachKey(null) }} title={d?.title ?? ''} size="lg">
+            {d?.body}
+          </Modal>
+        )
+      })()}
 
       {/* ── Asset Picker Modal ── */}
       <Modal open={showAssetPicker} onClose={() => setShowAssetPicker(false)} title={tr('pd.pickDevice')} size="md">
