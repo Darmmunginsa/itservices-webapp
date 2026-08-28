@@ -244,10 +244,16 @@ export default function Submit() {
         addToast('success', 'สร้าง Task สำเร็จ')
 
       } else if (type === 'Incident') {
+        // กันอีกชั้น — ถ้า required ของฟอร์มถูกข้ามไปได้ ก็ยังต้องไม่มี Incident ที่ไม่มีโครงการ
+        if (!form.projectId) {
+          addToast('error', 'ต้องเลือกโครงการที่เกี่ยวข้องก่อนจึงจะบันทึก Incident ได้')
+          setLoading(false)
+          return
+        }
         const agent = agents.find(a => a.EmailText === form.assignedEmail)
         await spCreate('PM_Incidents', {
           Title: form.title,
-          ProjectID: form.projectId ? Number(form.projectId) : 0,
+          ProjectID: Number(form.projectId),
           Severity: form.incidentSeverity,
           Status: form.incidentStatus,
           Description: form.description || undefined,
@@ -266,7 +272,7 @@ export default function Submit() {
             recipients: [form.assignedEmail],
             title: `🚨 ได้รับมอบหมาย Incident: ${form.title}`,
             message: `ความรุนแรง ${form.incidentSeverity}${form.description ? ' — ' + form.description.slice(0, 120) : ''}`,
-            linkPath: form.projectId ? `/projects/${form.projectId}` : '/my-work',
+            linkPath: `/projects/${form.projectId}`,
             eventType: 'incident_created',
           })
         }
@@ -637,17 +643,29 @@ export default function Submit() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className={lx} style={{marginBottom:0}}>{t('submit.relatedProject')}</label>
+                      <label className={lx} style={{marginBottom:0}}>{t('submit.relatedProject')} <span className="text-red-500">*</span></label>
                       <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
                         <input type="checkbox" checked={activeProjectsOnly} onChange={e => setActiveProjectsOnly(e.target.checked)}
                           className="w-3 h-3 accent-primary-600" />
                         {t('submit.onlyActive')}
                       </label>
                     </div>
-                    <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
-                      <option value="">{t('submit.notSpecified')}</option>
+                    {/* Incident ต้องมีโครงการเสมอ — ปัญหาที่ไม่รู้ว่าของงานไหน ตามต่อไม่ได้
+                        และหลุดจากรายงานทั้งหมดที่จัดกลุ่มตามโครงการ */}
+                    <select required value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                      <option value="">— เลือกโครงการ —</option>
                       {filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)}
                     </select>
+                    {projects.length > 0 && filteredProjects.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                        ไม่มีโครงการที่ยัง Active — เอาเครื่องหมายถูก "เฉพาะที่ Active" ออกเพื่อเลือกโครงการอื่น
+                      </p>
+                    )}
+                    {projects.length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                        ยังไม่มีโครงการในระบบ — ต้องสร้างโครงการก่อนจึงจะแจ้ง Incident ได้
+                      </p>
+                    )}
                   </div>
                 </div>
 
