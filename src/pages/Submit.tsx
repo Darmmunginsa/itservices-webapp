@@ -8,6 +8,7 @@ import { OptionSelect } from '../components/common/OptionSelect'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { getDirectoryPeople, DirectoryConsentError } from '../services/graph'
 import { mergePeople, type DirectoryPerson } from '../utils/people'
+import { incidentMailPlan } from '../utils/incidentMail'
 import { buildGroups, toggleGroup, customerOptions, type ProjectCustomer } from '../utils/customerGroups'
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
@@ -297,6 +298,35 @@ export default function Submit() {
             linkPath: `/projects/${form.projectId}`,
             eventType: 'incident_created',
           })
+        }
+        // แจ้งทางอีเมลด้วย — แจ้งเตือนในแอปคนเห็นก็ต่อเมื่อเปิดแอปอยู่
+        // Incident คือเรื่องเร่งด่วน รอให้คนบังเอิญเข้าแอปไม่ทัน
+        {
+          const proj = projects.find(p => String(p.id) === form.projectId)
+          const plan = incidentMailPlan({
+            title: form.title,
+            severity: form.incidentSeverity,
+            status: form.incidentStatus,
+            description: form.description,
+            incidentDate: form.incidentDate,
+            slaHours: form.incidentSlaHours ? Number(form.incidentSlaHours) : null,
+            projectName: proj?.Title,
+            projectId: form.projectId,
+            assignedName: form.assignedName,
+            assignedEmail: form.assignedEmail,
+            requesterEmail: user.email,
+            watchers: [proj?.CreatedByEmail],
+            actorEmail: user.email,
+            baseUrl: window.location.origin + window.location.pathname,
+          })
+          if (plan.to.length > 0) {
+            const res = await sendTemplateEmail('incident_created', plan.vars, plan.to, plan.cc)
+            if (!res.ok) {
+              addToast('error', res.reason === 'no-template'
+                ? 'บันทึกแล้ว แต่ไม่ได้ส่งเมล — ยังไม่ได้เปิด template "incident_created"'
+                : 'บันทึกแล้ว แต่ส่งเมลไม่สำเร็จ — ผู้รับผิดชอบยังไม่รู้เรื่อง')
+            }
+          }
         }
         addToast('success', 'บันทึก Incident สำเร็จ')
       }

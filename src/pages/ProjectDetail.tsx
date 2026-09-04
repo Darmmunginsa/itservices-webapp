@@ -18,6 +18,8 @@ import { countProjectChildren, deleteProjectCascade } from '../services/projectS
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
+import { sendTemplateEmail } from '../services/emailService'
+import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentMail'
 import { CommentSection } from '../components/common/CommentSection'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset, ProjectMember } from '../types/project'
 import type { Ticket } from '../types/ticket'
@@ -626,6 +628,40 @@ export default function ProjectDetail() {
     setShowIncidentModal(true)
   }
 
+  /**
+   * ส่งเมลของ Incident — ทั้งสามจังหวะใช้ผู้รับชุดเดียวกัน
+   * ล้มเหลวไม่ทำให้การบันทึกล้ม แต่ต้องบอกให้รู้ ไม่ใช่เงียบ
+   * เพราะคนกดจะเข้าใจว่าทีมได้รับแจ้งแล้วทั้งที่ยังไม่มีใครรู้
+   */
+  async function mailIncident(eventKey: string, label: string) {
+    const agent = agents.find(a => a.EmailText === incidentForm.assignedAgentEmail)
+    const plan = incidentMailPlan({
+      title: incidentForm.title,
+      severity: incidentForm.severity,
+      status: incidentForm.status,
+      description: incidentForm.description,
+      resolution: incidentForm.resolution,
+      incidentDate: incidentForm.incidentDate,
+      slaHours: incidentForm.slaHours ? Number(incidentForm.slaHours) : null,
+      projectName: project?.Title,
+      projectId: id,
+      assignedName: agent?.Title,
+      assignedEmail: incidentForm.assignedAgentEmail,
+      requesterEmail: editingIncident?.Author?.EMail || editingIncident?.CreatedByEmail || user?.email,
+      watchers: [project?.CreatedByEmail, ...members.map(m => m.AgentEmail)],
+      actorEmail: user?.email,
+      baseUrl: window.location.origin + window.location.pathname,
+    })
+    if (plan.to.length === 0) return   // ไม่มีใครให้ส่ง — ไม่ใช่ความผิดพลาด
+    const res = await sendTemplateEmail(eventKey, plan.vars, plan.to, plan.cc)
+    if (res.ok) return
+    if (res.reason === 'no-template') {
+      addToast('error', `บันทึกแล้ว แต่ไม่ได้ส่งเมล${label} — ยังไม่ได้เปิด template "${eventKey}"`)
+    } else {
+      addToast('error', `บันทึกแล้ว แต่ส่งเมล${label}ไม่สำเร็จ — ผู้เกี่ยวข้องยังไม่รู้เรื่อง`)
+    }
+  }
+
   async function saveIncident(e: React.FormEvent) {
     e.preventDefault()
     setSavingIncident(true)
@@ -656,6 +692,12 @@ export default function ProjectDetail() {
       if (editingIncident) {
         await spUpdate('PM_Incidents', editingIncident.id, payload)
         addToast('success', 'อัปเดต Incident แล้ว')
+        // ส่งเฉพาะจังหวะที่เปลี่ยนจริง — บันทึกซ้ำแล้วเมลออกทุกครั้ง คนจะเลิกอ่าน
+        if (justResolved(incidentForm.status, editingIncident.Status)) {
+          void mailIncident('incident_resolved', 'แจ้งปิดเคส')
+        } else if (justAssigned(incidentForm.assignedAgentEmail, editingIncident.AssignedEmail)) {
+          void mailIncident('incident_assigned', 'แจ้งผู้รับผิดชอบ')
+        }
         // แจ้ง Requester (ผู้แจ้ง) เมื่อสถานะเปลี่ยน (in-app)
         const requester = editingIncident.Author?.EMail || editingIncident.CreatedByEmail
         if (incidentForm.status !== editingIncident.Status && requester && requester.toLowerCase() !== actorEmail) {
@@ -670,6 +712,7 @@ export default function ProjectDetail() {
       } else {
         await spCreate('PM_Incidents', { ...payload, ProjectID: Number(id) })
         addToast('success', 'บันทึก Incident แล้ว')
+        void mailIncident('incident_created', 'แจ้งเปิดเคส')
         // แจ้ง Assigned เมื่อสร้าง Incident (in-app) — ยกเว้นคนสร้างเอง
         if (incidentForm.assignedAgentEmail && incidentForm.assignedAgentEmail.toLowerCase() !== actorEmail) {
           createNotification({

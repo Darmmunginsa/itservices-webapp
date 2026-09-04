@@ -3,8 +3,19 @@
 //
 // กติกาที่ตั้งใจ: งานที่ "ไม่ได้กำหนดวันส่ง" ต้องไม่หายไปจากหน้าจอ
 // เพราะไม่มีกำหนดส่งไม่ได้แปลว่าไม่ต้องทำ — มันคือกรณีที่หลุดง่ายที่สุด
-import { daysUntil } from './dateUtils'
+import { differenceInDays, parseISO } from 'date-fns'
 import { slaInfo } from './sla'
+
+/**
+ * จำนวนวันถึงกำหนด เทียบกับเวลาที่ส่งเข้ามา
+ *
+ * ตัวช่วยใน dateUtils อ้าง new Date() จริงเสมอ ทำให้ครึ่งหนึ่งของฟังก์ชันนี้ใช้นาฬิกา
+ * ที่ฉีดเข้ามา (ฝั่ง SLA) อีกครึ่งใช้นาฬิกาจริง สองฝั่งจึงไม่ตรงกัน และผลทดสอบ
+ * ก็เชื่อไม่ได้ทั้งที่รับ now เข้ามาแล้ว
+ */
+function daysFrom(dateStr: string, now: Date): number {
+  try { return differenceInDays(parseISO(dateStr), now) } catch { return 999 }
+}
 
 export type DueType = 'Ticket' | 'Task' | 'Incident'
 
@@ -77,7 +88,7 @@ export function buildDueRows(
       type: 'Ticket',
       link: `/tickets/${t.id}`,
       due: t.DueDate ?? null,
-      days: t.DueDate ? daysUntil(t.DueDate) : null,
+      days: t.DueDate ? daysFrom(t.DueDate, now) : null,
       status: t.Status,
       invited: !mine && invited.has(t.id),
     })
@@ -91,7 +102,7 @@ export function buildDueRows(
       type: 'Task',
       link: `/projects/${t.ProjectID}`,
       due: t.DueDate ?? null,
-      days: t.DueDate ? daysUntil(t.DueDate) : null,
+      days: t.DueDate ? daysFrom(t.DueDate, now) : null,
     })
   }
 

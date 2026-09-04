@@ -12,6 +12,7 @@ import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/e
 import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
 import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
+import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -851,6 +852,57 @@ eq(availableContacts(REG, [], 'beta').length, 1, 'search matches the company')
 eq(availableContacts(REG, [], 'KAMOL').length, 1, 'search ignores letter case')
 eq(availableContacts(REG, [], 'acme.co.th').length, 1, 'search matches the address')
 eq(availableContacts(REG, [], 'ไม่มีอยู่จริง').length, 0, 'a search with no match returns nothing, not everything')
+
+
+
+// -- เมลแจ้งเตือน Incident (utils/incidentMail) --
+const INC = {
+  title: 'VDI เข้าไม่ได้', severity: 'High', status: 'Open',
+  assignedEmail: 'agent@its.co.th', assignedName: 'สมชาย',
+  requesterEmail: 'user@acme.co.th',
+  watchers: ['owner@its.co.th', undefined, ''],
+  projectName: '#VDI', projectId: 7, slaHours: 4,
+  baseUrl: 'https://itservices.co.th/helpdesk/',
+}
+
+const r1 = incidentRecipients(INC)
+eq(r1.to.join(','), 'agent@its.co.th', 'the person who must act is the To')
+eq(r1.cc.join(','), 'user@acme.co.th,owner@its.co.th', 'the reporter and watchers are CC')
+
+// คนกดเองไม่ต้องได้เมลบอกสิ่งที่ตัวเองเพิ่งทำ
+const r2 = incidentRecipients({ ...INC, actorEmail: 'AGENT@its.co.th' })
+eq(r2.to.join(','), 'user@acme.co.th', 'assigning to yourself promotes the reporter to To')
+eq(r2.cc.join(','), 'owner@its.co.th', 'the actor is dropped everywhere, not just from To')
+
+// ยังไม่มีผู้รับผิดชอบ ต้องไม่กลายเป็นเมลที่ไม่มี To (ส่งไม่ออก)
+const r3 = incidentRecipients({ ...INC, assignedEmail: '' })
+eq(r3.to.length, 1, 'with nobody assigned the mail still has a To')
+eq(r3.to[0], 'user@acme.co.th', 'the reporter is used as To instead')
+
+eq(incidentRecipients({ title: 'x', severity: '', status: '' }).to.length, 0,
+  'no addresses at all means no mail, not a crash')
+eq(incidentRecipients({ ...INC, requesterEmail: 'AGENT@its.co.th' }).cc.join(','), 'owner@its.co.th',
+  'the same person listed twice is mailed once')
+
+const iv = incidentVars(INC)
+eq(iv.incident_title, 'VDI เข้าไม่ได้', 'the title is available to the template')
+eq(iv.sla_hours, '4 ชั่วโมง', 'SLA reads as hours')
+eq(incidentVars({ ...INC, slaHours: 24 }).sla_hours, '1 วัน', 'a whole day reads as days')
+eq(incidentVars({ ...INC, slaHours: null }).sla_hours, '', 'no SLA leaves the field empty, not "null"')
+eq(iv.link, 'https://itservices.co.th/helpdesk/#/projects/7', 'the link opens the project')
+eq(incidentVars({ title: 'x', severity: '', status: '' }).assigned_name, '-',
+  'an unassigned incident does not print "undefined"')
+eq(Object.values(incidentVars({ title: 'x', severity: '', status: '' })).every(x => typeof x === 'string'),
+  true, 'every variable is a string so nothing renders as undefined')
+
+// ส่งเมลเฉพาะตอนที่สถานะเปลี่ยนจริง
+eq(justResolved('Resolved', 'Open'), true, 'closing a live incident sends the mail')
+eq(justResolved('Resolved', 'Resolved'), false, 're-saving a closed incident does not send again')
+eq(justResolved('Closed', 'Resolved'), false, 'moving between two closed states does not resend')
+eq(justResolved('In Progress', 'Open'), false, 'an ordinary status change is not a close')
+eq(justAssigned('a@b.com', ''), true, 'a first assignment sends the mail')
+eq(justAssigned('a@b.com', 'A@B.com'), false, 'saving with the same person does not resend')
+eq(justAssigned('', 'a@b.com'), false, 'clearing the assignee is not an assignment')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
