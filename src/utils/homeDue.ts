@@ -114,7 +114,8 @@ export function buildDueRows(
       key: `in-${i.id}`,
       title: i.Title,
       type: 'Incident',
-      link: i.ProjectID ? `/projects/${i.ProjectID}` : '/my-work',
+      // เข้าเคสตรง ๆ — เดิมพาไปหน้าโครงการแล้วต้องไล่หาเคสเอง
+      link: `/incidents/${i.id}`,
       due: info.due ? info.due.toISOString() : null,
       days: info.hoursLeft === null ? null : info.hoursLeft / 24,
       status: i.Status,

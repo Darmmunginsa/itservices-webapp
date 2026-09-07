@@ -73,11 +73,11 @@ export default function MyWork() {
   async function pinFocus(type: 'Ticket' | 'Task' | 'Incident', item: Ticket | Task | ProjectIncident) {
     if (!user) return
     try {
-      // For Task/Incident: RefID must be ProjectID (Home links to /projects/:id)
-      // For Ticket: RefID is the ticket's own id (Home links to /tickets/:id)
-      const refId = type === 'Ticket'
-        ? String(item.id)
-        : String((item as Task | ProjectIncident).ProjectID)
+      // Ticket และ Incident มีหน้าของตัวเอง → เก็บ id ของตัวเอง
+      // Task ยังไม่มี → เก็บ id โครงการ เพื่อให้ลิงก์พาไปหน้าโครงการได้
+      const refId = type === 'Task'
+        ? String((item as Task).ProjectID)
+        : String(item.id)
       await spCreate('HD_Focus', {
         Title: item.Title,
         RefID: refId,
@@ -201,9 +201,8 @@ export default function MyWork() {
       <div key={inc.id} className="flex flex-col gap-2 p-3 subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
         <div className="flex items-start gap-2">
           <AlertTriangle size={15} className="flex-shrink-0 text-orange-500 mt-0.5" />
-          {inc.ProjectID > 0
-            ? <Link to={`/projects/${inc.ProjectID}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{inc.Title}</Link>
-            : <p className="text-sm font-medium text-gray-900 dark:text-gray-100 flex-1 leading-snug">{inc.Title}</p>}
+          <Link to={`/incidents/${inc.id}`} state={{ from: '/my-work' }}
+            className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 flex-1 leading-snug">{inc.Title}</Link>
           <button onClick={() => pinFocus('Incident', inc)} className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`} title="Pin"><Pin size={14} /></button>
         </div>
         {inc.Description && <p className="text-xs text-gray-500 line-clamp-2">{inc.Description}</p>}
@@ -422,7 +421,7 @@ export default function MyWork() {
               ? <p className="text-center text-sm text-gray-400 py-12">{tr('mywork.noIncidents')}</p>
               : view === 'table'
                 ? <DataTable rows={filteredIncidents} columns={incidentTableCols} rowKey={i => i.id}
-                    onRowClick={i => i.ProjectID > 0 && navigate(`/projects/${i.ProjectID}`)} emptyText={tr('mywork.noIncidents')} />
+                    onRowClick={i => navigate(`/incidents/${i.id}`, { state: { from: '/my-work' } })} emptyText={tr('mywork.noIncidents')} />
                 : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
         )}
       </div>

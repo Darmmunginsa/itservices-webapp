@@ -30,6 +30,7 @@ import MyWork from './pages/MyWork'
 import Projects from './pages/Projects'
 import ProjectDetail from './pages/ProjectDetail'
 import TicketDetail from './pages/TicketDetail'
+import IncidentDetail from './pages/IncidentDetail'
 import AgentDashboard from './pages/AgentDashboard'
 import Reports from './pages/Reports'
 import Assets from './pages/Assets'
@@ -225,6 +226,8 @@ function AppContent() {
             {/* หน้ารายละเอียด — ไม่ผูกกับสิทธิ์หน้า (มีการคุมสิทธิ์ในตัวเอง) */}
             <Route path="/projects/:id" element={<ProjectDetail />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
+            {/* Incident มีพื้นที่ทำงานของตัวเองเหมือน Ticket — ลักษณะงานเหมือนกัน */}
+            <Route path="/incidents/:id" element={<IncidentDetail />} />
             {/* หน้าที่คุมด้วยสิทธิ์รายคน — สร้างจาก PAGES registry */}
             {PAGES.filter(p => !p.always).map(p => (
               <Route key={p.key} path={p.path}

@@ -612,27 +612,6 @@ export default function ProjectDetail() {
     setShowIncidentModal(true)
   }
 
-  function openEditIncident(inc: ProjectIncident) {
-    setEditingIncident(inc)
-    setIncidentForm({
-      title: inc.Title,
-      severity: inc.Severity,
-      status: inc.Status,
-      incidentDate: inc.IncidentDate ? inc.IncidentDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      slaHours: inc.SLAHours ? String(inc.SLAHours) : '',
-      resolvedDate: inc.ResolvedDate ? inc.ResolvedDate.slice(0, 10) : '',
-      description: inc.Description ?? '',
-      assignedAgentEmail: inc.AssignedEmail ?? '',
-      resolution: inc.Resolution ?? '',
-    })
-    setShowIncidentModal(true)
-  }
-
-  /**
-   * ส่งเมลของ Incident — ทั้งสามจังหวะใช้ผู้รับชุดเดียวกัน
-   * ล้มเหลวไม่ทำให้การบันทึกล้ม แต่ต้องบอกให้รู้ ไม่ใช่เงียบ
-   * เพราะคนกดจะเข้าใจว่าทีมได้รับแจ้งแล้วทั้งที่ยังไม่มีใครรู้
-   */
   async function mailIncident(eventKey: string, label: string) {
     const agent = agents.find(a => a.EmailText === incidentForm.assignedAgentEmail)
     const plan = incidentMailPlan({
@@ -731,16 +710,6 @@ export default function ProjectDetail() {
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSavingIncident(false) }
   }
 
-  async function deleteIncident(incId: number) {
-    if (!window.confirm('ลบ Incident นี้?')) return
-    try {
-      await spDelete('PM_Incidents', incId)
-      setIncidents(prev => prev.filter(i => i.id !== incId))
-      addToast('success', 'ลบ Incident แล้ว')
-    } catch { addToast('error', 'เกิดข้อผิดพลาด') }
-  }
-
-  // ── Link CRUD ───────────────────────────────────────────────────────────────
   function openAddLink() {
     setEditingLink(null)
     setLinkForm({ ...EMPTY_LINK })
@@ -883,11 +852,13 @@ export default function ProjectDetail() {
   }
 
   function renderIncidentCard(inc: ProjectIncident) {
-    const ak = `incident-${inc.id}`
     const isResolved = ['Resolved', 'Closed', 'Done', 'Completed'].includes(inc.Status)
     return (
       <div key={inc.id} className={`subpanel rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden ${isResolved ? 'opacity-60' : ''}`}>
-        <div className="flex items-start gap-2 p-3 cursor-pointer" onClick={() => toggleExpand(ak)}>
+        {/* กดการ์ดแล้วเข้าพื้นที่ทำงานของเคส — ที่นั่นคุยกัน แนบไฟล์ และปิดเคสได้ครบ */}
+        <Link to={`/incidents/${inc.id}`}
+          state={{ from: `/projects/${id}`, fromLabel: project?.Title }}
+          className="flex items-start gap-2 p-3">
           <div className="flex-1 min-w-0">
             <p className={`text-sm font-medium leading-snug ${isResolved ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100'}`}>{inc.Title}</p>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -909,44 +880,8 @@ export default function ProjectDetail() {
             </div>
           </div>
           <Maximize2 size={13} className="text-gray-300 dark:text-gray-600 flex-shrink-0 mt-0.5" />
-        </div>
+        </Link>
       </div>
-    )
-  }
-
-  function renderIncidentDetail(inc: ProjectIncident) {
-    const ak = `incident-${inc.id}`
-    return (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge className={getStatusColor(inc.Status)}>{inc.Status}</Badge>
-              <Badge className={getSeverityColor(inc.Severity)}>{inc.Severity}</Badge>
-              {inc.IncidentDate && <span className="text-xs text-gray-400">{formatDate(inc.IncidentDate)}</span>}
-            </div>
-            {inc.Description && <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{inc.Description}</p>}
-            {inc.Resolution && <p className="text-sm text-green-600 whitespace-pre-wrap">✓ {inc.Resolution}</p>}
-            <div className="flex items-center gap-1">
-              <button onClick={() => pinFocusItem('Incident', inc)} title="Pin"
-                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Incident|${inc.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
-                <Pin size={14} />
-              </button>
-              <button onClick={() => toggleAttach('incident', inc.id)} title={tr('pd.attach')}
-                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
-                <Paperclip size={14} />
-              </button>
-              <button onClick={() => { setExpandedKey(null); openEditIncident(inc) }} title={tr('common.edit')}
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
-                <Edit2 size={14} />
-              </button>
-              {isBossAdmin && (
-                <button onClick={() => { setExpandedKey(null); deleteIncident(inc.id) }} title={tr('assets.delete')}
-                  className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-red-400 hover:text-red-600 transition-colors">
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-            {attachKey === ak && <AttachmentSection listName="PM_Incidents" itemId={inc.id} />}
-          </div>
     )
   }
 
@@ -984,10 +919,6 @@ export default function ProjectDetail() {
       const t = tasks.find(x => x.id === id)
       return t ? { title: t.Title, body: renderTaskDetail(t) } : null
     }
-    if (kind === 'incident') {
-      const i = incidents.find(x => x.id === id)
-      return i ? { title: i.Title, body: renderIncidentDetail(i) } : null
-    }
     if (kind === 'note') {
       const n = notes.find(x => x.id === id)
       return n ? { title: n.Title || tr('pd.untitled'), body: renderNoteDetail(n) } : null
@@ -1009,10 +940,11 @@ export default function ProjectDetail() {
   async function pinFocusItem(type: 'Task' | 'Incident', item: Task | ProjectIncident) {
     if (!user || !project) return
     try {
-      // RefID = project.id so Home page link /projects/:id works correctly
+      // Incident มีหน้าของตัวเองแล้ว → เก็บ id ของเคส · Task ยังไม่มี → เก็บ id โครงการ
+      const refId = type === 'Incident' ? String(item.id) : String(project.id)
       await spCreate('HD_Focus', {
         Title: item.Title,
-        RefID: String(project.id),
+        RefID: refId,
         FocusType: type,
         FocusedBy: user.displayName,
         FocusedEmail: user.email,
@@ -1022,7 +954,7 @@ export default function ProjectDetail() {
           : (item as ProjectIncident).Status,
       })
       setFocusItems(prev => [...prev, {
-        id: Date.now(), Title: item.Title, RefID: String(project.id),
+        id: Date.now(), Title: item.Title, RefID: refId,
         FocusType: type as FocusItem['FocusType'],
         FocusedBy: user.displayName, FocusedEmail: user.email,
         Status: '', DueDate: undefined,
@@ -1351,7 +1283,8 @@ export default function ProjectDetail() {
                   ) : (
                     <div className="max-h-56 overflow-y-auto pr-1 space-y-1">
                       {openIncidents.map(i => (
-                        <button key={i.id} onClick={() => setTab('incidents')}
+                        <Link key={i.id} to={`/incidents/${i.id}`}
+                          state={{ from: `/projects/${id}`, fromLabel: project?.Title }}
                           className={`w-full flex items-center gap-2 p-1.5 rounded-lg text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${i.Severity === 'Critical' ? 'bg-red-50/60 dark:bg-red-900/10' : ''}`}>
                           <AlertTriangle size={12} className={`flex-shrink-0 ${i.Severity === 'Critical' ? 'text-red-500' : i.Severity === 'High' ? 'text-orange-500' : 'text-gray-400'}`} />
                           <span className="flex-1 min-w-0">
@@ -1372,7 +1305,7 @@ export default function ProjectDetail() {
                           })()}
                           <Badge className={`${getSeverityColor(i.Severity)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Severity}</Badge>
                           <Badge className={`${getStatusColor(i.Status)} !text-[10px] !px-1.5 !py-0 flex-shrink-0`}>{i.Status}</Badge>
-                        </button>
+                        </Link>
                       ))}
                     </div>
                   )}

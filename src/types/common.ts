@@ -66,7 +66,8 @@ export interface FocusItem {
   id: number
   Title: string
   RefID: string
-  FocusType: 'Ticket' | 'Task' | 'Project' | 'Note'
+  // 'Incident' ถูกเขียนลงลิสต์อยู่แล้วจากหน้าโครงการและงานของฉัน แต่หายจาก type นี้
+  FocusType: 'Ticket' | 'Task' | 'Incident' | 'Project' | 'Note'
   FocusedBy: string
   FocusedEmail: string
   DueDate?: string
