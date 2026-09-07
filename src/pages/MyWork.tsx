@@ -123,6 +123,12 @@ export default function MyWork() {
   }
 
   // Filtered & sorted data
+  // งานที่ยังไม่กดรับ อยู่ในกล่องรอรับงานเท่านั้น — ไม่นับเป็นงานของเราจนกดรับ
+  // ไม่งั้นแยกไม่ออกว่าอันไหนเรารู้แล้วกำลังทำ กับอันไหนมีคนโยนมาแต่ยังไม่เห็น
+  const ackRows = buildAckInbox(tickets, tasks, incidents, user?.email)
+  const pending = new Set(ackRows.map(r => r.key))
+  const mine = (kind: 'Ticket' | 'Task' | 'Incident', id: number) => !pending.has(`${kind}-${id}`)
+
   const filteredTickets = tickets
     .filter(t =>
       mine('Ticket', t.id) &&
@@ -147,12 +153,6 @@ export default function MyWork() {
       return (order[getDueDateColor(a.DueDate, a.IsCompleted)] ?? 3) -
              (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
     })
-
-  // งานที่ยังไม่กดรับ อยู่ในกล่องรอรับงานเท่านั้น — ไม่นับเป็นงานของเราจนกดรับ
-  // ไม่งั้นแยกไม่ออกว่าอันไหนเรารู้แล้วกำลังทำ กับอันไหนมีคนโยนมาแต่ยังไม่เห็น
-  const ackRows = buildAckInbox(tickets, tasks, incidents, user?.email)
-  const pending = new Set(ackRows.map(r => r.key))
-  const mine = (kind: 'Ticket' | 'Task' | 'Incident', id: number) => !pending.has(`${kind}-${id}`)
 
   const filteredIncidents = incidents.filter(inc =>
     mine('Incident', inc.id) &&
