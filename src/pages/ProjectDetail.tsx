@@ -19,6 +19,7 @@ import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
+import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
 import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentMail'
 import { CommentSection } from '../components/common/CommentSection'
 import type { Project, Task, Note, ProjectIncident, ProjectLink, ProjectAsset, ProjectMember } from '../types/project'
@@ -440,6 +441,17 @@ export default function ProjectDetail() {
       setTasks(prev => prev.map(t => t.id === task.id
         ? { ...t, IsAcknowledged: true, AcknowledgedBy: user.displayName } : t))
       addToast('success', 'รับทราบ Task แล้ว')
+      // แจ้งคนสั่งงาน — เหมือนที่กล่องรอรับงานและหน้า Ticket ทำ
+      const res = await notifyAcknowledged({
+        kind: 'Task', id: task.id, title: task.Title,
+        link: `/projects/${id}`,
+        fromEmail: task.Author?.EMail || task.CreatedByEmail,
+        fromName: task.Author?.Title,
+        due: task.DueDate, status: task.IsCompleted ? 'Completed' : 'Active',
+        agentName: user.displayName, agentEmail: user.email,
+      })
+      const msg = res.sent ? null : ackFailMessage(res.reason)
+      if (msg) addToast('error', msg)
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 

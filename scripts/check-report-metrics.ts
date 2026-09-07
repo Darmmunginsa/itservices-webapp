@@ -13,6 +13,7 @@ import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
 import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
+import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -904,6 +905,59 @@ eq(justResolved('In Progress', 'Open'), false, 'an ordinary status change is not
 eq(justAssigned('a@b.com', ''), true, 'a first assignment sends the mail')
 eq(justAssigned('a@b.com', 'A@B.com'), false, 'saving with the same person does not resend')
 eq(justAssigned('', 'a@b.com'), false, 'clearing the assignee is not an assignment')
+
+
+
+// -- กล่องรอรับงาน (utils/ackInbox) --
+const ME = 'me@its.co.th'
+const mk = (o: Record<string, unknown>) => ({ id: 1, Title: 'งาน', AssignedEmail: ME, ...o })
+
+eq(needsAck(mk({}), 'Ticket', ME), true, 'work assigned to me and not yet accepted is waiting')
+eq(needsAck(mk({ AssignedEmail: 'other@x.com' }), 'Ticket', ME), false, "someone else's work is not in my box")
+eq(needsAck(mk({ IsAcknowledged: true }), 'Ticket', ME), false, 'once accepted it leaves the box')
+eq(needsAck(mk({}), 'Ticket', undefined), false, 'no signed-in address means an empty box, not everything')
+
+// งานที่ปิดแล้วไม่ต้องมารอรับ — ไม่มีอะไรให้ทำต่อ
+eq(needsAck(mk({ Status: 'Closed' }), 'Ticket', ME), false, 'a closed ticket is not waiting to be accepted')
+eq(needsAck(mk({ Status: 'Resolved' }), 'Incident', ME), false, 'a resolved incident is not waiting either')
+eq(needsAck(mk({ IsCompleted: true }), 'Task', ME), false, 'a finished task is not waiting')
+eq(needsAck(mk({ Status: 'In Progress' }), 'Ticket', ME), true, 'work in progress can still be unaccepted')
+
+// งานที่เราสร้างเองแล้วมอบหมายให้ตัวเอง — เรารู้อยู่แล้ว ไม่ต้องกดรับ
+eq(needsAck(mk({ Author: { Title: 'ฉัน', EMail: ME } }), 'Ticket', ME), false,
+  'work I assigned to myself needs no acceptance')
+eq(needsAck(mk({ CreatedByEmail: 'ME@its.co.th' }), 'Ticket', ME), false,
+  'the self-assignment check ignores letter case')
+eq(needsAck(mk({ Author: { Title: 'หัวหน้า', EMail: 'boss@its.co.th' } }), 'Ticket', ME), true,
+  'work handed to me by someone else does need accepting')
+
+// กล่องรวมทั้งสามชนิด เรียงงานที่รอนานที่สุดขึ้นก่อน
+const inbox = buildAckInbox(
+  [mk({ id: 5, Title: 'ตั๋วใหม่', Created: '2026-09-03T09:00:00Z', Priority: 'High' })],
+  [mk({ id: 6, Title: 'งานย่อย', Created: '2026-09-01T09:00:00Z', ProjectID: 7 })],
+  [mk({ id: 7, Title: 'เคสด่วน', Created: '2026-09-02T09:00:00Z', Severity: 'Critical' })],
+  ME,
+)
+eq(inbox.length, 3, 'all three kinds share one box')
+eq(inbox.map(r => r.kind).join(','), 'Task,Incident,Ticket', 'the longest wait is first')
+eq(inbox.find(r => r.kind === 'Ticket')?.link, '/tickets/5', 'a ticket opens its own page')
+eq(inbox.find(r => r.kind === 'Incident')?.link, '/incidents/7', 'an incident opens its own page')
+eq(inbox.find(r => r.kind === 'Task')?.link, '/projects/7', 'a task opens its project, having no page of its own')
+eq(inbox.find(r => r.kind === 'Ticket')?.listName, 'HD_Tickets', 'each row knows the list to write back to')
+eq(buildAckInbox([], [], [], ME).length, 0, 'nothing assigned means an empty box, not a crash')
+
+// เมลแจ้งคนมอบหมายว่ารับงานแล้ว
+const row = buildAckInbox([mk({ id: 5, Title: 'ตั๋วใหม่', Priority: 'High',
+  Author: { Title: 'หัวหน้า', EMail: 'boss@its.co.th' } })], [], [], ME)[0]
+const av = ackVars(row, 'สมชาย', 'https://itservices.co.th/helpdesk/')
+eq(av.work_title, 'ตั๋วใหม่', 'the template gets the title')
+eq(av.agent_name, 'สมชาย', 'the template says who accepted it')
+eq(av.from_name, 'หัวหน้า', 'the template addresses the person who assigned it')
+eq(av.link, 'https://itservices.co.th/helpdesk/#/tickets/5', 'the link opens the work itself')
+eq(av.due_date, 'ไม่ได้กำหนด', 'no due date reads as words, not a blank cell')
+eq(Object.values(av).every(v => typeof v === 'string' && v.length > 0), true,
+  'no variable renders empty in a mail going to a person')
+eq(row.fromEmail, 'boss@its.co.th', 'the row carries the address to reply to')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

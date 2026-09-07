@@ -15,6 +15,7 @@ import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem 
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
+import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { Project } from '../types/project'
@@ -447,6 +448,17 @@ export default function TicketDetail() {
       })
       setTicket(prev => prev ? { ...prev, IsAcknowledged: true } : prev)
       addToast('success', 'รับทราบ Ticket แล้ว')
+      // แจ้งคนที่มอบหมายมา — ไม่ว่าจะกดรับจากที่ไหนก็ต้องแจ้งเหมือนกัน
+      const res = await notifyAcknowledged({
+        kind: 'Ticket', id: ticket.id, title: ticket.Title,
+        link: `/tickets/${ticket.id}`,
+        fromEmail: ticket.Author?.EMail || ticket.CreatedByEmail || ticket.CustomerEmail,
+        fromName: ticket.Author?.Title || ticket.CustomerName,
+        due: ticket.DueDate, tag: ticket.Priority, status: ticket.Status,
+        agentName: user.displayName, agentEmail: user.email,
+      })
+      const msg = res.sent ? null : ackFailMessage(res.reason)
+      if (msg) addToast('error', msg)
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 

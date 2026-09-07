@@ -9,6 +9,8 @@ import { DataTable, type Column } from '../components/common/DataTable'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { spGet, spCreate, spUpdate } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { AckInbox } from '../components/common/AckInbox'
+import { buildAckInbox, type AckRow } from '../utils/ackInbox'
 import type { Ticket, TicketMember } from '../types/ticket'
 import type { Task, ProjectIncident } from '../types/project'
 import type { FocusItem } from '../types/common'
@@ -47,9 +49,11 @@ export default function MyWork() {
       : `CustomerEmail eq '${user.email}'`
 
     Promise.all([
-      spGet<Ticket>('HD_Tickets', ticketFilter, undefined, 'Modified desc'),
-      spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, undefined, 'DueDate asc'),
-      spGet<ProjectIncident>('PM_Incidents', `AssignedEmail eq '${user.email}'`, undefined, 'Created desc'),
+      // ดึงผู้แจ้งมาด้วย (Author) — กล่องรอรับงานต้องรู้ว่าใครมอบหมายมา
+      // เพื่อบอกบนการ์ดและส่งเมลกลับตอนกดรับ
+      spGet<Ticket>('HD_Tickets', ticketFilter, '*,Author/Title,Author/EMail', 'Modified desc', 500, 'Author'),
+      spGet<Task>('PM_Tasks', `AssignedEmail eq '${user.email}'`, '*,Author/Title,Author/EMail', 'DueDate asc', 500, 'Author'),
+      spGet<ProjectIncident>('PM_Incidents', `AssignedEmail eq '${user.email}'`, '*,Author/Title,Author/EMail', 'Created desc', 500, 'Author'),
       spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}'`),
       spGet<TicketMember>('HD_TicketMembers', `AgentEmail eq '${user.email}'`),
     ]).then(async ([assigned, tk, inc, focus, memberships]) => {
@@ -121,6 +125,7 @@ export default function MyWork() {
   // Filtered & sorted data
   const filteredTickets = tickets
     .filter(t =>
+      mine('Ticket', t.id) &&
       (showAllTickets || !DONE_TICKET_STATUSES.has(t.Status)) &&
       (!search || t.Title.toLowerCase().includes(search.toLowerCase()) || t.TicketNumber?.includes(search)) &&
       (!statusFilter || t.Status === statusFilter)
@@ -133,6 +138,7 @@ export default function MyWork() {
 
   const filteredTasks = tasks
     .filter(t =>
+      mine('Task', t.id) &&
       (showAllTasks || !t.IsCompleted) &&
       (!search || t.Title.toLowerCase().includes(search.toLowerCase()))
     )
@@ -142,14 +148,22 @@ export default function MyWork() {
              (order[getDueDateColor(b.DueDate, b.IsCompleted)] ?? 3)
     })
 
+  // งานที่ยังไม่กดรับ อยู่ในกล่องรอรับงานเท่านั้น — ไม่นับเป็นงานของเราจนกดรับ
+  // ไม่งั้นแยกไม่ออกว่าอันไหนเรารู้แล้วกำลังทำ กับอันไหนมีคนโยนมาแต่ยังไม่เห็น
+  const ackRows = buildAckInbox(tickets, tasks, incidents, user?.email)
+  const pending = new Set(ackRows.map(r => r.key))
+  const mine = (kind: 'Ticket' | 'Task' | 'Incident', id: number) => !pending.has(`${kind}-${id}`)
+
   const filteredIncidents = incidents.filter(inc =>
+    mine('Incident', inc.id) &&
     (showAllIncidents || inc.Status !== 'Resolved') &&
     (!search || inc.Title.toLowerCase().includes(search.toLowerCase())) &&
     (!statusFilter || inc.Status === statusFilter)
   )
 
   const tabCounts = {
-    tickets: tickets.filter(t => !DONE_TICKET_STATUSES.has(t.Status)).length,
+    // ไม่รวมงานที่ยังไม่รับ — เลขบนแท็บต้องตรงกับจำนวนที่เห็นในรายการ
+    tickets: tickets.filter(t => mine('Ticket', t.id) && !DONE_TICKET_STATUSES.has(t.Status)).length,
     tasks: tasks.filter(t => !t.IsCompleted).length,
     incidents: incidents.filter(inc => inc.Status !== 'Resolved').length,
   }
@@ -194,6 +208,13 @@ export default function MyWork() {
         </div>
       </div>
     )
+  }
+
+  /** กดรับแล้ว: ทำเครื่องหมายในหน่วยความจำเลย งานจะย้ายจากกล่องไปรายการทันที */
+  function markAcked(row: AckRow) {
+    if (row.kind === 'Ticket') setTickets(prev => prev.map(t => t.id === row.id ? { ...t, IsAcknowledged: true } : t))
+    else if (row.kind === 'Task') setTasks(prev => prev.map(t => t.id === row.id ? { ...t, IsAcknowledged: true } : t))
+    else setIncidents(prev => prev.map(i => i.id === row.id ? { ...i, IsAcknowledged: true } : i))
   }
 
   function incidentCard(inc: ProjectIncident) {
@@ -317,7 +338,11 @@ export default function MyWork() {
   return (
     <div>
       <Header title={tr('mywork.header')} />
-      <div className="p-4 md:p-6">
+      {/* กล่องรอรับงานอยู่ซ้ายครึ่งจอ — เห็นทันทีที่เข้าหน้านี้ว่ามีอะไรรอเราอยู่
+          จอแคบกว่า lg เรียงลงล่าง โดยให้กล่องอยู่บน เพราะเป็นของที่ต้องตอบก่อน */}
+      <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <AckInbox rows={ackRows} loading={loading} onAcked={markAcked} />
+        <div className="min-w-0">
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 mb-4 w-full md:w-fit">
@@ -424,6 +449,7 @@ export default function MyWork() {
                     onRowClick={i => navigate(`/incidents/${i.id}`, { state: { from: '/my-work' } })} emptyText={tr('mywork.noIncidents')} />
                 : <Columns cols={INCIDENT_COLS.filter(c => showAllIncidents || c.key !== 'Resolved')} items={filteredIncidents} keyOf={i => i.Status} render={i => incidentCard(i)} />
         )}
+        </div>
       </div>
     </div>
   )

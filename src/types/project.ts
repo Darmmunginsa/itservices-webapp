@@ -37,6 +37,8 @@ export interface Task {
   IsAcknowledged: boolean
   AcknowledgedBy?: string
   AcknowledgedDate?: string
+  Author?: { Title: string; EMail?: string }   // ผู้สั่งงาน — ใช้ส่งเมลกลับตอนกดรับ
+  CreatedByEmail?: string
   AssignedTo: string
   AssignedEmail?: string
   DueDate?: string
@@ -67,6 +69,10 @@ export interface ProjectIncident {
   AssignedEmail?: string
   IncidentDate?: string
   ResolvedDate?: string
+  // รับทราบงาน — ถูกมอบหมายแล้วยังไม่กดรับ จะรออยู่ในกล่อง "รอรับงาน"
+  IsAcknowledged?: boolean
+  AcknowledgedBy?: string
+  AcknowledgedDate?: string
   SLAHours?: number        // เวลาที่ต้องแก้ให้จบ (ชม.) — วัด SLA ที่ Incident เท่านั้น
   SLADue?: string          // เส้นตายที่คำนวณไว้ตอนบันทึก (Created + SLAHours)
   Resolution?: string
