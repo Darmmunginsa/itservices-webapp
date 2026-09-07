@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, Link, useLocation } from 'react-router-dom'
-import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, Settings2, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
+import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -72,7 +72,6 @@ export default function TicketDetail() {
   const [likeBusy, setLikeBusy] = useState<number | null>(null)
   const [replyTo, setReplyTo] = useState<{ id: number; author: string } | null>(null)
   const [openThreads, setOpenThreads] = useState<Record<number, boolean>>({})
-  const [manageOpen, setManageOpen] = useState(false)
   const [members, setMembers] = useState<TicketMember[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
@@ -530,7 +529,11 @@ export default function TicketDetail() {
       <Header title={ticket.TicketNumber ?? 'Ticket'}
         backTo={from?.from ?? '/my-work'}
         backLabel={from?.fromLabel ?? tr('ticket.myWork')} />
-      <div className="p-4 md:p-6 max-w-4xl space-y-5">
+      {/* โครงเดียวกับหน้า Incident — งานอยู่ซ้าย บทสนทนาอยู่ขวา
+          และเครื่องมือจัดการอยู่ในหน้าเลย ไม่ต้องกดปุ่มลอยเปิดลิ้นชักก่อน
+          จอแคบกว่า lg เรียงลงล่าง เพราะสองคอลัมน์ครึ่งจอบนโน้ตบุ๊กอ่านไม่ได้ทั้งคู่ */}
+      <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="space-y-4 min-w-0">
 
         {/* Main Info */}
         <Card>
@@ -624,140 +627,6 @@ export default function TicketDetail() {
             </div>
           )}
         </Card>
-
-        {/* Comments */}
-        <Card>
-          <button onClick={() => setCommentsOpen(o => !o)} className="w-full flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold">Comments ({comments.length})</h3>
-            <ChevronDown size={16} className={`text-gray-400 transition-transform ${commentsOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {commentsOpen && (
-            <div className="space-y-5 mb-6">
-              {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('ticket.noComments')}</p>}
-              {topComments.map(c => {
-                const kids = repliesByParent.get(c.id) ?? []
-                const open = openThreads[c.id]
-                return (
-                  <div key={c.id}>
-                    {renderComment(c, false)}
-                    {kids.length > 0 && (
-                      <div className="ml-12 mt-2">
-                        <button type="button" onClick={() => setOpenThreads(p => ({ ...p, [c.id]: !p[c.id] }))}
-                          className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-full transition-colors">
-                          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-                          {kids.length} {tr('ticket.replies')}
-                        </button>
-                        {open && <div className="space-y-4 mt-3">{kids.map(k => renderComment(k, true))}</div>}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <form onSubmit={sendComment} className="flex gap-3 pt-4 pr-16 md:pr-20 border-t border-gray-100 dark:border-gray-800">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-              style={{ backgroundColor: avatarColor(user?.displayName ?? 'U') }} title={user?.displayName}>
-              {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1 space-y-2">
-              {replyTo && (
-                <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-gray-400">{tr('ticket.replyingTo')}</span>
-                  <span className="font-medium text-primary-600">@{replyTo.author.replace(/\s+/g, '')}</span>
-                  <button type="button" onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500">
-                    <X size={12} />
-                  </button>
-                </div>
-              )}
-              {isAgent && (
-                <div className="flex gap-2">
-                  {(['Internal', 'External'] as const).map(t => (
-                    <button key={t} type="button" onClick={() => setCommentType(t)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
-                      {t === 'Internal' ? tr('ticket.internal') : tr('ticket.toCustomer')}
-                    </button>
-                  ))}
-                  <span className="self-center text-[11px] text-gray-400">
-                    {commentType === 'External'
-                      ? `✉️ ส่งอีเมลถึง ${ticket?.CustomerEmail || 'ผู้แจ้ง'} ในเธรดเดิม`
-                      : '🔒 เห็นเฉพาะทีมภายใน ไม่ส่งอีเมล'}
-                  </span>
-                </div>
-              )}
-              <div className="relative">
-                <textarea ref={commentRef} id="comment-box" value={comment} onChange={onCommentChange} rows={1}
-                  placeholder={tr('ticket.commentPlaceholder')}
-                  onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
-                  className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
-                {/* @mention dropdown */}
-                {mentionOpen && mentionMatches.length > 0 && (
-                  <div className="absolute z-20 left-0 bottom-full mb-1 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">{tr('ticket.askTeam')}</p>
-                    {mentionMatches.map(c => (
-                      <button key={c.email} type="button" onClick={() => selectMention(c)}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary-50 dark:hover:bg-primary-900/20">
-                        <span className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">{c.name.charAt(0)}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-gray-800 dark:text-gray-100">{c.name}</span>
-                          <span className="block truncate text-[11px] text-gray-400">{c.email}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end gap-2">
-                {(comment || replyTo) && (
-                  <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
-                    className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                    {tr('common.cancel')}
-                  </button>
-                )}
-                <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
-                  <ImagePlus size={14} /> {tr('ticket.attachImage')}
-                  <input type="file" multiple className="hidden"
-                    onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
-                </label>
-                <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0)}>
-                  <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
-                </Button>
-              </div>
-              {commentFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {commentFiles.map((f, i) => (
-                    <div key={i} className="relative">
-                      {f.type.startsWith('image/')
-                        ? <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
-                        : <div className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1"><span className="text-lg">📄</span><span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span></div>}
-                      <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
-                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </form>
-        </Card>
-       </div>
-
-        {/* Floating manage button */}
-        {!manageOpen && (
-          <button onClick={() => setManageOpen(true)}
-            className="fixed bottom-[8rem] right-3 md:bottom-20 md:right-4 z-40 flex items-center gap-2 bg-primary-600 text-white rounded-full px-3.5 py-2 shadow-lg hover:bg-primary-700 transition-colors text-sm font-medium">
-            <Settings2 size={15} /> {tr('ticket.manage')}
-          </button>
-        )}
-
-        {/* Manage slide-over panel */}
-        {manageOpen && <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setManageOpen(false)} />}
-        <div className={`fixed top-0 right-0 h-full w-full sm:w-[28rem] z-50 bg-gray-50 dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-transform duration-300 ease-out flex flex-col ${manageOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-          <div className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
-            <h2 className="text-sm font-semibold flex items-center gap-2"><Settings2 size={15} className="text-primary-600" /> {tr('ticket.manage')}</h2>
-            <button onClick={() => setManageOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-          </div>
-          <div className="p-4 space-y-5 overflow-y-auto">
 
         {/* Actions */}
         {isAgent && (
@@ -907,8 +776,129 @@ export default function TicketDetail() {
           <h3 className="text-sm font-semibold mb-3">{tr('ticket.attachments')}</h3>
           <AttachmentSection listName="HD_Tickets" itemId={ticket.id} />
         </Card>
-          </div>
         </div>
+
+        {/* คอมเมนต์อยู่ขวาแบ่งครึ่ง — ตอบลูกค้าไปพร้อมกับดูข้อมูลเคสได้ ไม่ต้องเลื่อนหา
+            ติดหนึบด้านบน แต่จำกัดความสูงแค่ 1 หน้าจอแล้วเลื่อนในตัวเอง
+            ไม่งั้นพอคอมเมนต์เยอะ ช่องพิมพ์จะเลื่อนไปไม่ถึง */}
+        <div className="min-w-0 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        {/* Comments */}
+        <Card>
+          <button onClick={() => setCommentsOpen(o => !o)} className="w-full flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Comments ({comments.length})</h3>
+            <ChevronDown size={16} className={`text-gray-400 transition-transform ${commentsOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {commentsOpen && (
+            <div className="space-y-5 mb-6">
+              {comments.length === 0 && <p className="text-sm text-gray-400 text-center py-4">{tr('ticket.noComments')}</p>}
+              {topComments.map(c => {
+                const kids = repliesByParent.get(c.id) ?? []
+                const open = openThreads[c.id]
+                return (
+                  <div key={c.id}>
+                    {renderComment(c, false)}
+                    {kids.length > 0 && (
+                      <div className="ml-12 mt-2">
+                        <button type="button" onClick={() => setOpenThreads(p => ({ ...p, [c.id]: !p[c.id] }))}
+                          className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-full transition-colors">
+                          <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+                          {kids.length} {tr('ticket.replies')}
+                        </button>
+                        {open && <div className="space-y-4 mt-3">{kids.map(k => renderComment(k, true))}</div>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <form onSubmit={sendComment} className="flex gap-3 pt-4 pr-16 md:pr-20 border-t border-gray-100 dark:border-gray-800">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+              style={{ backgroundColor: avatarColor(user?.displayName ?? 'U') }} title={user?.displayName}>
+              {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              {replyTo && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-gray-400">{tr('ticket.replyingTo')}</span>
+                  <span className="font-medium text-primary-600">@{replyTo.author.replace(/\s+/g, '')}</span>
+                  <button type="button" onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-red-500">
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+              {isAgent && (
+                <div className="flex gap-2">
+                  {(['Internal', 'External'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setCommentType(t)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${commentType === t ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>
+                      {t === 'Internal' ? tr('ticket.internal') : tr('ticket.toCustomer')}
+                    </button>
+                  ))}
+                  <span className="self-center text-[11px] text-gray-400">
+                    {commentType === 'External'
+                      ? `✉️ ส่งอีเมลถึง ${ticket?.CustomerEmail || 'ผู้แจ้ง'} ในเธรดเดิม`
+                      : '🔒 เห็นเฉพาะทีมภายใน ไม่ส่งอีเมล'}
+                  </span>
+                </div>
+              )}
+              <div className="relative">
+                <textarea ref={commentRef} id="comment-box" value={comment} onChange={onCommentChange} rows={1}
+                  placeholder={tr('ticket.commentPlaceholder')}
+                  onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                  className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
+                {/* @mention dropdown */}
+                {mentionOpen && mentionMatches.length > 0 && (
+                  <div className="absolute z-20 left-0 bottom-full mb-1 w-64 max-h-56 overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                    <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-100 dark:border-gray-800">{tr('ticket.askTeam')}</p>
+                    {mentionMatches.map(c => (
+                      <button key={c.email} type="button" onClick={() => selectMention(c)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-primary-50 dark:hover:bg-primary-900/20">
+                        <span className="w-6 h-6 rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">{c.name.charAt(0)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-gray-800 dark:text-gray-100">{c.name}</span>
+                          <span className="block truncate text-[11px] text-gray-400">{c.email}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                {(comment || replyTo) && (
+                  <button type="button" onClick={() => { setComment(''); setReplyTo(null) }}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    {tr('common.cancel')}
+                  </button>
+                )}
+                <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                  <ImagePlus size={14} /> {tr('ticket.attachImage')}
+                  <input type="file" multiple className="hidden"
+                    onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+                </label>
+                <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0)}>
+                  <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
+                </Button>
+              </div>
+              {commentFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {commentFiles.map((f, i) => (
+                    <div key={i} className="relative">
+                      {f.type.startsWith('image/')
+                        ? <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                        : <div className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1"><span className="text-lg">📄</span><span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span></div>}
+                      <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
+                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </form>
+        </Card>
+        </div>
+      </div>
     </div>
   )
 }
