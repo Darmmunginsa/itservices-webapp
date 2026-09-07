@@ -31,6 +31,8 @@ interface AppState {
   celebration: number
   /** always = เอาพลุเสมอ · auto = ตามค่าเครื่อง · off = ไม่เอา */
   celebrationFx: 'always' | 'auto' | 'off' 
+  /** token ตายกลางทาง — ต้องบอกผู้ใช้ ไม่ใช่ปล่อยให้หน้าจอว่าง */
+  sessionExpired: boolean
   setUser: (user: UserProfile | null) => void
   toggleDarkMode: () => void
   setAccentColor: (color: AccentColor) => void
@@ -41,6 +43,7 @@ interface AppState {
   addToast: (type: Toast['type'], message: string) => void
   celebrate: () => void
   setCelebrationFx: (m: 'always' | 'auto' | 'off') => void
+  markSessionExpired: () => void
   removeToast: (id: string) => void
   dateTaskModal: DateMatch | null
   openDateTaskModal: (match: DateMatch) => void
@@ -169,6 +172,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   cardOpacity: Number(localStorage.getItem('cardOpacity') ?? '100'),
   toasts: [],
   celebration: 0,
+  sessionExpired: false,
   // ตั้งต้นเป็น always เพราะเจ้าของระบบขอไว้ชัดเจน — ใครไม่ไหวปิดได้จากเมนูโปรไฟล์
   celebrationFx: ((localStorage.getItem('celebrationFx') as 'always' | 'auto' | 'off') ?? 'always'),
   dateTaskModal: null,
@@ -285,6 +289,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   })),
 
   celebrate: () => set((s) => ({ celebration: s.celebration + 1 })),
+
+  markSessionExpired: () => set({ sessionExpired: true }),
 
   setCelebrationFx: (m) => { localStorage.setItem('celebrationFx', m); set({ celebrationFx: m }) },
 

@@ -14,6 +14,7 @@ import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
+import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -958,6 +959,52 @@ eq(av.due_date, 'ไม่ได้กำหนด', 'no due date reads as words
 eq(Object.values(av).every(v => typeof v === 'string' && v.length > 0), true,
   'no variable renders empty in a mail going to a person')
 eq(row.fromEmail, 'boss@its.co.th', 'the row carries the address to reply to')
+
+
+
+// -- หมดเวลาใช้งานอัตโนมัติ (utils/idleSession) --
+const T0 = 1_800_000_000_000
+const MIN = 60_000
+
+eq(idleStatus(T0, T0).state, 'active', 'just moved means active')
+eq(idleStatus(T0, T0 + 30 * MIN).state, 'active', 'half an hour idle is still active')
+eq(idleStatus(T0, T0 + 54 * MIN).state, 'active', 'one minute before the warning it is still active')
+eq(idleStatus(T0, T0 + 55 * MIN).state, 'warning', 'the warning opens five minutes before the cut')
+eq(idleStatus(T0, T0 + 59 * MIN).state, 'warning', 'still warning one minute before')
+eq(idleStatus(T0, T0 + 60 * MIN).state, 'expired', 'the hour is up')
+eq(idleStatus(T0, T0 + 200 * MIN).state, 'expired', 'long past the hour stays expired')
+
+eq(idleStatus(T0, T0 + 55 * MIN).remainingMs, 5 * MIN, 'the warning knows how long is left')
+eq(idleStatus(T0, T0 + 90 * MIN).remainingMs, 0, 'time left never goes negative')
+
+// นาฬิกาเครื่องถูกปรับย้อนหลัง — ต้องไม่กลายเป็นหมดอายุทันที
+eq(idleStatus(T0, T0 - 10 * MIN).state, 'active', 'a clock moved backwards does not log anyone out')
+eq(idleStatus(T0, T0 - 10 * MIN).idleMs, 0, 'idle time is never negative')
+
+// ตั้งเวลาสั้นลงได้ (เผื่ออยากปรับ)
+eq(idleStatus(T0, T0 + 6 * MIN, 10 * MIN, 5 * MIN).state, 'warning', 'the limits are configurable')
+eq(idleStatus(T0, T0 + 11 * MIN, 10 * MIN, 5 * MIN).state, 'expired', 'a shorter limit expires sooner')
+
+eq(countdown(5 * MIN), '5:00', 'five minutes reads as 5:00')
+eq(countdown(65_000), '1:05', 'sixty five seconds reads as 1:05')
+eq(countdown(1_500), '0:02', 'a second and a half rounds up to 0:02')
+eq(countdown(0), '0:00', 'zero reads as 0:00')
+eq(countdown(-500), '0:00', 'negative time still reads as 0:00')
+
+// ไม่เขียนเวลาขยับทุก event — ขยับเมาส์ทีเดียวยิงเป็นร้อยครั้ง
+eq(shouldBump(T0, T0 + 1_000), false, 'a move one second later is not written again')
+eq(shouldBump(T0, T0 + 31_000), true, 'after the throttle window it is written')
+// แต่ช่วงเตือนต้องไวทันที ไม่งั้นขยับแล้วกล่องไม่ยอมหาย
+eq(shouldBump(T0, T0 + 56 * MIN), true, 'inside the warning window every move counts')
+
+eq(readLastActivity(String(T0), T0 + MIN), T0, 'a stored timestamp is used as-is')
+eq(readLastActivity(null, T0), T0, 'nothing stored counts as just moved, not as expired')
+eq(readLastActivity('ไม่ใช่ตัวเลข', T0), T0, 'a corrupt value does not log anyone out')
+eq(readLastActivity('0', T0), T0, 'a zero does not read as 1970 and expire instantly')
+eq(readLastActivity(String(T0 + 999 * MIN), T0), T0, 'a wildly future value from another clock is ignored')
+
+eq(IDLE_LIMIT_MS, 60 * MIN, 'the limit is one hour')
+eq(WARN_BEFORE_MS, 5 * MIN, 'the warning comes five minutes ahead')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

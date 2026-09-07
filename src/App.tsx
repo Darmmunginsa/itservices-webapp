@@ -7,7 +7,7 @@ import { msalInstance, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
 import { setGraphTokenGetter, setDirectoryTokenGetter, DIRECTORY_SCOPES } from './services/graph'
-import { spGet } from './services/sharepoint'
+import { spGet, setAuthExpiredHandler } from './services/sharepoint'
 import { resolvePages } from './services/permissions'
 import { setActivityUser, logActivity } from './services/activityLog'
 import { PAGES, ALWAYS_KEYS } from './config/pages'
@@ -18,6 +18,7 @@ import { BottomNav } from './components/layout/BottomNav'
 import { Ticker } from './components/layout/Ticker'
 import { ToastContainer } from './components/common/Toast'
 import { Celebration } from './components/common/Celebration'
+import { SessionGuard } from './components/common/SessionGuard'
 import { CalendarDrawer } from './components/calendar/CalendarDrawer'
 import { DateTaskModal } from './components/common/DateTaskModal'
 import { FloatingFocus } from './components/common/FloatingFocus'
@@ -87,7 +88,7 @@ msalInstance.addEventCallback((event) => {
 function AppContent() {
   const isAuthenticated = useIsAuthenticated()
   const { instance, accounts } = useMsal()
-  const { user, setUser, isDarkMode, allowedPages, setPermissions } = useAppStore()
+  const { user, setUser, isDarkMode, allowedPages, setPermissions, sessionExpired } = useAppStore()
   const [calendarOpen, setCalendarOpen] = useState(false)
 
   useEffect(() => {
@@ -153,6 +154,8 @@ function AppContent() {
       }
     }
 
+    // 401 จาก SharePoint = token ตาย → เด้งกล่องบอก แทนที่จะปล่อยหน้าจอว่าง
+    setAuthExpiredHandler(() => useAppStore.getState().markSessionExpired())
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
     setDirectoryTokenGetter(getDirectoryToken)
@@ -240,6 +243,16 @@ function AppContent() {
         <div className="no-print">
           <ToastContainer />
       <Celebration />
+          {/* ตัด session เมื่อไม่ได้ใช้งาน 1 ชม. — เตือนก่อน 5 นาที */}
+          <SessionGuard
+            active={!!user}
+            expired={sessionExpired}
+            onExpire={() => {
+              // บอกเหตุผลไว้ก่อนออก เพื่อให้อธิบายได้ว่าทำไมหลุด
+              try { sessionStorage.setItem('hdLogoutReason', 'idle') } catch { /* ignore */ }
+              void instance.logoutRedirect({ postLogoutRedirectUri: REDIRECT_URI })
+            }}
+          />
           <DateTaskModal />
           <FloatingFocus />
           <TaskPlanner />

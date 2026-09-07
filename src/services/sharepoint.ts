@@ -10,6 +10,31 @@ export function setTokenGetter(fn: () => Promise<string>) {
   _getToken = fn
 }
 
+// ── token ตายแล้วต้องบอก ไม่ใช่คืนรายการว่าง ────────────────────────────
+// ทุกหน้าเรียก spGet(...).catch(() => {}) เพราะลิสต์ที่ยังไม่ได้สร้างต้องไม่ทำแอปพัง
+// ผลข้างเคียงคือ 401 (token หมดอายุ) ก็เงียบไปด้วย หน้าจอจึงว่างเปล่าแบบไม่บอกสาเหตุ
+// ซึ่งคือสิ่งที่ผู้ใช้เห็นเป็น "โหลดไม่ขึ้น"
+let _onAuthExpired: (() => void) | null = null
+let _notified = false
+
+export function setAuthExpiredHandler(fn: () => void) {
+  _onAuthExpired = fn
+}
+
+/** เรียกครั้งเดียวต่อการหมดอายุ — หน้าหนึ่งยิงหลายลิสต์พร้อมกัน จะเด้งซ้ำหลายรอบ */
+function noteAuthExpired() {
+  if (_notified) return
+  _notified = true
+  _onAuthExpired?.()
+}
+
+/** fetch ที่คอยดู 401/403 ให้ — ที่เหลือจัดการ !res.ok เหมือนเดิมทุกจุด */
+async function spFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init)
+  if (res.status === 401 || res.status === 403) noteAuthExpired()
+  return res
+}
+
 async function getHeaders(): Promise<HeadersInit> {
   if (!_getToken) throw new Error('Token getter not initialized')
   const token = await _getToken()
@@ -26,7 +51,7 @@ export async function spGetFromSite<T>(siteRelativeUrl: string, listName: string
   const headers = await getHeaders()
   let url = `${SP_HOST}${siteRelativeUrl}/_api/web/lists/getbytitle('${listName}')/items?$top=${top}`
   if (select) url += `&$select=${encodeURIComponent(select)}`
-  const res = await fetch(url, { headers })
+  const res = await spFetch(url, { headers })
   if (!res.ok) throw new Error(`SP cross-site GET failed: ${res.status} ${listName}`)
   const data = await res.json()
   const items = (data.value || []) as Array<Record<string, unknown>>
@@ -41,7 +66,7 @@ export async function spGet<T>(listName: string, filter?: string, select?: strin
   if (orderby) url += `&$orderby=${encodeURIComponent(orderby)}`
   if (expand) url += `&$expand=${encodeURIComponent(expand)}`
 
-  const res = await fetch(url, { headers })
+  const res = await spFetch(url, { headers })
   if (!res.ok) {
     let body = ''
     try { body = await res.text() } catch { /* ignore */ }
@@ -58,7 +83,7 @@ export async function spGet<T>(listName: string, filter?: string, select?: strin
 export async function spGetById<T>(listName: string, id: number): Promise<T> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${id})`
-  const res = await fetch(url, { headers })
+  const res = await spFetch(url, { headers })
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] GET ${listName}(${id}) → HTTP ${res.status}`, body)
@@ -71,7 +96,7 @@ export async function spGetById<T>(listName: string, id: number): Promise<T> {
 export async function spCreate(listName: string, data: Record<string, unknown>): Promise<{ id: number }> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items`
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(data) })
+  const res = await spFetch(url, { method: 'POST', headers, body: JSON.stringify(data) })
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] POST ${listName} → HTTP ${res.status}`, body)
@@ -86,7 +111,7 @@ export async function spCreate(listName: string, data: Record<string, unknown>):
 export async function spUpdate(listName: string, id: number, data: Record<string, unknown>): Promise<void> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${id})`
-  const res = await fetch(url, {
+  const res = await spFetch(url, {
     method: 'PATCH',
     headers: { ...headers, 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' },
     body: JSON.stringify(data),
@@ -106,7 +131,7 @@ export async function spDelete(listName: string, id: number): Promise<void> {
   let snapshot: Record<string, unknown> | undefined
   try { snapshot = await spGetById<Record<string, unknown>>(listName, id) } catch { /* best-effort */ }
 
-  const res = await fetch(url, { method: 'DELETE', headers: { ...headers, 'IF-MATCH': '*' } })
+  const res = await spFetch(url, { method: 'DELETE', headers: { ...headers, 'IF-MATCH': '*' } })
   if (!res.ok) {
     console.error(`[SP] DELETE ${listName}(${id}) → HTTP ${res.status}`)
     throw new Error(`SharePoint DELETE failed: ${res.status} ${listName}`)
@@ -124,7 +149,7 @@ export async function spGetAttachments(
 ): Promise<Array<{ FileName: string; ServerRelativeUrl: string }>> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles`
-  const res = await fetch(url, { headers })
+  const res = await spFetch(url, { headers })
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] GET attachments ${listName}(${itemId}) → HTTP ${res.status}`, body)
@@ -165,7 +190,7 @@ export async function spWaitForItem(listName: string, id: number, tries = 5): Pr
   for (let i = 0; i < tries; i++) {
     try {
       const token = await _getToken()
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' } })
+      const res = await spFetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' } })
       if (res.ok) return
     } catch { /* network/CORS hiccup — ลองใหม่ */ }
     await sleep(500 + i * 400)   // 0.5, 0.9, 1.3, 1.7, 2.1s
@@ -187,7 +212,7 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
   for (let attempt = 1; attempt <= 5; attempt++) {
     const token = await _getToken()
     try {
-      const res = await fetch(url, {
+      const res = await spFetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json;odata=nometadata' },
         body: buffer,
@@ -214,7 +239,7 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
 export async function spDeleteAttachment(listName: string, itemId: number, fileName: string): Promise<void> {
   const headers = await getHeaders()
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')`
-  const res = await fetch(url, { method: 'POST', headers: { ...headers, 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE' } })
+  const res = await spFetch(url, { method: 'POST', headers: { ...headers, 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE' } })
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] DELETE attachment ${listName}(${itemId})/${fileName} → HTTP ${res.status}`, body)
@@ -233,7 +258,7 @@ export async function spAttachmentBlobUrl(listName: string, itemId: number, file
   if (!_getToken) throw new Error('Token getter not initialized')
   const token = await _getToken()
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')/$value`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await spFetch(url, { headers: { Authorization: `Bearer ${token}` } })
   if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
   const blob = await res.blob()
   return URL.createObjectURL(blob)
@@ -250,7 +275,7 @@ export async function spAttachmentBlob(listName: string, itemId: number, fileNam
   if (!_getToken) throw new Error('Token getter not initialized')
   const token = await _getToken()
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles('${encodeURIComponent(fileName)}')/$value`
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await spFetch(url, { headers: { Authorization: `Bearer ${token}` } })
   if (!res.ok) throw new Error(`SharePoint attachment fetch failed: ${res.status}`)
   const blob = await res.blob()
   // SharePoint คืน Content-Type เป็น application/octet-stream ให้ไฟล์แนบเกือบทุกไฟล์
