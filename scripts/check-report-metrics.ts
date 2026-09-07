@@ -888,7 +888,8 @@ const iv = incidentVars(INC)
 eq(iv.incident_title, 'VDI เข้าไม่ได้', 'the title is available to the template')
 eq(iv.sla_hours, '4 ชั่วโมง', 'SLA reads as hours')
 eq(incidentVars({ ...INC, slaHours: 24 }).sla_hours, '1 วัน', 'a whole day reads as days')
-eq(incidentVars({ ...INC, slaHours: null }).sla_hours, '', 'no SLA leaves the field empty, not "null"')
+eq(incidentVars({ ...INC, slaHours: null }).sla_hours, 'ไม่ได้กำหนด',
+  'no SLA reads as words, so the template does not render a blank cell')
 eq(iv.link, 'https://itservices.co.th/helpdesk/#/projects/7', 'the link opens the project')
 eq(incidentVars({ title: 'x', severity: '', status: '' }).assigned_name, '-',
   'an unassigned incident does not print "undefined"')

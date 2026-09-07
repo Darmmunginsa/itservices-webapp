@@ -22,14 +22,20 @@ const INCIDENT_EVENTS = new Set(['incident_created', 'incident_assigned', 'incid
 /** ผลการส่ง — ok=false พร้อมเหตุผล เพื่อให้หน้าจอบอกผู้ใช้ได้ ไม่ใช่เงียบ */
 export type SendResult = { ok: true } | { ok: false; reason: 'no-template' | 'no-recipient' | 'failed'; detail?: string }
 
-/** แถบหัวเมลของ Incident — บอกความรุนแรงและเคสตั้งแต่บรรทัดแรก เพราะเป็นงานเร่งด่วน */
-function incidentBanner(title: string, severity: string, project: string): string {
-  const hot = severity === 'Critical' || severity === 'High'
-  const line = hot ? '#dc2626' : '#f59e0b'
-  const bg = hot ? '#fef2f2' : '#fffbeb'
-  const fg = hot ? '#991b1b' : '#92400e'
+/**
+ * แถบหัวเมลของ Incident — บอกเรื่องและความรุนแรงตั้งแต่บรรทัดแรก
+ *
+ * เมลปิดเคสใช้สีเขียวและไม่มีสัญญาณเตือน — แถบแดง 🚨 อยู่เหนือข้อความ
+ * "แก้ไขเรียบร้อยแล้ว" ทำให้คนเปิดมาแล้วตกใจก่อนจะได้อ่านว่าเรื่องจบแล้ว
+ */
+function incidentBanner(title: string, severity: string, project: string, done: boolean): string {
+  const hot = !done && (severity === 'Critical' || severity === 'High')
+  const line = done ? '#16a34a' : hot ? '#dc2626' : '#f59e0b'
+  const bg = done ? '#f0fdf4' : hot ? '#fef2f2' : '#fffbeb'
+  const fg = done ? '#14532d' : hot ? '#991b1b' : '#92400e'
+  const head = done ? '✅ Incident · แก้ไขแล้ว' : `🚨 Incident${severity ? ` · ${severity}` : ''}`
   return `<div style="border-left:4px solid ${line};background:${bg};padding:10px 14px;margin:0 0 14px;font-family:Segoe UI,sans-serif">
-    <div style="font-size:15px;font-weight:700;color:${fg}">🚨 Incident${severity ? ` · ${severity}` : ''}</div>
+    <div style="font-size:15px;font-weight:700;color:${fg}">${head}</div>
     <div style="font-size:13px;color:#334155;margin-top:3px">${title}</div>
     ${project ? `<div style="font-size:12px;color:#64748b;margin-top:2px">โครงการ: ${project}</div>` : ''}
   </div>`
@@ -134,7 +140,7 @@ export async function sendTemplateEmail(
     // ── เมลของ Incident: หัวข้อเดียวกันทั้งสามฉบับ → รวมเป็นเธรดเดียว ──
     if (INCIDENT_EVENTS.has(eventKey) && vars.incident_title?.trim()) {
       subject = `[Incident] ${vars.incident_title.trim()}`
-      body = incidentBanner(vars.incident_title.trim(), vars.severity ?? '', vars.project_name ?? '') + body
+      body = incidentBanner(vars.incident_title.trim(), vars.severity ?? '', vars.project_name ?? '', eventKey === 'incident_resolved') + body
     }
 
     // dedupe (case-insensitive) + ตัด CC ที่ซ้ำกับ To

@@ -411,3 +411,167 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 - ธีม navy เดียวกันทุก template ต่างกันแค่หัวข้อ
 - เปลี่ยนชื่อบริษัท/ฝ่าย ได้ที่ footer (3 จุด: ชื่อบริษัท, ฝ่าย, แถบ AUTO NOTIFICATION)
 - ไม่ต้อง deploy code — แก้แค่เนื้อหา template ใน Admin (copy Body ไปวาง)
+
+---
+
+# Incident Templates
+
+> ระบบตั้ง **Subject** ให้เองเป็น `[Incident] ชื่อเคส` เหมือนกันทั้งสามฉบับ
+> (เพื่อให้รวมเป็นเธรดเดียว) — ที่กรอกในช่อง Subject จะถูกเขียนทับ ใส่อะไรไว้ก็ได้
+>
+> และเติม **แถบสีตามความรุนแรง** ไว้เหนือเนื้อเมลให้อัตโนมัติ — แดงเมื่อ Critical/High
+> ส้มเมื่อ Medium/Low จึงไม่ต้องทำแถบนั้นเองในเทมเพลต
+>
+> ตัวแปรร่วม: `{{incident_title}}` `{{severity}}` `{{status}}` `{{description}}`
+> `{{resolution}}` `{{incident_date}}` `{{sla_hours}}` `{{project_name}}`
+> `{{assigned_name}}` `{{link}}`
+> — ทุกตัวเป็นข้อความเสมอ ไม่มีทางออกมาเป็นช่องว่างหรือ `undefined`
+
+---
+
+## 4. Incident Created — `incident_created`
+
+ส่งตอนเปิดเคสใหม่ · **To** ผู้รับผิดชอบ · **CC** ผู้แจ้ง + เจ้าของโครงการ + ทีม
+
+**Subject:** (ระบบเขียนทับ — ใส่ `แจ้งเคสใหม่: {{incident_title}}` ไว้กันสับสน)
+
+**Body:**
+```html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
+      <tr><td bgcolor="#a32b21" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#f6dcd9;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td bgcolor="#c0392b" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">แจ้งเคสด่วน (Incident)</td></tr>
+      <tr><td bgcolor="#a32b21" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#f0c4bf;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
+      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
+        <p style="margin:0 0 14px;font-size:15px;">เรียน คุณ <strong>{{assigned_name}}</strong></p>
+        <p style="margin:0 0 6px;color:#555555;">มีเคสที่ต้องดำเนินการแก้ไข ระบบได้บันทึกเข้าระบบเรียบร้อยแล้ว</p>
+        <p style="margin:0 0 24px;color:#555555;">กรุณาตรวจสอบและดำเนินการภายในเวลาที่กำหนดครับ</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
+          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">รายละเอียดเคส</td></tr>
+          <tr><td style="padding:0 18px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
+              <tr><td style="padding:5px 0;color:#888888;width:110px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#222222;font-weight:bold;">{{incident_title}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความรุนแรง</td><td style="padding:5px 0;color:#c0392b;font-weight:bold;">{{severity}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">โครงการ</td><td style="padding:5px 0;color:#222222;">{{project_name}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">วันที่เกิดเหตุ</td><td style="padding:5px 0;color:#222222;">{{incident_date}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">สถานะ</td><td style="padding:5px 0;color:#222222;">{{status}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">รายละเอียด</td><td style="padding:5px 0;color:#222222;">{{description}}</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+          <tr><td bgcolor="#fdecea" style="padding:12px 16px;border-left:4px solid #c0392b;font-family:'Segoe UI',Arial,sans-serif;color:#7f1d1d;font-size:13px;line-height:1.6;">ต้องแก้ไขให้แล้วเสร็จภายใน <strong>{{sla_hours}}</strong> นับจากเวลาที่เปิดเคส</td></tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
+          <tr><td bgcolor="#1c2e4a" style="padding:11px 26px;"><a href="{{link}}" style="font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">เปิดดูในระบบ</a></td></tr>
+        </table>
+        <p style="margin:22px 0 0;color:#555555;">หากมีความคืบหน้า กรุณาอัปเดตสถานะในระบบเพื่อให้ผู้เกี่ยวข้องรับทราบครับ</p>
+      </td></tr>
+      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
+      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
+      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
+    </table>
+  </td></tr>
+</table>
+```
+
+---
+
+## 5. Incident Assigned — `incident_assigned`
+
+ส่งตอน **เปลี่ยนผู้รับผิดชอบ** เท่านั้น (กดบันทึกเฉย ๆ ไม่ส่ง)
+
+**Subject:** (ระบบเขียนทับ — ใส่ `มอบหมายเคส: {{incident_title}}` ไว้)
+
+**Body:**
+```html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
+      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">มอบหมายผู้รับผิดชอบเคส</td></tr>
+      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
+      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
+        <p style="margin:0 0 14px;font-size:15px;">เรียน คุณ <strong>{{assigned_name}}</strong></p>
+        <p style="margin:0 0 24px;color:#555555;">คุณได้รับมอบหมายให้ดูแลเคสต่อไปนี้ครับ</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
+          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">รายละเอียดเคส</td></tr>
+          <tr><td style="padding:0 18px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
+              <tr><td style="padding:5px 0;color:#888888;width:110px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#222222;font-weight:bold;">{{incident_title}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความรุนแรง</td><td style="padding:5px 0;color:#c0392b;font-weight:bold;">{{severity}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">โครงการ</td><td style="padding:5px 0;color:#222222;">{{project_name}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">สถานะปัจจุบัน</td><td style="padding:5px 0;color:#222222;">{{status}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">รายละเอียด</td><td style="padding:5px 0;color:#222222;">{{description}}</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+          <tr><td bgcolor="#eaf2fb" style="padding:12px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:13px;line-height:1.6;">กำหนดแก้ไขภายใน <strong>{{sla_hours}}</strong> นับจากเวลาที่เปิดเคส</td></tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
+          <tr><td bgcolor="#1c2e4a" style="padding:11px 26px;"><a href="{{link}}" style="font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">เปิดดูในระบบ</a></td></tr>
+        </table>
+      </td></tr>
+      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
+      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
+      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
+    </table>
+  </td></tr>
+</table>
+```
+
+---
+
+## 6. Incident Resolved — `incident_resolved`
+
+ส่งตอน **เพิ่งปิดเคส** เท่านั้น (แก้เคสที่ปิดไปแล้วไม่ส่งซ้ำ)
+
+**Subject:** (ระบบเขียนทับ — ใส่ `ปิดเคสแล้ว: {{incident_title}}` ไว้)
+
+**Body:**
+```html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
+      <tr><td bgcolor="#186a3b" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#d6f0e0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td bgcolor="#1e8449" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">แก้ไขเคสเรียบร้อยแล้ว</td></tr>
+      <tr><td bgcolor="#186a3b" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#bfe3cd;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
+      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
+        <p style="margin:0 0 14px;font-size:15px;">เรียน ผู้เกี่ยวข้อง</p>
+        <p style="margin:0 0 24px;color:#555555;">เคสต่อไปนี้ได้รับการแก้ไขเรียบร้อยแล้วครับ</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
+          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">สรุปเคส</td></tr>
+          <tr><td style="padding:0 18px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
+              <tr><td style="padding:5px 0;color:#888888;width:110px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#222222;font-weight:bold;">{{incident_title}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความรุนแรง</td><td style="padding:5px 0;color:#222222;">{{severity}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">โครงการ</td><td style="padding:5px 0;color:#222222;">{{project_name}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">วันที่เกิดเหตุ</td><td style="padding:5px 0;color:#222222;">{{incident_date}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ผู้ดำเนินการ</td><td style="padding:5px 0;color:#222222;">{{assigned_name}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">สถานะ</td><td style="padding:5px 0;color:#1e8449;font-weight:bold;">{{status}}</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+          <tr><td bgcolor="#eafaf1" style="padding:14px 16px;border-left:4px solid #1e8449;font-family:'Segoe UI',Arial,sans-serif;color:#145a32;font-size:13px;line-height:1.7;">
+            <div style="font-size:11px;font-weight:bold;letter-spacing:1px;color:#6b8f7c;margin-bottom:5px;">วิธีแก้ไข</div>
+            {{resolution}}
+          </td></tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
+          <tr><td bgcolor="#1c2e4a" style="padding:11px 26px;"><a href="{{link}}" style="font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">เปิดดูในระบบ</a></td></tr>
+        </table>
+        <p style="margin:22px 0 0;color:#555555;">หากยังพบปัญหาเดิมอยู่ กรุณา<strong>ตอบกลับอีเมลฉบับนี้</strong> ทีมงานจะเปิดเคสต่อให้ทันทีครับ</p>
+      </td></tr>
+      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
+      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
+      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
+    </table>
+  </td></tr>
+</table>
+```
