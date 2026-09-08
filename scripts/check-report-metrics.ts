@@ -15,6 +15,7 @@ import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOpti
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
+import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -1005,6 +1006,75 @@ eq(readLastActivity(String(T0 + 999 * MIN), T0), T0, 'a wildly future value from
 
 eq(IDLE_LIMIT_MS, 60 * MIN, 'the limit is one hour')
 eq(WARN_BEFORE_MS, 5 * MIN, 'the warning comes five minutes ahead')
+
+
+
+// -- บทบาทในโครงการ (utils/projectRoles) --
+const RP = [
+  { id: 1, Title: '#VDI', Status: 'Active' },
+  { id: 2, Title: '#Backup', Status: 'Active' },
+  { id: 3, Title: '#เก่า', Status: 'Completed' },
+]
+const RM = [
+  { id: 10, Title: 'สมชาย', ProjectID: 1, AgentEmail: 'somchai@its.co.th', Role: 'Support', Responsibility: 'ดูแล VDA รายวัน' },
+  { id: 11, Title: 'อารีย์', ProjectID: 1, AgentEmail: 'aree@its.co.th', Role: 'Manager' },
+  { id: 12, Title: 'สมชาย', ProjectID: 2, AgentEmail: 'somchai@its.co.th', Role: 'Manager' },
+  { id: 13, Title: 'กมล', ProjectID: 2, AgentEmail: 'kamol@its.co.th' },
+  { id: 14, Title: 'สมชาย', ProjectID: 3, AgentEmail: 'somchai@its.co.th', Role: 'Publisher' },
+  { id: 15, Title: 'ผี', ProjectID: 999, AgentEmail: 'ghost@its.co.th', Role: 'Manager' },
+]
+
+// เรียงตามความรับผิดชอบ ไม่ใช่ตามลำดับที่ถูกเชิญ
+eq(membersOf(RM, 1).map(m => m.Role).join(','), 'Manager,Support', 'the manager is listed first')
+eq(membersOf(RM, 2).map(m => m.Role ?? '-').join(','), 'Manager,-', 'someone with no role sorts last')
+eq(membersOf(RM, 404).length, 0, 'a project with no team is empty, not a crash')
+
+const people = buildRoleMatrix(RP, RM)
+eq(people.some(x => x.email === 'ghost@its.co.th'), false,
+  'a member pointing at a deleted project is dropped, not shown as a dead row')
+
+const somchai = people.find(x => x.email === 'somchai@its.co.th')!
+eq(somchai.assignments.length, 3, 'one person can hold roles on several projects')
+eq(somchai.topRole, 'Manager', 'the most senior role is the summary badge')
+eq(somchai.activeCount, 2, 'finished projects are not counted as work in hand')
+eq(somchai.assignments.map(a => a.role).join(','), 'Manager,Support,Publisher',
+  "a person's own projects sort by responsibility too")
+eq(somchai.assignments[0].projectTitle, '#Backup', 'each row says which project it belongs to')
+eq(somchai.assignments.find(a => a.projectId === 1)?.responsibility, 'ดูแล VDA รายวัน',
+  'the free-text responsibility survives')
+
+const kamol = people.find(x => x.email === 'kamol@its.co.th')!
+eq(kamol.topRole, UNASSIGNED_ROLE, 'no role reads as words, not as blank')
+eq(people[people.length - 1].email, 'kamol@its.co.th', 'people with nothing assigned sort last, to be chased')
+
+// เรียงคน: ตำแหน่งสูงก่อน แล้วคนที่ถือหลายโครงการ
+eq(people[0].email, 'somchai@its.co.th', 'a manager holding two live projects leads the list')
+
+eq(roleRank('Manager') < roleRank('Support'), true, 'manager outranks support')
+eq(roleRank('บทบาทที่ตั้งเอง') < roleRank(''), true, 'a custom role still sorts ahead of no role')
+eq(roleRank(undefined), roleRank(''), 'missing and empty are the same thing')
+
+const tally = roleTally(people)
+eq(tally[0].role, 'Manager', 'the summary starts with the most senior role')
+eq(tally.find(t => t.role === 'Manager')?.count, 2, 'two manager seats across the projects')
+eq(tally.find(t => t.role === UNASSIGNED_ROLE)?.count, 1, 'unfilled seats are counted, not hidden')
+
+// ค้นหาต้องหาเจอจากทุกมุม
+eq(filterPeople(people, 'VDA').length, 1, 'search reaches into the responsibility text')
+eq(filterPeople(people, '#backup').length, 2, 'search by project name finds everyone on it')
+eq(filterPeople(people, 'manager').length, 2, 'search by role works')
+eq(filterPeople(people, 'AREE').length, 1, 'search ignores letter case')
+eq(filterPeople(people, '').length, people.length, 'an empty search hides nobody')
+eq(filterPeople(people, 'ไม่มีอยู่จริง').length, 0, 'no match returns nothing, not everything')
+
+// โครงการที่ยังไม่มีคนตัดสินใจ — ต้องรู้ ไม่ใช่ปล่อยเงียบ
+const gaps = projectsWithoutManager(RP, RM.filter(m => m.id !== 11 && m.id !== 12))
+eq(gaps.map(g => g.Title).join(','), '#VDI,#Backup', 'live projects with no manager are listed')
+eq(projectsWithoutManager(RP, RM).length, 0, 'nothing is flagged when every live project has one')
+eq(projectsWithoutManager(RP, []).some(p => p.Title === '#เก่า'), false,
+  'a finished project without a manager is not a gap worth chasing')
+
+eq(buildRoleMatrix([], []).length, 0, 'no data means an empty view, not a crash')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

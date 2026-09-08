@@ -9,6 +9,9 @@ import { spGet, spUpdate, spUploadAttachment, spDeleteAttachment, spGetAttachmen
 import { useAppStore } from '../store/useAppStore'
 import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
+import { RoleMatrixView } from '../components/common/RoleMatrixView'
+import { buildRoleMatrix, filterPeople, projectsWithoutManager } from '../utils/projectRoles'
+import type { ProjectMember, Project } from '../types/project'
 import type { AgentProfile } from '../types/common'
 
 // ── ผังองค์กร ──
@@ -34,7 +37,20 @@ export default function OrgChart() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [zoom, setZoom] = useState(1)
+  // มุมมองบทบาท — ตอบคำถาม "คนนี้ถืออะไรอยู่" ที่ผังบังคับบัญชาตอบไม่ได้
+  const [view, setView] = useState<'chart' | 'roles'>('chart')
+  const [projects, setProjects] = useState<Project[]>([])
+  const [members, setMembers] = useState<ProjectMember[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  // โหลดทีมโครงการเมื่อเข้ามุมมองบทบาท — ไม่ดึงตอนเปิดหน้าเพราะคนส่วนใหญ่มาดูผังปกติ
+  useEffect(() => {
+    if (view !== 'roles' || projects.length > 0) return
+    spGet<Project>('PM_Projects', undefined, '*', 'Title asc', 1000)
+      .then(setProjects).catch(() => {})
+    spGet<ProjectMember>('PM_ProjectMembers', undefined, '*', undefined, 5000)
+      .then(setMembers).catch(() => {})
+  }, [view, projects.length])
 
   // ดึงชื่อไฟล์รูปมาพร้อมรายชื่อในคำขอเดียว ($expand) — ไม่ต้องยิงถามไฟล์แนบทีละคน
   function loadAgents() {
@@ -296,6 +312,17 @@ export default function OrgChart() {
 
   const matchCount = search.trim() ? [...byEmail.keys()].filter(matches).length : 0
 
+  // เตรียมข้อมูลมุมมองบทบาท — ค้นหาใช้ช่องเดียวกับผังปกติ
+  const people = useMemo(() => buildRoleMatrix(projects, members), [projects, members])
+  const shownPeople = useMemo(() => filterPeople(people, search), [people, search])
+  const managerGaps = useMemo(() => projectsWithoutManager(projects, members), [projects, members])
+
+  /** หา id + ไฟล์รูปจากอีเมล เพื่อให้รูปในมุมมองบทบาทเป็นรูปเดียวกับผัง */
+  const photoByEmail = (email: string) => {
+    const a = agents.find(x => norm(x.EmailText) === norm(email))
+    return a ? { itemId: a.id, fileName: photoOf(a) } : null
+  }
+
   return (
     <div>
       <Header title="ผังองค์กร" />
@@ -309,6 +336,20 @@ export default function OrgChart() {
           </p>
         </div>
 
+        {/* สลับมุมมอง — ผังบังคับบัญชา กับ บทบาทในโครงการ */}
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit no-print">
+          {([
+            { v: 'chart', label: 'สายบังคับบัญชา' },
+            { v: 'roles', label: '🎭 บทบาทในโครงการ' },
+          ] as const).map(o => (
+            <button key={o.v} onClick={() => setView(o.v)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                view === o.v ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 no-print">
           <div className="relative flex-1 min-w-48">
@@ -317,7 +358,14 @@ export default function OrgChart() {
               placeholder="ค้นหาชื่อ / อีเมล / ทีม"
               className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-full" />
           </div>
-          {search.trim() && <span className="text-xs text-gray-400">พบ {matchCount} คน</span>}
+          {search.trim() && (
+            <span className="text-xs text-gray-400">
+              พบ {view === 'roles' ? shownPeople.length : matchCount} คน
+            </span>
+          )}
+          {/* ย่อ/ขยาย/กาง มีความหมายกับผังเท่านั้น — มุมมองบทบาทเป็นการ์ด ไม่ใช่ผัง */}
+          {view === 'chart' && (
+          <>
           <span className="text-[10px] text-gray-400 w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} title="ย่อ"
             className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600"><ZoomOut size={13} /></button>
@@ -325,6 +373,8 @@ export default function OrgChart() {
             className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600"><ZoomIn size={13} /></button>
           <button onClick={() => setCollapsed(new Set())}
             className="text-xs text-primary-600 underline">กางทั้งหมด</button>
+          </>
+          )}
           <Button size="sm" variant="secondary" onClick={exportPdf} disabled={loading}>
             <FileDown size={14} /> Export PDF
           </Button>
@@ -337,6 +387,9 @@ export default function OrgChart() {
             <Users size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
             <p className="text-sm text-gray-500">ยังไม่มีข้อมูลพนักงานใน HD_AgentProfiles</p>
           </Card>
+        ) : view === 'roles' ? (
+          <RoleMatrixView people={shownPeople} gaps={managerGaps}
+            photoOf={photoByEmail} totalPeople={agents.length} />
         ) : (
           <>
             <div className="overflow-x-auto pb-6">

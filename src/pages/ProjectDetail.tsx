@@ -11,6 +11,7 @@ import { Skeleton } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { CloseReply } from '../components/common/CloseReply'
 import { CustomerPanel } from '../components/project/CustomerPanel'
+import { RolePanel } from '../components/project/RolePanel'
 import { ReferencesPanel } from '../components/project/ReferencesPanel'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
@@ -96,7 +97,7 @@ export default function ProjectDetail() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
-  const [tab, setTab] = useState<'tasks' | 'tickets' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'files' | 'customers'>('tasks')
+  const [tab, setTab] = useState<'tasks' | 'tickets' | 'notes' | 'incidents' | 'links' | 'refs' | 'monitor' | 'assets' | 'files' | 'customers' | 'roles'>('tasks')
   // Ticket ที่ผูกกับโครงการนี้ — คำขอให้ทำบางอย่าง (ไม่ใช่ปัญหา จึงไม่มี SLA)
   const [tickets, setTickets] = useState<Ticket[]>([])
   // จำนวนแหล่งอ้างอิง — ให้ panel รายงานกลับมาโชว์บนแท็บ (โหลดแยกจาก load() หลัก)
@@ -1334,10 +1335,10 @@ export default function ProjectDetail() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit flex-wrap">
-          {(['tasks', 'tickets', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'files', 'customers'] as const).map(t => (
+          {(['tasks', 'tickets', 'notes', 'incidents', 'links', 'refs', 'monitor', 'assets', 'files', 'customers', 'roles'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
-              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'tickets' ? `🎫 Tickets (${tickets.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'customers' ? '👥 ลูกค้า' : tr('ticket.attachments')}
+              {t === 'tasks' ? `Tasks (${tasks.length})` : t === 'tickets' ? `🎫 Tickets (${tickets.length})` : t === 'notes' ? `Notes (${notes.length})` : t === 'incidents' ? `Incidents (${incidents.length})` : t === 'links' ? `Links (${links.filter(l => l.LinkType !== 'Dashboard').length})` : t === 'refs' ? `📚 อ้างอิง (${refCount})` : t === 'monitor' ? `📡 Monitor (${links.filter(l => l.LinkType === 'Dashboard').length})` : t === 'assets' ? `${tr('pd.devices')} (${linkedAssets.length})` : t === 'customers' ? '👥 ลูกค้า' : t === 'roles' ? `🎭 บทบาท (${members.length})` : tr('ticket.attachments')}
             </button>
           ))}
         </div>
@@ -1515,6 +1516,11 @@ export default function ProjectDetail() {
 
         {/* ── Assets (linked IT_Assets) ── */}
         {/* ── Files (project-level attachments) ── */}
+        {/* บทบาทของทีม — ใช้คนที่ถูก invite อยู่แล้ว กำหนดว่าใครทำหน้าที่อะไร */}
+        {tab === 'roles' && (
+          <RolePanel projectId={project.id} members={members} canEdit={canManageTeam} onSaved={loadMembers} />
+        )}
+
         {/* กลุ่มลูกค้า — ตั้งที่นี่ แล้วเลือกทั้งชุดได้ตอนสร้าง Ticket/Task */}
         {tab === 'customers' && (
           <CustomerPanel projectId={project.id} projectTitle={project.Title} canEdit={isAgent} />

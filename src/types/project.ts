@@ -27,6 +27,9 @@ export interface ProjectMember {
   ProjectID: number          // Number field in SP — no quotes in filter
   AgentEmail: string
   AddedBy?: string
+  // บทบาทในโครงการนี้ — คนเดียวกันคนละโครงการมีบทบาทต่างกันได้
+  Role?: string
+  Responsibility?: string
 }
 
 export interface Task {
