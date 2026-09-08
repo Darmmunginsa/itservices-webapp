@@ -16,6 +16,7 @@ import { incidentRecipients, incidentVars, justResolved, justAssigned } from '..
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
+import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -1075,6 +1076,21 @@ eq(projectsWithoutManager(RP, []).some(p => p.Title === '#เก่า'), false,
   'a finished project without a manager is not a gap worth chasing')
 
 eq(buildRoleMatrix([], []).length, 0, 'no data means an empty view, not a crash')
+
+
+
+// -- เจ้าของโครงการต้องอยู่ในทีมด้วย --
+eq(ownerMissingFromTeam(RM, 1, 'boss@its.co.th'), true,
+  'a project owner who is not a team row is reported missing')
+eq(ownerMissingFromTeam(RM, 1, 'aree@its.co.th'), false, 'an owner already on the team is fine')
+eq(ownerMissingFromTeam(RM, 1, 'AREE@its.co.th'), false, 'the owner check ignores letter case')
+eq(ownerMissingFromTeam(RM, 1, undefined), false,
+  'an unknown owner is not reported as missing — there is nothing to add')
+eq(ownerMissingFromTeam(RM, 1, '  '), false, 'a blank owner address is treated the same')
+eq(ownerMissingFromTeam([], 5, 'boss@its.co.th'), true, 'an empty team means the owner is missing')
+eq(ownerMissingFromTeam(RM, 2, 'somchai@its.co.th'), false,
+  'membership is checked per project, not across all of them')
+eq(OWNER_DEFAULT_ROLE, 'Manager', 'the creator starts as the one accountable')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

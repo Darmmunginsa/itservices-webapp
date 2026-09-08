@@ -1518,7 +1518,10 @@ export default function ProjectDetail() {
         {/* ── Files (project-level attachments) ── */}
         {/* บทบาทของทีม — ใช้คนที่ถูก invite อยู่แล้ว กำหนดว่าใครทำหน้าที่อะไร */}
         {tab === 'roles' && (
-          <RolePanel projectId={project.id} members={members} canEdit={canManageTeam} onSaved={loadMembers} />
+          <RolePanel projectId={project.id} members={members} canEdit={canManageTeam}
+            ownerEmail={project.CreatedByEmail || project.Author?.EMail}
+            ownerName={project.Author?.Title || project.CreatedByEmail}
+            onSaved={loadMembers} />
         )}
 
         {/* กลุ่มลูกค้า — ตั้งที่นี่ แล้วเลือกทั้งชุดได้ตอนสร้าง Ticket/Task */}

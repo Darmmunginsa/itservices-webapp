@@ -1,18 +1,24 @@
 import { useState } from 'react'
-import { Users, Check, X, Pencil, AlertTriangle } from 'lucide-react'
+import { Users, Check, X, Pencil, AlertTriangle, UserPlus } from 'lucide-react'
 import { Card } from '../common/Card'
 import { Button } from '../common/Button'
 import { Badge } from '../common/Badge'
 import { OptionSelect } from '../common/OptionSelect'
-import { spUpdate } from '../../services/sharepoint'
+import { spCreate, spUpdate } from '../../services/sharepoint'
 import { useAppStore } from '../../store/useAppStore'
-import { membersOf, PROJECT_ROLES, UNASSIGNED_ROLE, type MemberLike } from '../../utils/projectRoles'
+import {
+  membersOf, ownerMissingFromTeam, PROJECT_ROLES, UNASSIGNED_ROLE, OWNER_DEFAULT_ROLE,
+  type MemberLike,
+} from '../../utils/projectRoles'
 import { ROLE_BADGE } from '../../utils/roleBadge'
 
 interface Props {
   projectId: number
   members: MemberLike[]
   canEdit: boolean
+  /** เจ้าของโครงการ — โครงการเก่าที่สร้างก่อนหน้านี้ยังไม่มีแถวในทีม */
+  ownerEmail?: string
+  ownerName?: string
   /** เรียกหลังบันทึก เพื่อให้หน้าโครงการโหลดสมาชิกใหม่ */
   onSaved: () => void
 }
@@ -23,8 +29,9 @@ interface Props {
  * ใช้คนที่ถูก invite เข้ามาอยู่แล้ว ไม่ต้องเพิ่มคนซ้ำ — แค่กำหนดว่าใครทำหน้าที่อะไร
  * เพราะ "อยู่ในทีม" ไม่ได้บอกว่าใครตัดสินใจ ใครลงมือ ใครแค่ดูอยู่
  */
-export function RolePanel({ projectId, members, canEdit, onSaved }: Props) {
+export function RolePanel({ projectId, members, canEdit, ownerEmail, ownerName, onSaved }: Props) {
   const { addToast } = useAppStore()
+  const [addingOwner, setAddingOwner] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const [role, setRole] = useState('')
   const [resp, setResp] = useState('')
@@ -32,6 +39,25 @@ export function RolePanel({ projectId, members, canEdit, onSaved }: Props) {
 
   const team = membersOf(members, projectId)
   const noManager = team.length > 0 && !team.some(m => (m.Role ?? '').trim() === 'Manager')
+  // โครงการที่สร้างก่อนมีระบบนี้ เจ้าของยังไม่เป็นแถวในทีม
+  const ownerMissing = ownerMissingFromTeam(members, projectId, ownerEmail)
+
+  async function addOwner() {
+    if (!ownerEmail) return
+    setAddingOwner(true)
+    try {
+      await spCreate('PM_ProjectMembers', {
+        Title: ownerName || ownerEmail,
+        ProjectID: projectId,
+        AgentEmail: ownerEmail,
+        Role: OWNER_DEFAULT_ROLE,
+      })
+      onSaved()
+      addToast('success', 'เพิ่มเจ้าของโครงการเข้าทีมแล้ว')
+    } catch {
+      addToast('error', 'เพิ่มไม่สำเร็จ')
+    } finally { setAddingOwner(false) }
+  }
 
   function open(m: MemberLike) {
     setEditing(m.id)
@@ -59,16 +85,50 @@ export function RolePanel({ projectId, members, canEdit, onSaved }: Props) {
 
   if (team.length === 0) {
     return (
-      <Card>
-        <p className="text-sm text-gray-400 text-center py-8">
-          ยังไม่มีใครในทีมโครงการนี้ — เชิญคนเข้าทีมก่อน แล้วค่อยกำหนดบทบาท
-        </p>
-      </Card>
+      <div className="space-y-3">
+      {/* โครงการที่สร้างก่อนมีระบบนี้ — เจ้าของเข้าดูได้แต่ไม่ได้อยู่ในทีม จึงหายจากบทบาท */}
+      {ownerMissing && canEdit && (
+        <div className="flex items-start justify-between gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs">
+          <span className="flex items-start gap-2">
+            <UserPlus size={14} className="flex-shrink-0 mt-0.5" />
+            <span>
+              เจ้าของโครงการ <strong>{ownerName || ownerEmail}</strong> ยังไม่อยู่ในทีม
+              จึงไม่โผล่ในบทบาทและมุมมองบทบาท
+            </span>
+          </span>
+          <Button size="sm" onClick={addOwner} disabled={addingOwner} className="flex-shrink-0">
+            {addingOwner ? '...' : 'เพิ่มเข้าทีม'}
+          </Button>
+        </div>
+      )}
+
+        <Card>
+          <p className="text-sm text-gray-400 text-center py-8">
+            ยังไม่มีใครในทีมโครงการนี้ — เชิญคนเข้าทีมก่อน แล้วค่อยกำหนดบทบาท
+          </p>
+        </Card>
+      </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      {/* โครงการที่สร้างก่อนมีระบบนี้ — เจ้าของเข้าดูได้แต่ไม่ได้อยู่ในทีม จึงหายจากบทบาท */}
+      {ownerMissing && canEdit && (
+        <div className="flex items-start justify-between gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs">
+          <span className="flex items-start gap-2">
+            <UserPlus size={14} className="flex-shrink-0 mt-0.5" />
+            <span>
+              เจ้าของโครงการ <strong>{ownerName || ownerEmail}</strong> ยังไม่อยู่ในทีม
+              จึงไม่โผล่ในบทบาทและมุมมองบทบาท
+            </span>
+          </span>
+          <Button size="sm" onClick={addOwner} disabled={addingOwner} className="flex-shrink-0">
+            {addingOwner ? '...' : 'เพิ่มเข้าทีม'}
+          </Button>
+        </div>
+      )}
+
       {/* ไม่มีคนตัดสินใจคือช่องว่างที่ควรรู้ ไม่ใช่ปล่อยให้ค้นพบตอนมีปัญหา */}
       {noManager && (
         <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-xs">

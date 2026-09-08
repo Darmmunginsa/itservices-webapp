@@ -8,6 +8,7 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { Modal } from '../components/common/Modal'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { spGet, spCreate } from '../services/sharepoint'
+import { OWNER_DEFAULT_ROLE } from '../utils/projectRoles'
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { useAppStore } from '../store/useAppStore'
 import type { Project, ProjectStatus } from '../types/project'
@@ -102,7 +103,7 @@ export default function Projects() {
     if (!user) return
     setCreating(true)
     try {
-      await spCreate('PM_Projects', {
+      const created = await spCreate('PM_Projects', {
         Title: form.title,
         Company: form.company,
         ProjectGroup: form.projectGroup,
@@ -114,6 +115,22 @@ export default function Projects() {
         Comment: form.comment || undefined,
       })
       addToast('success', 'สร้างโครงการเรียบร้อย')
+
+      // คนสร้างเข้าทีมเลย ไม่ต้องเชิญตัวเอง
+      // เดิมเข้าดูได้อยู่แล้ว (เช็คจาก CreatedByEmail) แต่ไม่ได้เป็นแถวในทีม
+      // จึงหายไปจากรายชื่อทีม แท็บบทบาท และมุมมองบทบาท ทั้งที่เป็นคนรับผิดชอบ
+      try {
+        await spCreate('PM_ProjectMembers', {
+          Title: user.displayName,
+          ProjectID: created.id,
+          AgentEmail: user.email,
+          AddedBy: user.displayName,
+          Role: OWNER_DEFAULT_ROLE,
+        })
+      } catch {
+        // โครงการสร้างสำเร็จแล้ว อย่าทำให้ดูเหมือนล้มเหลวทั้งหมด — บอกเฉพาะส่วนที่ขาด
+        addToast('error', 'สร้างโครงการแล้ว แต่เพิ่มตัวเองเข้าทีมไม่สำเร็จ — เชิญตัวเองในหน้าโครงการได้')
+      }
       setShowCreate(false)
       setForm({ ...EMPTY_FORM })
       fetchProjects()

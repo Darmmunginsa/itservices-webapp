@@ -161,3 +161,23 @@ export function projectsWithoutManager(projects: ProjectLike[], members: MemberL
     .filter(p => !DONE_PROJECT.includes(p.Status ?? ''))
     .filter(p => !members.some(m => m.ProjectID === p.id && (m.Role ?? '').trim() === 'Manager'))
 }
+
+/** บทบาทตั้งต้นของคนที่สร้างโครงการ — เป็นคนรับผิดชอบจนกว่าจะส่งต่อให้คนอื่น */
+export const OWNER_DEFAULT_ROLE = 'Manager'
+
+/**
+ * เจ้าของโครงการยังไม่อยู่ในทีมหรือไม่
+ *
+ * คนสร้างโครงการเข้าดูได้อยู่แล้วเพราะเช็คจาก CreatedByEmail แต่ไม่ได้เป็นแถวใน
+ * PM_ProjectMembers จึงหายไปจากรายชื่อทีม แท็บบทบาท และมุมมองบทบาท
+ * ทั้งที่เป็นคนที่รับผิดชอบโครงการนั้นอยู่
+ */
+export function ownerMissingFromTeam(
+  members: MemberLike[],
+  projectId: number,
+  ownerEmail?: string,
+): boolean {
+  const owner = norm(ownerEmail)
+  if (!owner) return false          // ไม่รู้ว่าใครเป็นเจ้าของ ก็ไม่มีอะไรให้เติม
+  return !members.some(m => m.ProjectID === projectId && norm(m.AgentEmail) === owner)
+}
