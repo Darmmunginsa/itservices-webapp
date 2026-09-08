@@ -19,6 +19,10 @@ import type { ProjectIncident } from '../types/project'
 import { getDueDateEmoji, getDueDateColor, getDueDateBadgeClass, formatDate, isWarrantyExpiringSoon } from '../utils/dateUtils'
 import { getStatusColor, getPriorityColor } from '../utils/colorUtils'
 import { buildDueRows, isUndated, isOverdue } from '../utils/homeDue'
+import {
+  latestActivity, hasUpdate, readSeen, baselineUnseen, countUpdated, activityLabel, SEEN_KEY,
+  type SeenMap, type ActivityRow,
+} from '../utils/projectActivity'
 import { slaCountdown } from '../utils/sla'
 import { sendTemplateEmail } from '../services/emailService'
 import { GlobalSearch } from '../components/common/GlobalSearch'
@@ -46,6 +50,11 @@ export default function Home() {
   const [videoEmbed, setVideoEmbed] = useState('')
   // โปรเจกต์ที่ถูกเชิญเข้าร่วมทีม (PM_ProjectMembers) — ช่องทางลัดเข้าไปทำงาน
   const [invitedProjects, setInvitedProjects] = useState<Project[]>([])
+  // ความเคลื่อนไหวล่าสุดของแต่ละโปรเจกต์ เทียบกับครั้งล่าสุดที่เราเปิดดู
+  const [actTasks, setActTasks] = useState<ActivityRow[]>([])
+  const [actIncidents, setActIncidents] = useState<ActivityRow[]>([])
+  const [actComments, setActComments] = useState<ActivityRow[]>([])
+  const [seen, setSeen] = useState<SeenMap>(() => readSeen(localStorage.getItem(SEEN_KEY)))
   // งานที่ถึง/เลยกำหนด (Ticket + Task + Incident ทั้งของฉันและที่ถูกเชิญ)
   const [myTasks, setMyTasks] = useState<Task[]>([])
   const [myIncidents, setMyIncidents] = useState<ProjectIncident[]>([])
@@ -109,9 +118,29 @@ export default function Home() {
         const ids = [...new Set(rows.map(r => r.ProjectID).filter(Boolean))].slice(0, 20)
         if (!ids.length) { setInvitedProjects([]); return }
         const filter = ids.map(i => `Id eq ${i}`).join(' or ')
-        return spGet<Project>('PM_Projects', filter, 'Id,Title,Company,Status', 'Title asc', 50)
-          .then(setInvitedProjects)
+        return spGet<Project>('PM_Projects', filter, 'Id,Title,Company,Status,Modified', 'Title asc', 50)
+          .then(rows => {
+            setInvitedProjects(rows)
+            // โปรเจกต์ที่ยังไม่เคยเปิด ตั้งเส้นฐานเป็น "เห็นแล้ว" ตอนนี้
+            // ไม่งั้นวันแรกป้ายจะขึ้นพร้อมกันทั้งกระดาน แล้วคนจะเลิกมองป้ายนี้
+            setSeen(prev => {
+              const next = baselineUnseen(prev, rows.map(r => r.id), new Date().toISOString())
+              if (next === prev) return prev
+              try { localStorage.setItem(SEEN_KEY, JSON.stringify(next)) } catch { /* ignore */ }
+              return next
+            })
+          })
       }).catch(() => {})
+
+    // ความเคลื่อนไหวในโปรเจกต์ — SharePoint ไม่ขยับ Modified ของแถวโปรเจกต์
+    // เมื่อมีคนเพิ่ม task/เคส/คอมเมนต์ จึงต้องดูของลูกเอง
+    // ยิงรวม 3 คำขอแล้วจับกลุ่มฝั่งเบราว์เซอร์ — ไม่ยิงทีละโปรเจกต์
+    spGet<ActivityRow>('PM_Tasks', undefined, 'Id,ProjectID,Modified', 'Modified desc', 200)
+      .then(setActTasks).catch(() => {})
+    spGet<ActivityRow>('PM_Incidents', undefined, 'Id,ProjectID,Modified', 'Modified desc', 200)
+      .then(setActIncidents).catch(() => {})
+    spGet<ActivityRow>('PM_Comments', undefined, 'Id,ProjectID,Modified', 'Modified desc', 200)
+      .then(setActComments).catch(() => {})
 
     Promise.all(promises).then(results => {
       const [tickets, projects, focus, assets, incidents, tasks, leaves] = results as [
@@ -132,6 +161,14 @@ export default function Home() {
   }, [user])
 
   // ประกอบใหม่ทุกครั้งที่ข้อมูลชุดใดชุดหนึ่งมาถึง — ตั๋วที่ถูกเชิญโหลดแยกและมาช้ากว่า
+  const activity = useMemo(
+    () => latestActivity(invitedProjects, actTasks, actIncidents, actComments),
+    [invitedProjects, actTasks, actIncidents, actComments])
+
+  const updatedCount = useMemo(
+    () => countUpdated(invitedProjects.map(p => p.id), activity, seen),
+    [invitedProjects, activity, seen])
+
   const dueRows = useMemo(() => buildDueRows(
     [...myTickets, ...invitedTickets] as never,
     myTasks as never,
@@ -373,18 +410,43 @@ export default function Home() {
               <Card className="!p-3">
                 <h3 className="text-xs font-semibold mb-2 flex items-center gap-1.5">
                   <Users size={14} className="text-primary-600" /> {t('home.invitedProjects')}
+                  {/* ตัวเลขบนหัวข้อ — เห็นได้แม้ชิปจะถูกเลื่อนพ้นสายตา */}
+                  {updatedCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">
+                      {updatedCount} อัปเดต
+                    </span>
+                  )}
                 </h3>
                 <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                  {invitedProjects.map(p => (
-                    <Link key={p.id} to={`/projects/${p.id}`}
-                      className="flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors">
-                      <span className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                        {p.Title.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="text-[11px] font-medium text-primary-700 dark:text-primary-300">{p.Title}</span>
-                      {p.Status && <Badge className={`${getStatusColor(p.Status)} !text-[10px] !px-1.5 !py-0`}>{p.Status}</Badge>}
-                    </Link>
-                  ))}
+                  {invitedProjects.map(p => {
+                    const a = activity.get(p.id)
+                    const fresh = hasUpdate(a?.at, seen[String(p.id)])
+                    return (
+                      <Link key={p.id} to={`/projects/${p.id}`}
+                        className={`flex items-center gap-1.5 pl-1.5 pr-2.5 py-1 rounded-full transition-colors ${
+                          fresh
+                            ? 'bg-red-50 dark:bg-red-900/20 ring-1 ring-red-300 dark:ring-red-800 hover:bg-red-100 dark:hover:bg-red-900/40'
+                            : 'bg-primary-50 dark:bg-primary-900/20 hover:bg-primary-100 dark:hover:bg-primary-900/40'}`}>
+                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
+                          fresh ? 'bg-red-500' : 'bg-primary-600'}`}>
+                          {p.Title.charAt(0).toUpperCase()}
+                        </span>
+                        <span className={`text-[11px] font-medium ${
+                          fresh ? 'text-red-700 dark:text-red-300' : 'text-primary-700 dark:text-primary-300'}`}>
+                          {p.Title}
+                        </span>
+                        {/* บอกว่า "อะไร" อัปเดต ไม่ใช่แค่ว่ามีอัปเดต ไม่งั้นก็ยังต้องเข้าไปหาเอง */}
+                        {fresh && a && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-semibold whitespace-nowrap">
+                            {activityLabel(a.kind)}
+                          </span>
+                        )}
+                        {!fresh && p.Status && (
+                          <Badge className={`${getStatusColor(p.Status)} !text-[10px] !px-1.5 !py-0`}>{p.Status}</Badge>
+                        )}
+                      </Link>
+                    )
+                  })}
                 </div>
               </Card>
             )}

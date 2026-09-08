@@ -17,6 +17,7 @@ import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
+import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -1091,6 +1092,67 @@ eq(ownerMissingFromTeam([], 5, 'boss@its.co.th'), true, 'an empty team means the
 eq(ownerMissingFromTeam(RM, 2, 'somchai@its.co.th'), false,
   'membership is checked per project, not across all of them')
 eq(OWNER_DEFAULT_ROLE, 'Manager', 'the creator starts as the one accountable')
+
+
+
+// -- ป้าย "มีอัปเดต" บนโปรเจกต์ที่ร่วมทีม (utils/projectActivity) --
+const AP = [
+  { id: 1, Modified: '2026-09-01T08:00:00Z' },
+  { id: 2, Modified: '2026-09-01T08:00:00Z' },
+  { id: 3, Modified: '2026-09-05T08:00:00Z' },
+]
+const act = latestActivity(
+  AP,
+  [{ ProjectID: 1, Modified: '2026-09-07T10:00:00Z' }],
+  [{ ProjectID: 2, Modified: '2026-09-06T10:00:00Z' }],
+  [{ ProjectID: 1, Modified: '2026-09-08T09:00:00Z' }, { ProjectID: 2, Created: '2026-09-02T10:00:00Z' }],
+)
+
+// เวลาที่ขยับล่าสุดต้องมาจากลูกด้วย ไม่ใช่แค่แถวโปรเจกต์
+eq(act.get(1)?.at, '2026-09-08T09:00:00Z', 'the newest child activity wins')
+eq(act.get(1)?.kind, 'comment', 'the badge says which kind moved last')
+eq(act.get(2)?.kind, 'incident', 'an incident beats an older comment')
+eq(act.get(3)?.kind, 'project', 'a project with no children falls back to its own row')
+eq(act.get(404), undefined, 'a project with no activity at all is simply absent')
+
+// แถวที่ไม่มี ProjectID หรือไม่มีเวลา ต้องไม่ทำให้พัง
+eq(latestActivity([], [{ Modified: '2026-09-09T00:00:00Z' }], [], []).size, 0,
+  'a child with no project id is ignored')
+eq(latestActivity([{ id: 9 }], [], [], []).size, 0, 'a project with no timestamp is not counted as activity')
+eq(latestActivity([{ id: 9 }], [{ ProjectID: 9, Created: '2026-09-09T00:00:00Z' }], [], []).get(9)?.kind, 'task',
+  'Created is used when Modified is absent')
+
+eq(activityLabel('comment'), 'คอมเมนต์ใหม่', 'each kind reads as words on the badge')
+eq(activityLabel('task'), 'งานใหม่', 'a task reads as new work')
+
+// เทียบกับเวลาที่เราเปิดล่าสุด
+eq(hasUpdate('2026-09-08T09:00:00Z', '2026-09-07T00:00:00Z'), true, 'activity after my last visit is an update')
+eq(hasUpdate('2026-09-06T09:00:00Z', '2026-09-07T00:00:00Z'), false, 'activity before my last visit is not')
+eq(hasUpdate('2026-09-07T00:00:00Z', '2026-09-07T00:00:00Z'), false, 'the same instant is not an update')
+// ไม่เคยเปิด = ไม่ติดป้าย ถ้าติดทั้งกระดานคนจะเลิกมองป้ายนี้
+eq(hasUpdate('2026-09-08T09:00:00Z', undefined), false, 'never having opened it does not light up the badge')
+eq(hasUpdate(undefined, '2026-09-07T00:00:00Z'), false, 'no activity means no badge')
+
+// เก็บเวลาที่เปิด
+eq(Object.keys(readSeen(null)).length, 0, 'nothing stored reads as nothing seen')
+eq(Object.keys(readSeen('ไม่ใช่ json')).length, 0, 'a corrupt value does not break the page')
+eq(Object.keys(readSeen('[1,2,3]')).length, 0, 'an array where an object was expected is rejected')
+eq(readSeen('{"1":"2026-09-07T00:00:00Z","2":5}')['1'], '2026-09-07T00:00:00Z',
+  'valid entries survive alongside invalid ones')
+eq(readSeen('{"2":5}')['2'], undefined, 'a non-string timestamp is dropped')
+
+eq(markSeen({}, 7, '2026-09-08T00:00:00Z')['7'], '2026-09-08T00:00:00Z', 'opening a project records the time')
+eq(markSeen({ '7': '2026-09-09T00:00:00Z' }, 7, '2026-09-08T00:00:00Z')['7'], '2026-09-09T00:00:00Z',
+  'the seen time never moves backwards')
+
+// เส้นฐานตอนโหลดครั้งแรก — กันป้ายขึ้นพร้อมกันทั้งกระดาน
+const based = baselineUnseen({ '1': '2026-09-01T00:00:00Z' }, [1, 2, 3], '2026-09-08T00:00:00Z')
+eq(based['1'], '2026-09-01T00:00:00Z', 'a project already seen keeps its own time')
+eq(based['2'], '2026-09-08T00:00:00Z', 'a project never seen gets the baseline instead of a badge')
+eq(countUpdated([1, 2, 3], act, based), 1, 'only genuinely newer activity is counted')
+eq(countUpdated([1, 2, 3], act, { '1': '2026-08-01T00:00:00Z', '2': '2026-08-01T00:00:00Z', '3': '2026-08-01T00:00:00Z' }), 3,
+  'an old visit to everything counts them all')
+eq(countUpdated([], act, based), 0, 'no projects means no count, not a crash')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

@@ -12,6 +12,7 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { CloseReply } from '../components/common/CloseReply'
 import { CustomerPanel } from '../components/project/CustomerPanel'
 import { RolePanel } from '../components/project/RolePanel'
+import { markSeen, readSeen, SEEN_KEY } from '../utils/projectActivity'
 import { ReferencesPanel } from '../components/project/ReferencesPanel'
 import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSelect'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
@@ -238,6 +239,16 @@ export default function ProjectDetail() {
   }
 
   // โหลดสมาชิกโปรเจกต์ — ลิสต์ยังไม่มี/โหลดพลาด → ถือว่าไม่มีสมาชิก (ผู้สร้าง/Admin ยังเข้าได้)
+  // เปิดดูแล้ว = เห็นแล้ว — ป้าย "มีอัปเดต" บนหน้าหลักต้องหายไป
+  // บันทึกตอนโหลดเสร็จ ไม่ใช่ตอนเข้าหน้า เพราะถ้ายังโหลดไม่ได้ก็ยังไม่ได้เห็นอะไร
+  useEffect(() => {
+    if (!project) return
+    try {
+      const next = markSeen(readSeen(localStorage.getItem(SEEN_KEY)), project.id, new Date().toISOString())
+      localStorage.setItem(SEEN_KEY, JSON.stringify(next))
+    } catch { /* โหมดส่วนตัวเขียนไม่ได้ก็ไม่เป็นไร */ }
+  }, [project])
+
   function loadMembers() {
     if (!id || !/^\d+$/.test(id)) return
     spGet<ProjectMember>('PM_ProjectMembers', `ProjectID eq ${Number(id)}`)
