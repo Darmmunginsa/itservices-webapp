@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Send, UserCheck, UserPlus, X, ChevronDown, ThumbsUp, MessageSquare, ImagePlus } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -24,6 +24,9 @@ import { getStatusColor, getPriorityColor, TICKET_STATUS_DESC } from '../utils/c
 import { formatDate, timeAgo } from '../utils/dateUtils'
 import { useT } from '../i18n/useT'
 
+/** หน่วงก่อนเด้งออกหลังปิดงาน — สั้นพอที่จะไม่รู้สึกค้าง ยาวพอให้เห็นว่าสำเร็จ */
+const CLOSE_EXIT_MS = 1400
+
 // Deterministic avatar color from name (YouTube-style colored circles)
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
 function avatarColor(name: string): string {
@@ -42,6 +45,7 @@ function parseRelayed(textIn: string): { name: string; when?: string; body: stri
 
 export default function TicketDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   // เปิด Ticket จากหน้าไหน ปุ่มย้อนกลับต้องพากลับหน้านั้น
   // เดิมยิงไป /my-work ตายตัว คนที่เข้ามาจากโครงการจึงหลุดออกจากโครงการทุกครั้ง
   const location = useLocation()
@@ -76,6 +80,11 @@ export default function TicketDetail() {
   const [members, setMembers] = useState<TicketMember[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
+
+  // ตัวจับเวลาเด้งออกหลังปิดงาน — ต้องยกเลิกถ้าผู้ใช้เปลี่ยนหน้าเองก่อน
+  // ไม่งั้นกดปิดงานแล้วรีบไปทำอย่างอื่น จะโดนดึงกลับมาที่หน้าเดิมแบบไม่รู้ตัว
+  const exitTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (exitTimer.current) clearTimeout(exitTimer.current) }, [])
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return   // guard: id must be numeric
@@ -409,7 +418,13 @@ export default function TicketDetail() {
       }
       addToast('success', 'อัปเดตสถานะแล้ว')
       // ปิดได้แล้วค่อยฉลอง — ไม่ใช่ทุกการเปลี่ยนสถานะ ไม่งั้นพลุจะกลายเป็นเรื่องน่ารำคาญ
-      if (isClosing && !['Resolved', 'Closed'].includes(ticket.Status)) celebrate()
+      if (isClosing && !['Resolved', 'Closed'].includes(ticket.Status)) {
+        celebrate()
+        // ปิดงานแล้วไม่มีอะไรให้ทำต่อในหน้านี้ — พากลับที่มาให้เลย
+        // หน่วงไว้ให้ทันเห็นว่า "สำเร็จ" ก่อน แล้วพลุจะตามไปเล่นต่อที่หน้าปลายทางเอง
+        // (พลุอยู่ระดับแอป ไม่ได้ผูกกับหน้านี้)
+        exitTimer.current = window.setTimeout(() => navigate(from?.from ?? '/my-work'), CLOSE_EXIT_MS)
+      }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }
 

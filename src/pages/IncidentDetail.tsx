@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, Edit2, FolderOpen, Pin, Trash2, UserCheck, X } from 'lucide-react'
 import { Header } from '../components/layout/Header'
@@ -25,6 +25,9 @@ import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentM
 import { useT } from '../i18n/useT'
 
 const STATUSES: ProjectIncident['Status'][] = ['Open', 'In Progress', 'Resolved']
+
+/** หน่วงก่อนเด้งออกหลังปิดเคส — สั้นพอที่จะไม่รู้สึกค้าง ยาวพอให้เห็นว่าสำเร็จ */
+const CLOSE_EXIT_MS = 1400
 const CLOSED = ['Resolved', 'Closed', 'Done', 'Completed']
 
 /**
@@ -63,6 +66,11 @@ export default function IncidentDetail() {
 
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
+
+  // ตัวจับเวลาเด้งออกหลังปิดงาน — ต้องยกเลิกถ้าผู้ใช้เปลี่ยนหน้าเองก่อน
+  // ไม่งั้นกดปิดงานแล้วรีบไปทำอย่างอื่น จะโดนดึงกลับมาที่หน้าเดิมแบบไม่รู้ตัว
+  const exitTimer = useRef<number | null>(null)
+  useEffect(() => () => { if (exitTimer.current) clearTimeout(exitTimer.current) }, [])
 
   function load() {
     if (!id || !/^\d+$/.test(id)) return
@@ -158,6 +166,11 @@ export default function IncidentDetail() {
       if (justResolved(newStatus, inc.Status)) {
         await mail('incident_resolved', 'แจ้งปิดเคส')
         celebrate()
+        // ปิดเคสแล้วไม่มีอะไรให้ทำต่อ — พากลับที่มา (ปลายทางเดียวกับปุ่มย้อนกลับ)
+        exitTimer.current = window.setTimeout(
+          () => navigate(from?.from ?? (inc.ProjectID ? `/projects/${inc.ProjectID}` : '/my-work')),
+          CLOSE_EXIT_MS,
+        )
       }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setSaving(false) }
   }
