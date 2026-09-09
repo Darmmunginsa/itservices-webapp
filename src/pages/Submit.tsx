@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
+import { ackOnCreate } from '../utils/ackInbox'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -282,6 +283,9 @@ export default function Submit() {
           Description: form.description || undefined,
           AssignedTo: (agent?.Title ?? form.assignedName) || undefined,
           AssignedEmail: form.assignedEmail || undefined,
+          // เคสที่มอบหมายให้คนอื่นต้องไปรอในกล่อง "รอรับงาน" ก่อน
+          // (Ticket กับ Task ทำอยู่แล้ว แต่ Incident ตกไป)
+          ...ackOnCreate(form.assignedEmail, user.email),
           IncidentDate: form.incidentDate || undefined,
           // SLA — เคสใหม่จึงนับจากตอนนี้ (ยังไม่มี Created ให้อ้าง)
           SLAHours: form.incidentSlaHours ? Number(form.incidentSlaHours) : null,

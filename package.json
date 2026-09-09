@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "check:report": "esbuild scripts/check-report-metrics.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/check-report.cjs --log-level=warning && node node_modules/.cache/check-report.cjs"
+    "check:report": "esbuild scripts/check-report-metrics.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/check-report.cjs --log-level=warning && node node_modules/.cache/check-report.cjs",
+    "check:addin": "node scripts/check-addin-sync.mjs",
+    "check": "npm run check:report && npm run check:addin"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.11.0",

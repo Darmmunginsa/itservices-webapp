@@ -177,3 +177,15 @@ export function assignFields(
       : ackResetFields(),
   }
 }
+
+/**
+ * ฟิลด์การรับงานตอน "สร้างงานใหม่"
+ *
+ * แยกจาก assignFields เพราะตอนสร้างยังไม่มีค่าเก่าให้ล้าง และไม่ต้องส่งชื่อผู้รับ
+ * มอบให้ตัวเอง = รู้อยู่แล้ว ไม่ต้องเด้งเข้ากล่องรอรับงานของตัวเอง
+ */
+export function ackOnCreate(assigneeEmail?: string, actorEmail?: string): Record<string, unknown> {
+  const to = norm(assigneeEmail)
+  if (!to) return { IsAcknowledged: false }
+  return { IsAcknowledged: to === norm(actorEmail) }
+}

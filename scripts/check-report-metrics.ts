@@ -15,7 +15,7 @@ import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
-import { assignFields, ackResetFields } from '../src/utils/ackInbox'
+import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
@@ -1624,6 +1624,26 @@ eq(needsAck(handed, 'Ticket', 'somchai@its.co.th'), true,
 // ก่อนแก้: ค่าเดิมติดมา แล้วงานหลุดกล่องรอรับงานไปเลย
 eq(needsAck({ ...handed, IsAcknowledged: true }, 'Ticket', 'somchai@its.co.th'), false,
   'a stale accepted flag is exactly what let work skip the inbox')
+
+
+
+// -- สร้างงานใหม่ก็ต้องผ่านกล่องรอรับงาน (ackOnCreate) --
+// Ticket/Task ทำอยู่แล้ว แต่ Incident ตกไปทั้งใน Submit และใน Add-in
+eq(ackOnCreate('somchai@its.co.th', 'boss@its.co.th').IsAcknowledged, false,
+  'work created for someone else waits to be accepted')
+eq(ackOnCreate('boss@its.co.th', 'BOSS@its.co.th').IsAcknowledged, true,
+  'work you create for yourself is already accepted')
+eq(ackOnCreate('  boss@its.co.th ', 'boss@its.co.th').IsAcknowledged, true,
+  'stray spaces do not turn self-assignment into a queued item')
+eq(ackOnCreate('', 'boss@its.co.th').IsAcknowledged, false,
+  'work with nobody on it is not accepted by anyone')
+eq(ackOnCreate(undefined, undefined).IsAcknowledged, false,
+  'missing values do not crash and do not assume accepted')
+eq(ackOnCreate('a@b.co', undefined).IsAcknowledged, false,
+  'not knowing who created it errs toward requiring acceptance')
+// ไม่ต้องมีชื่อ/วันที่ตอนสร้าง — ยังไม่มีใครรับ จะเขียนชื่อคนรับไปทำไม
+eq(Object.keys(ackOnCreate('a@b.co', 'b@c.co')).join(','), 'IsAcknowledged',
+  'creating work writes only the flag, not an accepter who does not exist yet')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
