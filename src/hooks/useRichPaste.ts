@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { htmlToPlain, hasRichMarkup } from '../utils/richComment'
+import { htmlToPlain, hasBlockMarkup } from '../utils/richComment'
 import { sanitizeHtml } from '../utils/sanitizeDom'
 
 /**
@@ -17,7 +17,9 @@ export function useRichPaste(onNote?: (msg: string) => void) {
    * กรองทันทีตอนวาง ไม่เก็บ HTML ดิบไว้เลยแม้ชั่วคราว
    */
   const capture = useCallback((raw: string): boolean => {
-    if (!hasRichMarkup(raw)) return false
+    // เอาเฉพาะรูปแบบระดับบล็อก (ตาราง/รายการ/หัวข้อ/รูป) — ลิงก์หรือตัวหนาเดี่ยว ๆ
+    // ปล่อยให้ข้อความลงช่องพิมพ์ตามปกติ จะแก้คำและใช้ @mention ได้
+    if (!hasBlockMarkup(raw)) return false
     const clean = sanitizeHtml(raw)
     if (!clean.html.trim()) return false
     // วางหลายครั้งให้ต่อกัน ไม่ทับของเดิม — คนมักวางตารางสองอันติดกัน

@@ -178,14 +178,17 @@ export function plainSnippet(text: string | undefined, max = 200): string {
 }
 
 /**
- * HTML ที่วางมามีรูปแบบที่คุ้มเก็บไหม
+ * HTML ที่วางมามีรูปแบบระดับ "บล็อก" ที่ข้อความล้วนแทนไม่ได้ไหม
  *
- * คลิปบอร์ดใส่ text/html มาแทบทุกครั้ง แม้ตอนก็อปข้อความเปล่าจากเบราว์เซอร์
- * ถ้าเก็บทุกครั้งจะได้ <span> ครอบข้อความธรรมดาที่ไม่ได้ให้อะไร แล้วคอมเมนต์
- * ธรรมดาก็จะเลิกใช้ทาง @mention/จับวันที่ ทั้งที่ไม่มีเหตุ
+ * เกณฑ์คือ ตาราง/รายการ/หัวข้อ/โค้ด/รูป — ของที่พอแบนเป็นข้อความแล้วเสียความหมาย
+ *
+ * ตัวหนา ตัวเอน และ "ลิงก์เดี่ยว" ไม่นับ เพราะการก็อป URL จากเบราว์เซอร์ก็ได้ <a>
+ * ติดมาทุกครั้ง ถ้านับด้วย การวาง URL ธรรมดาจะกลายเป็นบล็อกที่แก้คำไม่ได้
+ * แล้วหลุดจากทาง @mention / จับวันที่ ทั้งที่ไม่มีเหตุ — และ URL ในข้อความล้วน
+ * ก็กดได้อยู่แล้ว
  */
-export function hasRichMarkup(html: string | undefined): boolean {
+export function hasBlockMarkup(html: string | undefined): boolean {
   const s = (html ?? '').toLowerCase()
   if (!s) return false
-  return /<(table|tr|td|th|ul|ol|li|img|a\s|a>|b>|strong|em|i>|u>|h[1-6]|pre|code|blockquote|hr)/.test(s)
+  return /<(table|tr|td|th|ul|ol|li|h[1-6]|pre|blockquote|img)[\s>/]/.test(s)
 }

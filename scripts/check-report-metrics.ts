@@ -20,7 +20,7 @@ import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutMan
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { buildRoleGrid } from '../src/utils/projectRoles'
 import { ticketRows, incidentRows, taskRows, workStats, filterWork, statusOptions, priorityOptions, workLink, isDone } from '../src/utils/dashboardWork'
-import { splitRich, joinRich, isRich, RICH_MARK, isAllowedTag, isDropWhole, isAllowedAttr, safeHref, safeImgSrc, htmlToPlain, commentPlain, plainSnippet, hasRichMarkup, MAX_INLINE_IMAGE } from '../src/utils/richComment'
+import { splitRich, joinRich, isRich, RICH_MARK, isAllowedTag, isDropWhole, isAllowedAttr, safeHref, safeImgSrc, htmlToPlain, commentPlain, plainSnippet, hasBlockMarkup, MAX_INLINE_IMAGE } from '../src/utils/richComment'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
@@ -1566,15 +1566,22 @@ eq(plainSnippet(joinRich('', '<p>' + 'ก'.repeat(300) + '</p>'), 50).length, 50
   'a long comment is cut to the asked length')
 eq(plainSnippet('สั้น', 50), 'สั้น', 'a short comment is not padded or cut')
 
-// คลิปบอร์ดใส่ text/html มาแทบทุกครั้ง — ต้องรู้ว่าครั้งไหนคุ้มเก็บ
-eq(hasRichMarkup('<table><tr><td>x</td></tr></table>'), true, 'a table is worth keeping')
-eq(hasRichMarkup('<ul><li>x</li></ul>'), true, 'a list is worth keeping')
-eq(hasRichMarkup('<a href="https://x.co">x</a>'), true, 'a link is worth keeping')
-eq(hasRichMarkup('<img src="x">'), true, 'an image is worth keeping')
-eq(hasRichMarkup('<span style="color:red">แค่ข้อความ</span>'), false,
-  'a bare span around ordinary text is not formatting worth keeping')
-eq(hasRichMarkup('<p>ย่อหน้าเปล่า</p>'), false, 'a plain paragraph stays on the plain-text path')
-eq(hasRichMarkup(''), false, 'nothing pasted is not rich')
+// คลิปบอร์ดใส่ text/html มาแทบทุกครั้ง — เอาเฉพาะรูปแบบระดับบล็อกที่ข้อความล้วนแทนไม่ได้
+eq(hasBlockMarkup('<table><tr><td>x</td></tr></table>'), true, 'a table cannot survive as plain text')
+eq(hasBlockMarkup('<ul><li>x</li></ul>'), true, 'a list cannot either')
+eq(hasBlockMarkup('<h2>หัวข้อ</h2>'), true, 'a heading counts')
+eq(hasBlockMarkup('<img src="x">'), true, 'an image counts')
+eq(hasBlockMarkup('<pre>code</pre>'), true, 'preformatted text counts')
+// ก็อป URL จากเบราว์เซอร์ได้ <a> ติดมาทุกครั้ง — ถ้านับด้วย การวาง URL ธรรมดา
+// จะกลายเป็นบล็อกที่แก้คำไม่ได้ และหลุดจากทาง @mention/จับวันที่
+eq(hasBlockMarkup('<a href="https://x.co">x</a>'), false, 'a pasted link stays ordinary text')
+eq(hasBlockMarkup('<b>ตัวหนา</b>'), false, 'bold alone is not worth taking over the paste')
+eq(hasBlockMarkup('<span style="color:red">แค่ข้อความ</span>'), false, 'a bare span is not formatting')
+eq(hasBlockMarkup('<p>ย่อหน้าเปล่า</p>'), false, 'a plain paragraph stays on the plain-text path')
+// ชื่อแท็กต้องจบจริง ไม่ใช่แค่ขึ้นต้นตรงกัน
+eq(hasBlockMarkup('<liquid>x</liquid>'), false, 'a tag that merely starts like li does not count')
+eq(hasBlockMarkup('<table-of-contents>'), false, 'nor one that starts like table')
+eq(hasBlockMarkup(''), false, 'nothing pasted is not rich')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
