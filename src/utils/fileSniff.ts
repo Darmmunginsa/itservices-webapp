@@ -37,6 +37,33 @@ export function sniffImage(bytes: Uint8Array): string | null {
   return null
 }
 
+/**
+ * เหมือน sniffImage แต่ครอบคลุมชนิดอื่นที่เปิดดูในหน้าได้ด้วย
+ *
+ * ต้องรู้ชนิดจริงเพราะเราสร้าง blob ใหม่ให้ตรงชนิดก่อนเอาไปแสดง
+ * ถ้าปล่อยเป็น application/octet-stream เบราว์เซอร์จะสั่งดาวน์โหลดแทนที่จะเปิดดู
+ * ซึ่งเป็นอาการเดิมที่เรากำลังแก้อยู่พอดี
+ */
+export function sniffFile(bytes: Uint8Array): string | null {
+  const img = sniffImage(bytes)
+  if (img) return img
+  if (bytes.length < 4) return null
+  if (ascii(bytes, 0, 4) === '%PDF') return 'application/pdf'
+  if (startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3])) return 'video/webm'   // Matroska/WebM
+  if (ascii(bytes, 0, 3) === 'ID3' || (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)) return 'audio/mpeg'
+  if (ascii(bytes, 0, 4) === 'OggS') return 'audio/ogg'
+  if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WAVE') return 'audio/wav'
+  if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'AVI ') return 'video/x-msvideo'
+  // ISO-BMFF ที่ไม่ใช่รูป — mp4/m4a/mov แยกกันด้วย brand
+  if (ascii(bytes, 4, 4) === 'ftyp') {
+    const brand = ascii(bytes, 8, 4)
+    if (brand === 'qt  ') return 'video/quicktime'
+    if (brand.startsWith('M4A')) return 'audio/mp4'
+    return 'video/mp4'
+  }
+  return null
+}
+
 /** เบราว์เซอร์ทั่วไปวาดรูปชนิดนี้ไม่ได้ — รู้ล่วงหน้าดีกว่าปล่อยให้กรอบรูปพัง */
 export const browserCanRender = (mime: string): boolean =>
   mime !== 'image/heic' && mime !== 'image/tiff'

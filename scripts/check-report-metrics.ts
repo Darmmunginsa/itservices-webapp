@@ -9,7 +9,8 @@ import { buildDueRows, isUndated, isOverdue } from '../src/utils/homeDue'
 import { buildTree, flatten, subtreeIds, pathOf, pathLabel, canMove, moveTargets, countsWithDescendants, ROOT } from '../src/utils/folderTree'
 import { esc, articleSlug, articleFile, assetPath, noteHtml, articleHtml, indexHtml, searchIndex, articleIssues, isPublished, tagList, type KbArticle, type SiteMeta } from '../src/utils/kb'
 import { splitQuoted, stripQuoted, hasQuoted, quotedLines } from '../src/utils/emailQuote'
-import { sniffImage, browserCanRender } from '../src/utils/fileSniff'
+import { sniffImage, sniffFile, browserCanRender } from '../src/utils/fileSniff'
+import { previewKind, resolveMime, mimeFromName, extOf, pickFiles, pastedName, dedupeName, prettySize, TEXT_PREVIEW_LIMIT, MAX_UPLOAD_BYTES } from '../src/utils/filePreview'
 import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
@@ -1308,6 +1309,92 @@ const dloop = buildOrgTree([
   { Title: 'วน B', EmailText: 'lb@x.co', ApproverEmail: 'la@x.co', SupportGroup: 'Ops' },
 ])
 eq(departmentView(dloop, 'Ops').members.size, 2, 'a reporting loop does not hang the department filter')
+
+
+
+// -- เปิดดูไฟล์แนบในหน้า ไม่ต้องดาวน์โหลด (utils/filePreview + sniffFile) --
+const B = (s: string) => {
+  const a = new Uint8Array(s.length)
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i)
+  return a
+}
+
+// ไบต์จริงต้องบอกชนิดได้ ไม่ต้องพึ่งนามสกุล
+eq(sniffFile(B('%PDF-1.7')), 'application/pdf', 'a PDF is recognised by its first bytes')
+eq(sniffFile(B('....ftypisom....')), 'video/mp4', 'an mp4 container is recognised')
+eq(sniffFile(B('....ftypM4A ....')), 'audio/mp4', 'an m4a is audio, not video, despite the same container')
+eq(sniffFile(B('....ftypqt  ....')), 'video/quicktime', 'a .mov keeps its own type')
+eq(sniffFile(B('RIFF____WAVEfmt ')), 'audio/wav', 'a WAV is told apart from other RIFF files')
+eq(sniffFile(B('RIFF____AVI LIST')), 'video/x-msvideo', 'an AVI is told apart from a WAV')
+eq(sniffFile(B('ID3\x03....')), 'audio/mpeg', 'an mp3 with an ID3 tag is recognised')
+eq(sniffFile(B('OggS....')), 'audio/ogg', 'an Ogg stream is recognised')
+eq(sniffFile(B('%PDF')) === sniffImage(B('%PDF')), false, 'the wider sniffer sees more than the image one')
+eq(sniffFile(B('\x89PNG\r\n\x1a\n')), 'image/png', 'images still work through the wider sniffer')
+eq(sniffFile(B('PK\x03\x04')), null, 'a zip is left unknown rather than guessed at')
+eq(sniffFile(B('ab')), null, 'too few bytes is not a crash')
+
+// ลำดับความน่าเชื่อ: ไบต์ → นามสกุล → header
+eq(resolveMime('application/pdf', 'report.docx', 'text/plain'), 'application/pdf',
+  'the bytes win over both the name and the server header')
+eq(resolveMime(null, 'notes.txt', 'application/octet-stream'), 'text/plain',
+  'the name is used when the bytes say nothing')
+eq(resolveMime(null, 'thing.unknown', 'application/octet-stream'), '',
+  "SharePoint's octet-stream is treated as no answer, not as an answer")
+eq(resolveMime(null, 'thing.unknown', 'text/csv'), 'text/csv', 'a real server header is used as a last resort')
+
+eq(extOf('a.b.TXT'), 'txt', 'the extension is the last one, lower-cased')
+eq(extOf('Makefile'), '', 'a file with no extension has none')
+eq(extOf('.gitignore'), '', 'a dotfile is a name, not an extension')
+eq(mimeFromName('CAPS.PDF'), 'application/pdf', 'extension matching ignores case')
+
+// เปิดดูได้แบบไหน
+eq(previewKind('application/pdf', 'a.pdf'), 'pdf', 'a PDF opens in the page')
+eq(previewKind('video/mp4', 'a.mp4'), 'video', 'a video plays in the page')
+eq(previewKind('audio/mpeg', 'a.mp3'), 'audio', 'audio plays in the page')
+eq(previewKind('text/csv', 'a.csv'), 'text', 'a CSV is read as text')
+eq(previewKind('', 'a.log'), 'text', 'the name alone is enough when the type is unknown')
+eq(previewKind('image/png', 'a.png'), 'image', 'images keep their own path')
+eq(previewKind('', 'report.docx'), 'office', 'Office files are called out, not lumped in with the rest')
+eq(previewKind('application/zip', 'a.zip'), 'none', 'a zip has nothing to show')
+eq(previewKind('', 'setup.exe'), 'none', 'an unknown binary has nothing to show')
+// log 50MB ต้องไม่ทำให้หน้าค้าง
+eq(previewKind('text/plain', 'huge.log', TEXT_PREVIEW_LIMIT + 1), 'none',
+  'a text file too big to read is not offered as a preview')
+eq(previewKind('text/plain', 'small.log', TEXT_PREVIEW_LIMIT), 'text', 'a file right at the limit still opens')
+
+// คัดไฟล์ที่วาง/ลากเข้ามา
+const picked = pickFiles([
+  { name: 'ok.pdf', size: 1000 },
+  { name: 'โฟลเดอร์', size: 0 },
+  { name: 'huge.iso', size: MAX_UPLOAD_BYTES + 1 },
+  { name: '', size: 50 },
+  { name: 'weird.aspx', size: 20 },
+])
+// ไม่กรองตามนามสกุล — เดาแทน SharePoint จะกลายเป็นบล็อกไฟล์ที่จริงๆ อัปโหลดได้
+eq(picked.accepted.map(f => f.name).join(','), 'ok.pdf,weird.aspx',
+  'every extension is accepted; the server gets to decide')
+eq(picked.rejected.length, 2, 'only empty and oversized files are turned away')
+eq(picked.rejected[0].reason.includes('โฟลเดอร์'), true, 'dragging a folder says so instead of failing later')
+eq(picked.rejected[1].reason.includes('ใหญ่เกิน'), true, 'an oversized file says why')
+eq(pickFiles([]).accepted.length, 0, 'nothing dropped is not a crash')
+
+// รูปที่วางจากคลิปบอร์ดมักชื่อซ้ำกันทุกใบ
+const when = new Date('2026-09-09T04:05:06Z')
+eq(pastedName('image.png', 'image/png', when), 'pasted-2026-09-09-04-05-06.png',
+  'a pasted screenshot gets a name that tells it apart')
+eq(pastedName('', 'image/jpeg', when).endsWith('.jpeg'), true, 'a nameless paste still gets the right extension')
+eq(pastedName('รายงานประชุม.png', 'image/png', when), 'รายงานประชุม.png', 'a real filename is left alone')
+
+eq(dedupeName('a.png', []), 'a.png', 'a free name is used as is')
+eq(dedupeName('a.png', ['a.png']), 'a-2.png', 'a clash gets a number before the extension')
+eq(dedupeName('a.png', ['a.png', 'a-2.png']), 'a-3.png', 'numbering keeps going')
+eq(dedupeName('A.PNG', ['a.png']), 'A-2.PNG', 'the clash check ignores case, like SharePoint does')
+eq(dedupeName('Makefile', ['Makefile']), 'Makefile-2', 'a file with no extension still dedupes')
+
+eq(prettySize(0), '', 'no size shows nothing rather than "0 B"')
+eq(prettySize(900), '900 B', 'small files read in bytes')
+eq(prettySize(2048), '2 KB', 'kilobytes are rounded')
+eq(prettySize(5 * 1024 * 1024), '5.0 MB', 'megabytes keep one decimal')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

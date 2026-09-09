@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Download, X } from 'lucide-react'
 import { spAttachmentBlob } from '../../services/sharepoint'
 import { browserCanRender } from '../../utils/fileSniff'
+import { previewKind, prettySize, extOf, type PreviewKind } from '../../utils/filePreview'
+import { FileViewer } from './FileViewer'
 
 interface Props {
   listName: string
@@ -10,30 +11,35 @@ interface Props {
 }
 
 // เดาจากชื่อไว้ก่อน เพื่อวางกรอบ placeholder ให้ถูกตั้งแต่ยังโหลดไม่เสร็จ
-// แต่คำตอบสุดท้ายมาจาก MIME type ของไฟล์จริง เพราะชื่อเชื่อไม่ได้
+// แต่คำตอบสุดท้ายมาจากไบต์ของไฟล์จริง เพราะชื่อเชื่อไม่ได้
 const IMG_RE = /\.(png|jpe?g|jfif|gif|webp|bmp|svg|avif|heic|heif|tiff?|ico)$/i
 
-const KB = 1024
-function prettySize(n: number): string {
-  if (!n) return ''
-  if (n < KB) return `${n} B`
-  if (n < KB * KB) return `${Math.round(n / KB)} KB`
-  return `${(n / KB / KB).toFixed(1)} MB`
+/** ไอคอนบนแผ่นไฟล์ — บอกชนิดได้ตั้งแต่ยังไม่คลิก */
+const TILE: Record<PreviewKind, { icon: string; label: string }> = {
+  image:  { icon: '🖼️', label: 'ดูรูป' },
+  pdf:    { icon: '📕', label: 'ดู PDF' },
+  video:  { icon: '▶️', label: 'เล่นวิดีโอ' },
+  audio:  { icon: '🎵', label: 'เล่นเสียง' },
+  text:   { icon: '📄', label: 'อ่านในหน้า' },
+  office: { icon: '📘', label: 'ดาวน์โหลด' },
+  none:   { icon: '📎', label: 'ดาวน์โหลด' },
 }
 
 /**
- * แสดงไฟล์แนบของ comment โดยดึงผ่าน /_api $value + bearer token → blob URL
- * - รูป: คลิก thumbnail → เปิด lightbox ดูในแอป (ไม่ดาวน์โหลด) + ปุ่มดาวน์โหลดได้ชื่อจริง
- * - ไฟล์อื่น: ลิงก์ดาวน์โหลด (ชื่อจริง+นามสกุล)
+ * ไฟล์แนบของคอมเมนต์ — ดึงผ่าน /_api $value + bearer token → blob URL
  *
- * รูปที่มากับเมลมักชื่อแปลก — image001.jfif, รูปจาก iPhone เป็น .heic หรือบางที
- * ไม่มีนามสกุลเลย จึงตัดสินจาก MIME ของไฟล์จริง ไม่ใช่จากชื่อ
+ * เปิดดูในหน้าได้: รูป, PDF, วิดีโอ, เสียง, ไฟล์ข้อความ
+ * ที่เหลือเป็นลิงก์ดาวน์โหลด แต่บอกไปตรง ๆ ว่าทำไม ไม่ปล่อยให้กดแล้วงง
+ *
+ * ชนิดไฟล์ตัดสินจากไบต์จริง ไม่ใช่จากชื่อ — รูปที่มากับเมลมักชื่อแปลก
+ * (image001.jfif, .heic จาก iPhone) หรือไม่มีนามสกุลเลย
  */
 export function AttachmentThumb({ listName, itemId, fileName }: Props) {
   // ผูกทุกสถานะไว้กับ key ของไฟล์ แทนที่จะรีเซ็ตตอน props เปลี่ยน
-  // เพราะการ setState ตรง ๆ ใน effect ทำให้ render ซ้อนกันโดยไม่จำเป็น
   const key = `${listName}|${itemId}|${fileName}`
-  const [blob, setBlob] = useState<{ key: string; url: string; type: string; size: number; isImage: boolean } | null>(null)
+  const [loaded, setLoaded] = useState<{
+    key: string; url: string; type: string; size: number; isImage: boolean; blob: Blob
+  } | null>(null)
   const [failedKey, setFailedKey] = useState('')
   // เบราว์เซอร์วาดรูปไม่ออก (เช่น .heic บน Chrome) — ตกลงมาเป็นลิงก์ดาวน์โหลดแทน
   const [brokenKey, setBrokenKey] = useState('')
@@ -46,51 +52,28 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
       .then(b => {
         if (!active) { URL.revokeObjectURL(b.url); return }
         made = b.url
-        setBlob({ key: `${listName}|${itemId}|${fileName}`, url: b.url, type: b.type, size: b.size, isImage: b.isImage })
+        setLoaded({ key: `${listName}|${itemId}|${fileName}`, ...b })
       })
       .catch(() => { if (active) setFailedKey(`${listName}|${itemId}|${fileName}`) })
     return () => { active = false; if (made) URL.revokeObjectURL(made) }
   }, [listName, itemId, fileName])
 
-  const loaded = blob?.key === key ? blob : null
-  const url = loaded?.url ?? ''
-  const size = loaded?.size ?? 0
+  const file = loaded?.key === key ? loaded : null
+  const url = file?.url ?? ''
+  const size = file?.size ?? 0
   const err = failedKey === key
   const cantRender = brokenKey === key
 
-  // ก่อนโหลดเสร็จเดาจากชื่อ เพื่อวางกรอบ placeholder ให้ถูก
-  // โหลดเสร็จแล้วใช้ผลจากไบต์จริง ซึ่งตอบได้ทั้งไฟล์ที่ชื่อแปลกและไฟล์ที่ไม่มีนามสกุล
   // .heic รู้ตั้งแต่ต้นว่าเบราว์เซอร์วาดไม่ได้ — ไม่ต้องรอให้กรอบรูปพังก่อนแล้วค่อยถอย
-  const unsupported = !!loaded?.isImage && !browserCanRender(loaded.type)
-  const isImg = (loaded ? loaded.isImage : IMG_RE.test(fileName)) && !cantRender && !unsupported
-
-  if (isImg && !err) {
-    if (!url) return <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 animate-pulse" />
-    return (
-      <>
-        <button type="button" onClick={() => setOpen(true)} title={`${fileName}${size ? ` · ${prettySize(size)}` : ''}`}>
-          <img src={url} alt={fileName} onError={() => setBrokenKey(key)}
-            className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity cursor-pointer" />
-        </button>
-        {open && (
-          <div className="fixed inset-0 z-[200] bg-black/80 flex flex-col items-center justify-center p-4" onClick={() => setOpen(false)}>
-            <img src={url} alt={fileName} className="max-w-full max-h-[80vh] object-contain rounded-lg" onClick={e => e.stopPropagation()} />
-            <div className="flex items-center gap-3 mt-3" onClick={e => e.stopPropagation()}>
-              <span className="text-white/80 text-xs truncate max-w-[60vw]">{fileName}{size ? ` · ${prettySize(size)}` : ''}</span>
-              <a href={url} download={fileName} className="flex items-center gap-1 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors">
-                <Download size={13} /> ดาวน์โหลด
-              </a>
-              <button type="button" onClick={() => setOpen(false)} className="flex items-center gap-1 text-xs bg-white/15 hover:bg-white/25 text-white px-3 py-1.5 rounded-lg transition-colors">
-                <X size={13} /> ปิด
-              </button>
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
+  const unsupportedImage = !!file?.isImage && !browserCanRender(file.type)
+  const kind: PreviewKind = !file
+    ? (IMG_RE.test(fileName) ? 'image' : 'none')
+    : cantRender || unsupportedImage
+      ? 'none'
+      : previewKind(file.type, fileName, file.size)
 
   const label = `${fileName}${size ? ` · ${prettySize(size)}` : ''}`
+
   // โหลดไม่ได้ — บอกไปตรง ๆ ดีกว่าโชว์กรอบว่างที่ทำอะไรไม่ได้
   if (err) {
     return (
@@ -100,11 +83,56 @@ export function AttachmentThumb({ listName, itemId, fileName }: Props) {
       </span>
     )
   }
-  return url
-    ? <a href={url} download={fileName} rel="noopener noreferrer"
-        title={cantRender || unsupported ? 'เบราว์เซอร์เปิดรูปชนิดนี้ไม่ได้ — ดาวน์โหลดไปเปิดในเครื่อง' : label}
+
+  // ── รูป: thumbnail จริง ──
+  if (kind === 'image') {
+    if (!url) return <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 animate-pulse" />
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)} title={label}>
+          <img src={url} alt={fileName} onError={() => setBrokenKey(key)}
+            className="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-700 hover:opacity-90 transition-opacity cursor-pointer" />
+        </button>
+        {open && file && (
+          <FileViewer kind="image" url={url} blob={file.blob} fileName={fileName} size={size} onClose={() => setOpen(false)} />
+        )}
+      </>
+    )
+  }
+
+  if (!url) {
+    return <span className="flex items-center gap-1 text-xs text-gray-400 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {fileName}</span>
+  }
+
+  const tile = TILE[kind]
+
+  // ── ชนิดที่ไม่มีอะไรให้ดูในหน้า: ลิงก์ดาวน์โหลด พร้อมเหตุผล ──
+  if (kind === 'none' || kind === 'office') {
+    const why = unsupportedImage || cantRender
+      ? 'เบราว์เซอร์เปิดรูปชนิดนี้ไม่ได้ — ดาวน์โหลดไปเปิดในเครื่อง'
+      : kind === 'office'
+        ? `เบราว์เซอร์เปิด .${extOf(fileName)} ในหน้าไม่ได้ — ดาวน์โหลดไปเปิดใน Office`
+        : label
+    return (
+      <a href={url} download={fileName} rel="noopener noreferrer" title={why}
         className="flex items-center gap-1 text-xs text-primary-600 hover:underline px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">
-        {cantRender || unsupported ? '🖼️' : '📎'} {label}
+        {unsupportedImage || cantRender ? '🖼️' : tile.icon} {label}
       </a>
-    : <span className="flex items-center gap-1 text-xs text-gray-400 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg">📎 {fileName}</span>
+    )
+  }
+
+  // ── PDF / วิดีโอ / เสียง / ข้อความ: แผ่นไฟล์ที่กดดูในหน้าได้ ──
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} title={`${label} — ${tile.label}`}
+        className="w-20 h-20 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors p-1">
+        <span className="text-xl leading-none">{tile.icon}</span>
+        <span className="text-[8px] text-gray-500 dark:text-gray-400 truncate w-full text-center px-0.5">{fileName}</span>
+        <span className="text-[8px] text-primary-600 font-medium">{tile.label}</span>
+      </button>
+      {open && file && (
+        <FileViewer kind={kind} url={url} blob={file.blob} fileName={fileName} size={size} onClose={() => setOpen(false)} />
+      )}
+    </>
+  )
 }

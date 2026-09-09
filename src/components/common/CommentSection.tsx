@@ -8,6 +8,12 @@ import { QuotedText } from './QuotedText'
 import { Button } from './Button'
 import { timeAgo } from '../../utils/dateUtils'
 import { useT } from '../../i18n/useT'
+import { pickFiles, pastedName, dedupeName, previewKind, prettySize } from '../../utils/filePreview'
+
+// ไอคอนของไฟล์ที่รอส่ง — บอกตั้งแต่ก่อนกดว่าไฟล์นี้จะเปิดดูในหน้าได้ไหม
+const QUEUE_ICON: Record<string, string> = {
+  image: '🖼️', pdf: '📕', video: '▶️', audio: '🎵', text: '📄', office: '📘', none: '📎',
+}
 
 const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#dc2626', '#ea580c', '#ca8a04', '#16a34a', '#0891b2', '#4f46e5']
 function avatarColor(name: string): string {
@@ -50,6 +56,30 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
   const [replyTo, setReplyTo] = useState<{ id: number; author: string } | null>(null)
   const [openThreads, setOpenThreads] = useState<Record<number, boolean>>({})
   const [likeBusy, setLikeBusy] = useState<number | null>(null)
+  // ลากไฟล์มาทิ้ง — นับชั้นการ enter/leave เพราะเลื่อนผ่านลูกทุกตัวจะยิง leave ตลอด
+  const [dragDepth, setDragDepth] = useState(0)
+
+  /**
+   * ทางเข้าเดียวของไฟล์แนบ — ปุ่มเลือก, วาง (Ctrl+V) และลากมาทิ้ง ใช้ตัวนี้ทั้งหมด
+   * ถ้าแยกกันจะได้กฎการคัดไฟล์และการตั้งชื่อที่ไม่ตรงกันสามชุด
+   */
+  function addFiles(incoming: File[], pasted = false) {
+    const { accepted, rejected } = pickFiles(incoming)
+    for (const r of rejected) addToast('error', `${r.name} — ${r.reason}`)
+    if (!accepted.length) return
+    setCommentFiles(prev => {
+      const taken = prev.map(f => f.name)
+      const next = [...prev]
+      for (const f of accepted) {
+        // รูปที่วางจากคลิปบอร์ดมักชื่อ image.png ทุกใบ — ตั้งชื่อใหม่ให้แยกออก
+        const wanted = pasted ? pastedName(f.name, f.type, new Date()) : f.name
+        const name = dedupeName(wanted, taken)
+        taken.push(name)
+        next.push(name === f.name ? f : new File([f], name, { type: f.type }))
+      }
+      return next
+    })
+  }
 
   // @mention
   const commentRef = useRef<HTMLTextAreaElement>(null)
@@ -252,7 +282,22 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           style={{ backgroundColor: avatarColor(user?.displayName ?? 'U') }} title={user?.displayName}>
           {(user?.displayName ?? 'U').charAt(0).toUpperCase()}
         </div>
-        <div className="min-w-0 flex-1 space-y-2">
+        <div className="min-w-0 flex-1 space-y-2 relative"
+          onDragEnter={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragDepth(d => d + 1) } }}
+          onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault() }}
+          onDragLeave={() => setDragDepth(d => Math.max(0, d - 1))}
+          onDrop={e => {
+            if (!e.dataTransfer.files.length) return
+            e.preventDefault()
+            setDragDepth(0)
+            addFiles(Array.from(e.dataTransfer.files))
+          }}>
+          {/* คลุมทั้งกล่องตอนลากอยู่ — ให้เห็นชัดว่าทิ้งตรงไหนก็ได้ ไม่ต้องเล็งช่องเล็ก ๆ */}
+          {dragDepth > 0 && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-400 bg-primary-50/90 dark:bg-primary-900/40 pointer-events-none">
+              <span className="text-xs font-medium text-primary-700 dark:text-primary-200">วางไฟล์ที่นี่ · แนบได้ทุกนามสกุล</span>
+            </div>
+          )}
           {replyTo && (
             <div className="flex items-center gap-1.5 text-xs">
               <span className="text-gray-400">{tr('ticket.replyingTo')}</span>
@@ -272,6 +317,14 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           )}
           <div className="relative">
             <textarea ref={commentRef} id="proj-comment-box" value={comment} onChange={onCommentChange} rows={1}
+              onPaste={e => {
+                // วางไฟล์ได้ทุกชนิด รวมถึงภาพที่เพิ่ง capture หน้าจอมา
+                // ปล่อยให้ข้อความวางตามปกติถ้าไม่มีไฟล์ติดมา
+                const files = Array.from(e.clipboardData.files)
+                if (!files.length) return
+                e.preventDefault()
+                addFiles(files, true)
+              }}
               placeholder={tr('ticket.commentPlaceholder')}
               onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
               className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
@@ -298,10 +351,10 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
             )}
             <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
               <ImagePlus size={14} /> {tr('ticket.attachImage')}
+              <span className="hidden sm:inline text-[10px] text-gray-400">· วางหรือลากก็ได้</span>
               <input type="file" multiple className="hidden"
                 onChange={e => {
-                  const picked = e.target.files ? Array.from(e.target.files) : []
-                  if (picked.length) setCommentFiles(prev => [...prev, ...picked])
+                  addFiles(e.target.files ? Array.from(e.target.files) : [])
                   e.target.value = ''
                 }} />
             </label>
@@ -314,8 +367,16 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               {commentFiles.map((f, i) => (
                 <div key={i} className="relative">
                   {f.type.startsWith('image/')
-                    ? <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
-                    : <div className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1"><span className="text-lg">📄</span><span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span></div>}
+                    ? <img src={URL.createObjectURL(f)} alt={f.name} title={`${f.name} · ${prettySize(f.size)}`}
+                        className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                    : (
+                      <div title={`${f.name} · ${prettySize(f.size)}`}
+                        className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1">
+                        <span className="text-lg leading-none">{QUEUE_ICON[previewKind(f.type, f.name, f.size)]}</span>
+                        <span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span>
+                        <span className="text-[7px] text-gray-400">{prettySize(f.size)}</span>
+                      </div>
+                    )}
                   <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
                     className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
                 </div>

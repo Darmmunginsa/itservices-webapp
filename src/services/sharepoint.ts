@@ -1,4 +1,5 @@
-import { sniffImage } from '../utils/fileSniff'
+import { sniffFile } from '../utils/fileSniff'
+import { resolveMime } from '../utils/filePreview'
 import { SHAREPOINT_API, SHAREPOINT_URL } from '../config/msal'
 import { logActivity } from './activityLog'
 
@@ -264,7 +265,7 @@ export async function spAttachmentBlobUrl(listName: string, itemId: number, file
   return URL.createObjectURL(blob)
 }
 
-export interface AttachmentBlob { url: string; type: string; size: number; isImage: boolean }
+export interface AttachmentBlob { url: string; type: string; size: number; isImage: boolean; blob: Blob }
 
 /**
  * เหมือน spAttachmentBlobUrl แต่คืนชนิดไฟล์จริงมาด้วย
@@ -281,11 +282,16 @@ export async function spAttachmentBlob(listName: string, itemId: number, fileNam
   // SharePoint คืน Content-Type เป็น application/octet-stream ให้ไฟล์แนบเกือบทุกไฟล์
   // เชื่อ header ไม่ได้ และเชื่อชื่อไฟล์ก็ไม่ได้ — อ่านไบต์แรกดูเองจึงจบ
   const head = new Uint8Array(await blob.slice(0, 32).arrayBuffer())
-  const sniffed = sniffImage(head)
+  const sniffed = sniffFile(head)
+  const type = resolveMime(sniffed, fileName, blob.type)
+  // สร้าง blob ใหม่ให้ติดชนิดที่ถูก — blob ที่เป็น application/octet-stream
+  // จะถูกเบราว์เซอร์สั่งดาวน์โหลดแทนที่จะเปิดดู แม้จะเป็น PDF หรือวิดีโอก็ตาม
+  const typed = type && type !== blob.type ? new Blob([blob], { type }) : blob
   return {
-    url: URL.createObjectURL(blob),
-    type: sniffed ?? blob.type,
+    url: URL.createObjectURL(typed),
+    type,
     size: blob.size,
-    isImage: !!sniffed,
+    isImage: !!sniffed && sniffed.startsWith('image/'),
+    blob: typed,
   }
 }
