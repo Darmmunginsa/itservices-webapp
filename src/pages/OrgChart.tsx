@@ -10,6 +10,7 @@ import { useAppStore } from '../store/useAppStore'
 import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
 import { RoleMatrixView } from '../components/common/RoleMatrixView'
+import { RoleGridView } from '../components/common/RoleGridView'
 import { buildRoleMatrix, filterPeople, projectsWithoutManager } from '../utils/projectRoles'
 import {
   buildOrgTree, branchOptions, pathToRoot, visibleRoots, subtreeSize,
@@ -43,6 +44,8 @@ export default function OrgChart() {
   const [zoom, setZoom] = useState(1)
   // มุมมองบทบาท — ตอบคำถาม "คนนี้ถืออะไรอยู่" ที่ผังบังคับบัญชาตอบไม่ได้
   const [view, setView] = useState<'chart' | 'roles'>('chart')
+  // ในมุมมองบทบาท: การ์ดตอบ "คนนี้ถืออะไร" · ตารางตอบ "โครงการนี้ทีมครบไหม"
+  const [roleLayout, setRoleLayout] = useState<'cards' | 'table'>('cards')
   const [projects, setProjects] = useState<Project[]>([])
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -388,6 +391,22 @@ export default function OrgChart() {
           ))}
         </div>
 
+        {/* การ์ด กับ ตาราง — สองคำถามที่ต่างกัน ไม่ใช่แค่หน้าตา */}
+        {view === 'roles' && (
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit no-print">
+            {([
+              { v: 'cards', label: 'รายคน', hint: 'คนนี้ถือโครงการอะไรอยู่' },
+              { v: 'table', label: 'ตารางโครงการ × บทบาท', hint: 'โครงการนี้ทีมครบไหม' },
+            ] as const).map(o => (
+              <button key={o.v} onClick={() => setRoleLayout(o.v)} title={o.hint}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  roleLayout === o.v ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500'}`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 no-print">
           <div className="relative flex-1 min-w-48">
@@ -451,8 +470,12 @@ export default function OrgChart() {
             <p className="text-sm text-gray-500">ยังไม่มีข้อมูลพนักงานใน HD_AgentProfiles</p>
           </Card>
         ) : view === 'roles' ? (
-          <RoleMatrixView people={shownPeople} gaps={managerGaps}
-            photoOf={photoByEmail} totalPeople={agents.length} />
+          roleLayout === 'table' ? (
+            <RoleGridView people={shownPeople} gaps={managerGaps} totalPeople={agents.length} />
+          ) : (
+            <RoleMatrixView people={shownPeople} gaps={managerGaps}
+              photoOf={photoByEmail} totalPeople={agents.length} />
+          )
         ) : (
           <>
             {trail.length > 0 && (

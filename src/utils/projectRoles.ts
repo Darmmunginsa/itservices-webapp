@@ -142,6 +142,83 @@ export function roleTally(people: PersonRoles[]): Array<{ role: string; count: n
       a.role.localeCompare(b.role, 'th'))
 }
 
+// ── มุมมองตาราง: โครงการเป็นแถว บทบาทเป็นคอลัมน์ ────────────────────────────
+// มุมมองการ์ดตอบว่า "คนนี้ถืออะไร" แต่ตอบไม่ได้ว่า "โครงการนี้ทีมครบไหม"
+// เพราะคนของโครงการเดียวกันกระจายอยู่หลายการ์ด ต้องกวาดตาทั้งหน้าเอง
+// ตารางกลับด้านให้ อ่านทีละแถวก็เห็นทั้งทีม และช่องว่างคือช่องที่ยังไม่มีคน
+
+export interface GridPerson {
+  email: string
+  name: string
+  responsibility: string
+}
+
+export interface RoleGridRow {
+  projectId: number
+  projectTitle: string
+  projectStatus?: string
+  /** คนในแต่ละบทบาท — คีย์ตรงกับ RoleGrid.roles */
+  cells: Record<string, GridPerson[]>
+  /** จำนวนที่นั่งทั้งแถว */
+  total: number
+}
+
+export interface RoleGrid {
+  /** คอลัมน์ที่มีคนอยู่จริง เรียงตามความรับผิดชอบ */
+  roles: string[]
+  rows: RoleGridRow[]
+}
+
+/**
+ * กลับด้านข้อมูลชุดเดียวกับมุมมองการ์ด ให้เป็นตารางโครงการ × บทบาท
+ *
+ * รับ PersonRoles ที่กรองแล้ว เพื่อให้ช่องค้นหาช่องเดียวคุมทั้งสองมุมมอง
+ * ถ้าอ่านจากข้อมูลดิบแยกกัน ผลค้นหาสองมุมมองจะไม่ตรงกัน ซึ่งทำให้ไม่เชื่อทั้งคู่
+ *
+ * คอลัมน์มีเฉพาะบทบาทที่มีคนอยู่จริง — คอลัมน์ว่างเปล่าทั้งแถบกินที่จอฟรี ๆ
+ */
+export function buildRoleGrid(people: PersonRoles[]): RoleGrid {
+  const rows = new Map<number, RoleGridRow>()
+  const roles = new Set<string>()
+
+  for (const p of people) {
+    for (const a of p.assignments) {
+      roles.add(a.role)
+      const row = rows.get(a.projectId) ?? {
+        projectId: a.projectId,
+        projectTitle: a.projectTitle,
+        projectStatus: a.projectStatus,
+        cells: {},
+        total: 0,
+      }
+      const cell = row.cells[a.role] ?? []
+      cell.push({ email: p.email, name: p.name, responsibility: a.responsibility })
+      row.cells[a.role] = cell
+      row.total++
+      rows.set(a.projectId, row)
+    }
+  }
+
+  for (const row of rows.values()) {
+    for (const cell of Object.values(row.cells)) {
+      cell.sort((a, b) => a.name.localeCompare(b.name, 'th'))
+    }
+  }
+
+  const sortedRoles = [...roles].sort((a, b) =>
+    roleRank(a === UNASSIGNED_ROLE ? '' : a) - roleRank(b === UNASSIGNED_ROLE ? '' : b) ||
+    a.localeCompare(b, 'th'))
+
+  // โครงการที่ยังเดินอยู่ขึ้นก่อน — ของที่จบแล้วไม่ใช่สิ่งที่ต้องจัดคนอีก
+  const sortedRows = [...rows.values()].sort((a, b) => {
+    const aDone = DONE_PROJECT.includes(a.projectStatus ?? '') ? 1 : 0
+    const bDone = DONE_PROJECT.includes(b.projectStatus ?? '') ? 1 : 0
+    return aDone - bDone || a.projectTitle.localeCompare(b.projectTitle, 'th')
+  })
+
+  return { roles: sortedRoles, rows: sortedRows }
+}
+
 /** ค้นหาในมุมมองบทบาท — ชื่อ อีเมล บทบาท ชื่อโครงการ หรือข้อความความรับผิดชอบ */
 export function filterPeople(people: PersonRoles[], query: string): PersonRoles[] {
   const q = query.trim().toLowerCase()

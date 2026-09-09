@@ -17,6 +17,7 @@ import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
+import { buildRoleGrid } from '../src/utils/projectRoles'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
@@ -1078,6 +1079,47 @@ eq(projectsWithoutManager(RP, []).some(p => p.Title === '#เก่า'), false,
   'a finished project without a manager is not a gap worth chasing')
 
 eq(buildRoleMatrix([], []).length, 0, 'no data means an empty view, not a crash')
+
+// -- มุมมองตาราง: โครงการเป็นแถว บทบาทเป็นคอลัมน์ --
+const grid = buildRoleGrid(people)
+
+// คอลัมน์เฉพาะบทบาทที่มีคนอยู่จริง เรียงตามความรับผิดชอบ ไม่ใช่ตามตัวอักษร
+eq(grid.roles.join(','), `Manager,Support,Publisher,${UNASSIGNED_ROLE}`,
+  'columns run by seniority and only include roles in use')
+eq(grid.roles.includes('Reviewer'), false, 'a role nobody holds does not take up a column')
+
+// แถวคือโครงการ — อ่านทีละแถวก็เห็นทั้งทีม
+eq(grid.rows.length, 3, 'every project with a team gets a row')
+eq(grid.rows.map(r => r.projectTitle).join(','), '#Backup,#VDI,#เก่า',
+  'live projects come first, then finished ones, each alphabetical')
+
+const vdiRow = grid.rows.find(r => r.projectTitle === '#VDI')!
+eq(vdiRow.cells['Manager']?.map(x => x.name).join(','), 'อารีย์', 'the cell holds the person in that role')
+eq(vdiRow.cells['Support']?.[0].responsibility, 'ดูแล VDA รายวัน', 'the responsibility text rides along')
+eq(vdiRow.cells['Publisher'], undefined, 'a role nobody fills on this project leaves the cell empty')
+eq(vdiRow.total, 2, 'the row counts its seats')
+
+// ช่องเดียวมีได้หลายคน และเรียงตามชื่อ
+const many = buildRoleGrid(buildRoleMatrix(
+  [{ id: 1, Title: '#VDI', Status: 'Active' }],
+  [
+    { id: 1, Title: 'สมชาย', ProjectID: 1, AgentEmail: 'b@x.co', Role: 'Support' },
+    { id: 2, Title: 'กมล', ProjectID: 1, AgentEmail: 'a@x.co', Role: 'Support' },
+  ]))
+eq(many.rows[0].cells['Support']?.map(x => x.name).join(','), 'กมล,สมชาย',
+  'two people in one role are listed by name')
+
+// ไม่มีบทบาท ต้องมีคอลัมน์ของตัวเอง ไม่ใช่หายไปเงียบ ๆ
+const backup = grid.rows.find(r => r.projectTitle === '#Backup')!
+eq(backup.cells[UNASSIGNED_ROLE]?.map(x => x.name).join(','), 'กมล',
+  'someone with no role still appears, in their own column')
+
+// ตารางต้องอ่านจากผลค้นหาชุดเดียวกับการ์ด ไม่งั้นสองมุมมองไม่ตรงกัน
+eq(buildRoleGrid(filterPeople(people, 'อารีย์')).rows.map(r => r.projectTitle).join(','), '#VDI',
+  'the table narrows with the same search box as the cards')
+eq(buildRoleGrid([]).rows.length, 0, 'no people means no rows, not a crash')
+eq(buildRoleGrid([]).roles.length, 0, 'no people means no columns either')
+
 
 
 
