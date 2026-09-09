@@ -15,6 +15,7 @@ import { mergePeople, isRealPerson, personEmail } from '../src/utils/people'
 import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOptions, availableContacts } from '../src/utils/customerGroups'
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
+import { assignFields, ackResetFields } from '../src/utils/ackInbox'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
@@ -1582,6 +1583,47 @@ eq(hasBlockMarkup('<p>ย่อหน้าเปล่า</p>'), false, 'a plai
 eq(hasBlockMarkup('<liquid>x</liquid>'), false, 'a tag that merely starts like li does not count')
 eq(hasBlockMarkup('<table-of-contents>'), false, 'nor one that starts like table')
 eq(hasBlockMarkup(''), false, 'nothing pasted is not rich')
+
+
+
+// -- มอบหมายงานต้องล้างสถานะ "รับงานแล้ว" (utils/ackInbox: assignFields) --
+// บั๊กจริงที่เจอ: หัวหน้ากดรับ ticket ไว้เอง แล้ว reassign ต่อ — ค่า IsAcknowledged
+// ยังเป็น true ติดไปกับงาน ทำให้งานวิ่งเข้ารายการของคนใหม่ทันทีโดยไม่ผ่านกล่องรอรับงาน
+const handOff = assignFields('somchai@its.co.th', 'สมชาย', 'boss@its.co.th', 'AssignedToName')
+eq(handOff.base.AssignedEmail, 'somchai@its.co.th', 'the new owner is written')
+eq(handOff.base.AssignedToName, 'สมชาย', 'the name goes in the field that list uses')
+eq(handOff.ack.IsAcknowledged, false, 'handing work over resets the accepted flag')
+eq(handOff.ack.AcknowledgedBy, null, 'the previous accepter name is cleared, not left behind')
+eq(handOff.ack.AcknowledgedDate, null, 'and so is their timestamp')
+
+// มอบหมายให้ตัวเอง = รู้อยู่แล้ว ไม่ต้องเด้งเข้ากล่องรอรับงานของตัวเอง
+const toSelf = assignFields('boss@its.co.th', 'หัวหน้า', 'BOSS@its.co.th', 'AssignedTo')
+eq(toSelf.ack.IsAcknowledged, true, 'assigning to yourself counts as already accepted')
+eq(toSelf.ack.AcknowledgedBy, 'หัวหน้า', 'and records who that was')
+eq(typeof toSelf.ack.AcknowledgedDate, 'string', 'with a real timestamp')
+eq(toSelf.base.AssignedTo, 'หัวหน้า', 'the incident/task name field is used when asked for')
+
+// ถอนผู้รับผิดชอบ
+const unassign = assignFields('', '', 'boss@its.co.th', 'AssignedToName')
+eq(unassign.base.AssignedEmail, null, 'clearing the assignee writes null, not an empty string')
+eq(unassign.ack.IsAcknowledged, false, 'work with nobody on it is not accepted by anyone')
+
+eq(assignFields('  a@b.co  ', 'A', 'x@y.co', 'AssignedTo').base.AssignedEmail, 'a@b.co',
+  'a pasted email with spaces is trimmed before being stored')
+eq(assignFields('a@b.co', 'A', undefined, 'AssignedTo').ack.IsAcknowledged, false,
+  'not knowing who is acting still resets rather than assuming self-assignment')
+
+eq(ackResetFields().IsAcknowledged, false, 'the reset shape is shared, not retyped per page')
+
+// needsAck ต้องจับงานที่ถูกโยนต่อได้ หลังจากล้างค่าแล้ว
+const handed = { id: 1, Title: 'จอดับ', AssignedEmail: 'somchai@its.co.th',
+  Author: { Title: 'หัวหน้า', EMail: 'boss@its.co.th' }, Status: 'In Progress',
+  ...assignFields('somchai@its.co.th', 'สมชาย', 'boss@its.co.th', 'AssignedToName').ack }
+eq(needsAck(handed, 'Ticket', 'somchai@its.co.th'), true,
+  'after the reset, handed-over work waits to be accepted')
+// ก่อนแก้: ค่าเดิมติดมา แล้วงานหลุดกล่องรอรับงานไปเลย
+eq(needsAck({ ...handed, IsAcknowledged: true }, 'Ticket', 'somchai@its.co.th'), false,
+  'a stale accepted flag is exactly what let work skip the inbox')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

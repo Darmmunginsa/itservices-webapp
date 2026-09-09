@@ -22,6 +22,7 @@ import { getStatusColor, getSeverityColor } from '../utils/colorUtils'
 import { formatDate } from '../utils/dateUtils'
 import { SLA_OPTIONS, computeSlaDue, slaInfo, slaCountdown, SLA_STATE_META } from '../utils/sla'
 import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentMail'
+import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { useT } from '../i18n/useT'
 
 const STATUSES: ProjectIncident['Status'][] = ['Open', 'In Progress', 'Resolved']
@@ -180,12 +181,18 @@ export default function IncidentDetail() {
     const agent = agents.find(a => a.EmailText === newAssignedEmail)
     setReassigning(true)
     try {
-      await spUpdate('PM_Incidents', inc.id, {
+      // โยนงานให้คนอื่นต้องล้างสถานะ "รับงานแล้ว" ของคนก่อนหน้า
+      const res = await assignWork('PM_Incidents', inc.id, newAssignedEmail,
+        agent?.Title ?? '', user?.email, 'AssignedTo')
+      if (res.missingAckColumns) addToast('error', ackColumnWarning('PM_Incidents'))
+      const prevEmail = inc.AssignedEmail
+      const selfAssign = newAssignedEmail.toLowerCase() === (user?.email?.toLowerCase() ?? '')
+      setInc(prev => prev ? {
+        ...prev,
         AssignedEmail: newAssignedEmail,
         AssignedTo: agent?.Title ?? '',
-      })
-      const prevEmail = inc.AssignedEmail
-      setInc(prev => prev ? { ...prev, AssignedEmail: newAssignedEmail, AssignedTo: agent?.Title ?? '' } : prev)
+        IsAcknowledged: res.ackApplied ? selfAssign : prev.IsAcknowledged,
+      } : prev)
       if (newAssignedEmail.toLowerCase() !== (user?.email?.toLowerCase() ?? '')) {
         createNotification({
           recipients: [newAssignedEmail],

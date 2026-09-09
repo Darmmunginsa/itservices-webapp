@@ -8,9 +8,10 @@ import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
 import { SkeletonCard, SkeletonRow } from '../components/common/Skeleton'
 import { DataTable, type Column } from '../components/common/DataTable'
-import { spGet, spUpdate } from '../services/sharepoint'
+import { spGet } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { incidentMailPlan } from '../utils/incidentMail'
+import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
@@ -113,19 +114,15 @@ export default function AgentDashboard() {
     const agent = agents.find(a => a.EmailText === selectedAgentEmail)
     setAssigning(true)
     try {
-      const payload: Record<string, unknown> = t.kind === 'ticket'
-        ? {
-          AssignedEmail: selectedAgentEmail,
-          AssignedToName: agent?.Title ?? '',
-          Status: t.status === 'Open' ? 'In Progress' : t.status,
-        }
-        : {
-          AssignedEmail: selectedAgentEmail,
-          AssignedTo: agent?.Title ?? selectedAgentEmail,
-          // งานที่เพิ่งมอบหมายยังไม่มีใครกดรับ — ต้องไปรออยู่ในกล่อง "รอรับงาน"
-          IsAcknowledged: false,
-        }
-      await spUpdate(LIST_OF[t.kind], t.id, payload)
+      // ทั้งสามชนิดต้องล้างสถานะ "รับงานแล้ว" เหมือนกัน — Ticket ก็ไม่ยกเว้น
+      // เดิม Ticket ไม่ล้าง งานที่คนก่อนกดรับไว้จึงวิ่งเข้ารายการคนใหม่ทันที
+      const extra: Record<string, unknown> = t.kind === 'ticket'
+        ? { Status: t.status === 'Open' ? 'In Progress' : t.status }
+        : {}
+      const res = await assignWork(LIST_OF[t.kind], t.id, selectedAgentEmail,
+        agent?.Title ?? selectedAgentEmail, user.email,
+        t.kind === 'ticket' ? 'AssignedToName' : 'AssignedTo', extra)
+      if (res.missingAckColumns) addToast('error', ackColumnWarning(LIST_OF[t.kind]))
       addToast('success', `Assign ให้ ${agent?.Title ?? selectedAgentEmail} แล้ว`)
 
       if (t.kind === 'incident') {

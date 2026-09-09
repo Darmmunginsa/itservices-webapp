@@ -19,6 +19,7 @@ import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttach
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
+import { assignFields } from '../utils/ackInbox'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
 import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
@@ -78,6 +79,15 @@ function resolveUrl(raw: unknown): string {
   if (typeof raw === 'object') return (raw as { Url?: string }).Url ?? ''
   return raw as string
 }
+
+const norm = (e?: string): string => (e ?? '').trim().toLowerCase()
+
+/**
+ * ฟิลด์เรื่องการรับงานตอนเปลี่ยนผู้รับผิดชอบ
+ * ใช้ assignFields ตัวเดียวกับหน้าอื่น แล้วเอาแต่ส่วน ack เพราะที่นี่เขียนฟอร์มทั้งใบอยู่แล้ว
+ */
+const ackFieldsFor = (assigneeEmail: string, actorEmail?: string): Record<string, unknown> =>
+  assignFields(assigneeEmail, '', actorEmail, 'AssignedTo').ack
 
 export default function ProjectDetail() {
   const { id } = useParams()
@@ -524,6 +534,10 @@ export default function ProjectDetail() {
     }
     try {
       if (editingTask) {
+        // เปลี่ยนผู้รับผิดชอบ = ต้องกดรับใหม่ ของคนก่อนหน้าใช้กับคนใหม่ไม่ได้
+        // ถ้าไม่ล้าง งานจะวิ่งเข้ารายการของคนใหม่ทันทีโดยไม่ผ่านกล่องรอรับงาน
+        const handedOver = norm(taskForm.assignedEmail) !== norm(editingTask.AssignedEmail)
+        if (handedOver) Object.assign(payload, ackFieldsFor(taskForm.assignedEmail, user?.email))
         await spUpdate('PM_Tasks', editingTask.id, payload)
         addToast('success', 'อัปเดต Task แล้ว')
       } else {
@@ -693,6 +707,10 @@ export default function ProjectDetail() {
     try {
       const actorEmail = user?.email?.toLowerCase() ?? ''
       if (editingIncident) {
+        // เปลี่ยนผู้รับผิดชอบ = ต้องกดรับใหม่
+        if (norm(incidentForm.assignedAgentEmail) !== norm(editingIncident.AssignedEmail)) {
+          Object.assign(payload, ackFieldsFor(incidentForm.assignedAgentEmail, user?.email))
+        }
         await spUpdate('PM_Incidents', editingIncident.id, payload)
         addToast('success', 'อัปเดต Incident แล้ว')
         // ส่งเฉพาะจังหวะที่เปลี่ยนจริง — บันทึกซ้ำแล้วเมลออกทุกครั้ง คนจะเลิกอ่าน

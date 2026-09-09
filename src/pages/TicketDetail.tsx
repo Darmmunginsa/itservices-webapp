@@ -28,6 +28,7 @@ import type { AgentProfile } from '../types/common'
 import { getStatusColor, getPriorityColor, TICKET_STATUS_DESC } from '../utils/colorUtils'
 import { formatDate, timeAgo } from '../utils/dateUtils'
 import { useT } from '../i18n/useT'
+import { assignWork, ackColumnWarning } from '../services/assignWork'
 
 /** หน่วงก่อนเด้งออกหลังปิดงาน — สั้นพอที่จะไม่รู้สึกค้าง ยาวพอให้เห็นว่าสำเร็จ */
 const CLOSE_EXIT_MS = 1400
@@ -481,11 +482,18 @@ export default function TicketDetail() {
     const agent = agents.find(a => a.EmailText === newAssignedEmail)
     setReassigning(true)
     try {
-      await spUpdate('HD_Tickets', ticket.id, {
+      // โยนงานให้คนอื่นต้องล้างสถานะ "รับงานแล้ว" ของคนก่อนหน้า
+      // ไม่งั้นงานจะวิ่งเข้ารายการของคนใหม่ทันทีโดยไม่ผ่านกล่องรอรับงาน
+      const res = await assignWork('HD_Tickets', ticket.id, newAssignedEmail,
+        agent?.Title ?? '', user?.email, 'AssignedToName')
+      if (res.missingAckColumns) addToast('error', ackColumnWarning('HD_Tickets'))
+      const selfAssign = newAssignedEmail.toLowerCase() === (user?.email?.toLowerCase() ?? '')
+      setTicket(prev => prev ? {
+        ...prev,
         AssignedEmail: newAssignedEmail,
         AssignedToName: agent?.Title ?? '',
-      })
-      setTicket(prev => prev ? { ...prev, AssignedEmail: newAssignedEmail, AssignedToName: agent?.Title ?? '' } : prev)
+        IsAcknowledged: res.ackApplied ? selfAssign : prev.IsAcknowledged,
+      } : prev)
       // แจ้งเตือนในแอป (กระดิ่ง) ให้คนรับช่วง — ยกเว้นถ้า reassign ให้ตัวเอง
       if (newAssignedEmail.toLowerCase() !== (user?.email?.toLowerCase() ?? '')) {
         createNotification({

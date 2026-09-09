@@ -136,3 +136,44 @@ export const ackPayload = (byName: string): Record<string, unknown> => ({
   AcknowledgedBy: byName,
   AcknowledgedDate: new Date().toISOString(),
 })
+
+/** ฟิลด์ที่ต้องล้างตอนโยนงานให้คนอื่น — ของคนก่อนหน้าใช้กับคนใหม่ไม่ได้ */
+export const ackResetFields = (): Record<string, unknown> => ({
+  IsAcknowledged: false,
+  AcknowledgedBy: null,
+  AcknowledgedDate: null,
+})
+
+export interface AssignFields {
+  /** ฟิลด์ที่เขียนได้แน่ ๆ (ผู้รับผิดชอบ) */
+  base: Record<string, unknown>
+  /** ฟิลด์เรื่องการรับงาน — แยกไว้เพราะลิสต์ที่ยังไม่มีคอลัมน์นี้จะเขียนไม่ผ่าน */
+  ack: Record<string, unknown>
+}
+
+/**
+ * ฟิลด์ที่ต้องเขียนตอนมอบหมายงาน
+ *
+ * เหตุที่ต้องมีตัวกลาง: การมอบหมายเกิดได้จาก 5 ที่ (หน้า Ticket, หน้า Incident,
+ * หน้าโครงการ, Agent Dashboard, ปฏิทิน) และทุกที่ "ลืม" ล้างสถานะการรับงาน
+ * ผลคืองานที่คนก่อนหน้ากดรับไว้แล้ว พอโยนต่อ มันวิ่งเข้ารายการของคนใหม่ทันที
+ * โดยไม่ต้องกดรับ — ประตูรับงานจึงเป็นแค่ของตอนสร้างงานใหม่ ไม่ใช่ตอนโยนงาน
+ *
+ * มอบหมายให้ตัวเอง = ถือว่ารับแล้ว ไม่ต้องเด้งเข้ากล่องรอรับงานของตัวเอง
+ * (needsAck ก็ตัดเคสนี้อยู่แล้ว แต่เขียนค่าให้ตรงด้วย เพื่อไม่ให้ข้อมูลขัดกับหน้าจอ)
+ */
+export function assignFields(
+  assigneeEmail: string,
+  assigneeName: string,
+  actorEmail: string | undefined,
+  nameField: 'AssignedToName' | 'AssignedTo',
+): AssignFields {
+  const to = (assigneeEmail ?? '').trim()
+  const self = !!to && norm(to) === norm(actorEmail)
+  return {
+    base: { AssignedEmail: to || null, [nameField]: assigneeName ?? '' },
+    ack: self
+      ? { IsAcknowledged: true, AcknowledgedBy: assigneeName ?? '', AcknowledgedDate: new Date().toISOString() }
+      : ackResetFields(),
+  }
+}

@@ -164,8 +164,8 @@ export default function MyWork() {
   const tabCounts = {
     // ไม่รวมงานที่ยังไม่รับ — เลขบนแท็บต้องตรงกับจำนวนที่เห็นในรายการ
     tickets: tickets.filter(t => mine('Ticket', t.id) && !DONE_TICKET_STATUSES.has(t.Status)).length,
-    tasks: tasks.filter(t => !t.IsCompleted).length,
-    incidents: incidents.filter(inc => inc.Status !== 'Resolved').length,
+    tasks: tasks.filter(t => mine('Task', t.id) && !t.IsCompleted).length,
+    incidents: incidents.filter(inc => mine('Incident', inc.id) && inc.Status !== 'Resolved').length,
   }
 
   // ── Card renderers ──
