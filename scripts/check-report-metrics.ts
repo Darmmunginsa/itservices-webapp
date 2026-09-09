@@ -19,6 +19,7 @@ import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WAR
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { buildRoleGrid } from '../src/utils/projectRoles'
+import { ticketRows, incidentRows, taskRows, workStats, filterWork, statusOptions, priorityOptions, workLink, isDone } from '../src/utils/dashboardWork'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
@@ -1395,6 +1396,90 @@ eq(prettySize(0), '', 'no size shows nothing rather than "0 B"')
 eq(prettySize(900), '900 B', 'small files read in bytes')
 eq(prettySize(2048), '2 KB', 'kilobytes are rounded')
 eq(prettySize(5 * 1024 * 1024), '5.0 MB', 'megabytes keep one decimal')
+
+
+
+// -- Agent Dashboard: รวม Ticket / Incident / Task (utils/dashboardWork) --
+const DPROJ = [{ id: 1, Title: '#VDI' }, { id: 2, Title: '#Backup' }]
+
+const dTickets = ticketRows([
+  { id: 1, Title: 'จอดับ', TicketNumber: 'TK-001', Status: 'Open', Priority: 'High',
+    AssignedToName: 'สมชาย', AssignedEmail: 'somchai@its.co.th', CustomerName: 'ลูกค้า ก',
+    DueDate: '2026-09-20', Modified: '2026-09-08T00:00:00Z', ProjectID: 1 },
+  { id: 2, Title: 'ปริ้นไม่ออก', Status: 'Closed' },
+], DPROJ)
+
+eq(dTickets[0].ref, 'TK-001', 'a ticket is known by its number')
+eq(dTickets[1].ref, '#2', 'a ticket with no number falls back to its id, not to blank')
+eq(dTickets[0].projectName, '#VDI', 'the project name is resolved for the table')
+eq(dTickets[1].projectName, '', 'no project is blank, not "undefined"')
+eq(dTickets[1].status, 'Closed', 'the status is carried across')
+
+const dInc = incidentRows([
+  { id: 5, Title: 'ระบบล่ม', Status: 'Open', Severity: 'Critical',
+    AssignedTo: 'อารีย์', AssignedEmail: 'aree@its.co.th', IncidentDate: '2026-09-01',
+    SLADue: '2026-09-02T10:00:00Z', ProjectID: 2, Author: { Title: 'กมล' }, IsAcknowledged: false },
+], DPROJ)
+
+// Severity คือความเร่งด่วนของ Incident — ต้องลงคอลัมน์เดียวกับ Priority
+eq(dInc[0].priority, 'Critical', 'severity fills the same column as ticket priority')
+// เส้นตายของ Incident คือ SLA ไม่ใช่วันที่เกิดเหตุ
+eq(dInc[0].due, '2026-09-02T10:00:00Z', 'an incident is due at its SLA, not on the day it happened')
+eq(dInc[0].requester, 'กมล', 'the person who raised it is shown')
+eq(dInc[0].waitingAck, true, 'work assigned but not yet accepted is flagged')
+
+const dTasks = taskRows([
+  { id: 9, Title: 'ติดตั้ง agent', IsCompleted: false, AssignedTo: 'สมชาย', AssignedEmail: 'somchai@its.co.th', ProjectID: 1 },
+  { id: 10, Title: 'เก็บ log', IsCompleted: true, ProjectID: 1 },
+], DPROJ)
+
+// Task เก็บสถานะเป็น yes/no — ต้องแปลงเป็นคำ ไม่งั้นตัวกรองเดียวใช้กับสามชนิดไม่ได้
+eq(dTasks[0].status, 'In Progress', 'an open task reads as a status word')
+eq(dTasks[1].status, 'Completed', 'a finished task reads as Completed')
+eq(dTasks[0].priority, '', 'a task has no priority field, and does not invent one')
+eq(dTasks[1].waitingAck, false, 'a task nobody is assigned is not waiting to be accepted')
+
+eq(isDone('Closed') && isDone('Completed') && isDone('Resolved'), true,
+  'each kind has its own word for finished, and all of them count')
+eq(isDone('In Progress'), false, 'work still moving is not finished')
+
+// ตัวเลขสรุปต้องนับข้ามชนิดได้
+const all = [...dTickets, ...dInc, ...dTasks]
+const wst = workStats(all)
+eq(wst.total, 5, 'the count covers all three kinds')
+eq(wst.open, 2, 'open items across kinds are counted together')
+eq(wst.done, 2, 'a closed ticket and a completed task both count as done')
+// "ยังไม่มีคนรับผิดชอบ" นับได้ทั้งสามชนิด ต่างจาก Pending ที่มีแต่ Ticket
+eq(wst.unassigned, 0, 'work already finished is not chased for having no owner')
+eq(workStats([...all, { ...dTasks[1], id: 11, status: 'In Progress', assignedEmail: '' }]).unassigned, 1,
+  'unfinished work with nobody on it is the number worth chasing')
+
+// กรองชุดเดียว ใช้ได้ทั้งสามชนิด
+eq(filterWork(all, { search: 'vdi' }).length, 3, 'searching by project name reaches every kind')
+eq(filterWork(all, { search: 'TK-001' }).length, 1, 'searching by reference finds the one item')
+eq(filterWork(all, { search: 'somchai@its' }).length, 2, 'searching by assignee email works')
+eq(filterWork(all, { search: 'กมล' }).length, 1, 'searching by the person who raised it works')
+eq(filterWork(all, { status: 'Open' }).length, 2, 'filtering by status crosses kinds')
+eq(filterWork(all, { priority: 'Critical' }).length, 1, 'filtering by priority reaches severity too')
+eq(filterWork(all, { assignee: 'AREE@ITS.CO.TH' }).length, 1, 'the assignee filter ignores case')
+eq(filterWork(all, { hideDone: true }).length, 3, 'finished work can be hidden')
+eq(filterWork(all, {}).length, all.length, 'no filter hides nothing')
+eq(filterWork(all, { search: 'ไม่มีอยู่จริง' }).length, 0, 'no match returns nothing, not everything')
+
+// ตัวเลือกในกล่องกรองต้องมีเฉพาะที่มีจริง เรียงตามลำดับจริง ไม่ใช่ตัวอักษร
+eq(statusOptions(all).join(','), 'Open,In Progress,Closed,Completed', 'status choices follow the real order')
+eq(statusOptions(all).includes('Pending'), false, 'a status nothing has is not offered')
+eq(priorityOptions(all).join(','), 'Critical,High', 'priority choices run from most urgent')
+
+eq(workLink(dTickets[0]), '/tickets/1', 'a ticket opens its own page')
+eq(workLink(dInc[0]), '/incidents/5', 'an incident opens its own page')
+// Task ยังไม่มีหน้าของตัวเอง — พาไปโครงการ ดีกว่าลิงก์ที่กดแล้วไม่มีอะไร
+eq(workLink(dTasks[0]), '/projects/1', 'a task opens the project it belongs to')
+eq(workLink({ ...dTasks[0], projectId: undefined }), '/projects',
+  'a task with no project still leads somewhere real')
+
+eq(workStats([]).total, 0, 'an empty dashboard is zeros, not a crash')
+eq(statusOptions([]).length, 0, 'no rows means no filter choices')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
