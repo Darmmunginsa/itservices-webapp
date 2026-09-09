@@ -11,6 +11,11 @@ import { AttachmentSection } from '../components/common/AttachmentSection'
 import { SmartText } from '../components/common/SmartText'
 import { CloseReply } from '../components/common/CloseReply'
 import { QuotedText } from '../components/common/QuotedText'
+import { RichHtml } from '../components/common/RichHtml'
+import { useRichPaste } from '../hooks/useRichPaste'
+import { RichPasteChip } from '../components/common/RichPaste'
+import { joinRich, splitRich, plainSnippet } from '../utils/richComment'
+import { pickFiles, pastedName, dedupeName, previewKind, prettySize } from '../utils/filePreview'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
@@ -43,6 +48,11 @@ function parseRelayed(textIn: string): { name: string; when?: string; body: stri
   return m ? { name: m[1].trim(), when: m[2]?.trim(), body: textIn.slice(m[0].length) } : null
 }
 
+// ไอคอนของไฟล์ที่รอส่ง — บอกก่อนกดว่าไฟล์นี้จะเปิดดูในหน้าได้ไหม
+const TICKET_QUEUE_ICON: Record<string, string> = {
+  image: '🖼️', pdf: '📕', video: '▶️', audio: '🎵', text: '📄', office: '📘', none: '📎',
+}
+
 export default function TicketDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -63,6 +73,11 @@ export default function TicketDetail() {
   const [linkingProject, setLinkingProject] = useState(false)
   const [sending, setSending] = useState(false)
   const [commentFiles, setCommentFiles] = useState<File[]>([])
+  // ลากไฟล์มาทิ้ง — นับชั้น enter/leave เพราะเลื่อนผ่านลูกทุกตัวจะยิง leave ตลอด
+  const [dragDepth, setDragDepth] = useState(0)
+  // รูปแบบต้นฉบับที่วางมา — เก็บแยกจากคำที่พิมพ์เอง เพื่อไม่ให้ @mention/จับวันที่/
+  // พับเนื้อเมลเก่า (ซึ่งเกาะบนข้อความล้วน) ต้องเขียนใหม่บน HTML
+  const rich = useRichPaste(msg => addToast('info', msg))
   // @mention เพื่อนในทีม
   const commentRef = useRef<HTMLTextAreaElement>(null)
   const [mentionOpen, setMentionOpen] = useState(false)
@@ -205,18 +220,42 @@ export default function TicketDetail() {
     })
   }
 
+  /**
+   * ทางเข้าเดียวของไฟล์แนบ — ปุ่มเลือก, วาง (Ctrl+V) และลากมาทิ้ง ใช้ตัวนี้ทั้งหมด
+   * กฎเดียวกับคอมเมนต์ในโครงการ/Incident (utils/filePreview)
+   */
+  function addFiles(incoming: File[], pasted = false) {
+    const { accepted, rejected } = pickFiles(incoming)
+    for (const r of rejected) addToast('error', `${r.name} — ${r.reason}`)
+    if (!accepted.length) return
+    setCommentFiles(prev => {
+      const taken = prev.map(f => f.name)
+      const next = [...prev]
+      for (const f of accepted) {
+        const wanted = pasted ? pastedName(f.name, f.type, new Date()) : f.name
+        const name = dedupeName(wanted, taken)
+        taken.push(name)
+        next.push(name === f.name ? f : new File([f], name, { type: f.type }))
+      }
+      return next
+    })
+  }
+
   async function sendComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!user || (!comment.trim() && commentFiles.length === 0)) return
+    if (!user || (!comment.trim() && commentFiles.length === 0 && !rich.html)) return
     setSending(true)
     const effType: 'Internal' | 'External' = isAgent ? commentType : 'External'
+    const stored = joinRich(comment, rich.html)
     const text = comment
+    const richForMail = rich.html
     const fileCount = commentFiles.length
     try {
       const createdComment = await spCreate('HD_TicketComments', {
-        Title: comment.slice(0, 100) || '(แนบไฟล์)',
+        // หัวข้อต้องเป็นข้อความล้วน — แท็กหลุดไปโผล่ในรายการของ SharePoint ไม่ได้
+        Title: plainSnippet(stored, 100) || '(แนบไฟล์)',
         TicketID: Number(id),
-        CommentText: comment,
+        CommentText: stored,
         CommentType: effType,
         CommentDate: new Date().toISOString(),
         ParentID: replyTo?.id ?? 0,
@@ -239,6 +278,7 @@ export default function TicketDetail() {
       const hadFiles = commentFiles.length > 0
       setComment('')
       setCommentFiles([])
+      rich.clear()
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       loadComments()
@@ -290,7 +330,15 @@ export default function TicketDetail() {
         } else {
           const cc = [ticket.AssignedEmail, submitter, ...members.map(m => m.AgentEmail)]
             .filter((e): e is string => !!e && e.toLowerCase() !== me && e.toLowerCase() !== customer.toLowerCase())
-          const bodyText = (text || '(แนบไฟล์)').replace(/\n/g, '<br>')
+          // ข้อความที่คนพิมพ์เป็นข้อความล้วน — ต้องหนีอักขระ HTML ไม่งั้นข้อความอย่าง "<3"
+          // จะทำให้เมลเพี้ยน และเป็นช่องฉีด HTML เข้าเมลถึงลูกค้า
+          const escaped = (text || '(แนบไฟล์)')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>')
+          // ตารางที่วางมาส่งเป็นตารางจริงในเมล ไม่ใช่ข้อความคั่น tab
+          // ผ่านตัวกรองมาแล้วตอนวาง จึงเหลือแต่แท็กในรายการขาว
+          const bodyText = escaped
+            + (richForMail ? `<div style="margin-top:8px">${richForMail}</div>` : '')
             + (fileCount ? `<p style="color:#64748b;font-size:12px">📎 มีไฟล์แนบ ${fileCount} ไฟล์ — เปิดดูได้ใน Ticket (ไฟล์ไม่ได้แนบมากับอีเมลฉบับนี้)</p>` : '')
           const res = await sendTemplateEmail('comment_added', {
             ticket_number: ticket.TicketNumber,
@@ -500,7 +548,10 @@ export default function TicketDetail() {
   const topComments = comments.filter(c => !c.ParentID)
 
   const renderComment = (c: TicketComment, isReply: boolean) => {
-    const relayed = parseRelayed(c.CommentText || '')
+    // แยกบล็อกรูปแบบออกก่อน แล้วค่อยแกะเมลที่ relay มาจากส่วนข้อความ
+    // ถ้าสลับลำดับ ตัวแกะเมลจะเจอแท็ก HTML แล้วตัดผิดที่
+    const { plain: cPlain, html: cHtml } = splitRich(c.CommentText || '')
+    const relayed = parseRelayed(cPlain)
     const author = relayed?.name ?? c.Author?.Title ?? '—'
     const handle = '@' + author.replace(/\s+/g, '')
     const likeList = parseLikes(c.LikedBy)
@@ -526,7 +577,8 @@ export default function TicketDetail() {
             )}
           </div>
           {/* เมลตอบกลับพ่วงบทสนทนาเก่ามาเสมอ — พับไว้ ไม่งั้นคอมเมนต์เดียวยาวกว่าทั้งเธรด */}
-          <QuotedText text={relayed?.body ?? c.CommentText ?? ''} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          <QuotedText text={relayed?.body ?? cPlain} className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed" />
+          {cHtml && <RichHtml html={cHtml} className="mt-1.5" />}
           {c.AttachmentFiles && c.AttachmentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
               {c.AttachmentFiles.map(f => (
@@ -870,10 +922,33 @@ export default function TicketDetail() {
                   </span>
                 </div>
               )}
-              <div className="relative">
+              <div className="relative"
+                onDragEnter={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragDepth(d => d + 1) } }}
+                onDragOver={e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault() }}
+                onDragLeave={() => setDragDepth(d => Math.max(0, d - 1))}
+                onDrop={e => {
+                  if (!e.dataTransfer.files.length) return
+                  e.preventDefault()
+                  setDragDepth(0)
+                  addFiles(Array.from(e.dataTransfer.files))
+                }}>
+                {/* คลุมทั้งกล่องตอนลากอยู่ — ทิ้งตรงไหนก็ได้ ไม่ต้องเล็งช่องเล็ก ๆ */}
+                {dragDepth > 0 && (
+                  <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-primary-400 bg-primary-50/90 dark:bg-primary-900/40 pointer-events-none">
+                    <span className="text-xs font-medium text-primary-700 dark:text-primary-200">วางไฟล์ที่นี่ · แนบได้ทุกนามสกุล</span>
+                  </div>
+                )}
                 <textarea ref={commentRef} id="comment-box" value={comment} onChange={onCommentChange} rows={1}
                   placeholder={tr('ticket.commentPlaceholder')}
                   onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }}
+                  onPaste={e => {
+                    // ไฟล์ที่ติดมา (เช่นภาพที่ capture หน้าจอ) แนบเสมอ
+                    const files = Array.from(e.clipboardData.files)
+                    if (files.length) addFiles(files, true)
+                    // รูปแบบต้นฉบับ: เก็บเฉพาะตอนที่มีรูปแบบจริง ไม่ใช่ทุกครั้งที่วาง
+                    const kept = rich.capture(e.clipboardData.getData('text/html'))
+                    if (files.length || kept) e.preventDefault()
+                  }}
                   className="w-full px-0 py-1.5 text-sm bg-transparent border-0 border-b border-gray-200 dark:border-gray-700 focus:outline-none focus:border-primary-500 resize-none transition-colors" />
                 {/* @mention dropdown */}
                 {mentionOpen && mentionMatches.length > 0 && (
@@ -901,20 +976,29 @@ export default function TicketDetail() {
                 )}
                 <label className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer">
                   <ImagePlus size={14} /> {tr('ticket.attachImage')}
+                  <span className="hidden sm:inline text-[10px] text-gray-400">· วางหรือลากก็ได้</span>
                   <input type="file" multiple className="hidden"
-                    onChange={e => { if (e.target.files) setCommentFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+                    onChange={e => { addFiles(e.target.files ? Array.from(e.target.files) : []); e.target.value = '' }} />
                 </label>
-                <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0)}>
+                <Button type="submit" size="sm" disabled={sending || (!comment.trim() && commentFiles.length === 0 && !rich.html)}>
                   <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
                 </Button>
               </div>
+              <RichPasteChip html={rich.html}
+                onFlatten={() => rich.flatten(t => setComment(p => (p.trim() ? `${p.replace(/\s+$/, '')}\n${t}` : t)))}
+                onDiscard={rich.clear} />
               {commentFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {commentFiles.map((f, i) => (
                     <div key={i} className="relative">
                       {f.type.startsWith('image/')
-                        ? <img src={URL.createObjectURL(f)} alt={f.name} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
-                        : <div className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1"><span className="text-lg">📄</span><span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span></div>}
+                        ? <img src={URL.createObjectURL(f)} alt={f.name} title={`${f.name} · ${prettySize(f.size)}`}
+                            className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                        : <div title={`${f.name} · ${prettySize(f.size)}`}
+                            className="w-14 h-14 flex flex-col items-center justify-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1">
+                            <span className="text-lg leading-none">{TICKET_QUEUE_ICON[previewKind(f.type, f.name, f.size)]}</span>
+                            <span className="text-[8px] text-gray-500 truncate w-full text-center">{f.name}</span>
+                          </div>}
                       <button type="button" onClick={() => setCommentFiles(prev => prev.filter((_, x) => x !== i))}
                         className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center"><X size={10} /></button>
                     </div>

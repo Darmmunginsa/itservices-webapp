@@ -10,6 +10,9 @@ import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { RichNote } from '../components/common/RichNote'
 import { referencedFiles } from '../utils/richNote'
+import { joinRich, splitRich, commentPlain } from '../utils/richComment'
+import { useRichPaste } from '../hooks/useRichPaste'
+import { RichPasteChip } from '../components/common/RichPaste'
 import { SearchMultiSelect } from '../components/common/SearchSelect'
 import type { AgentProfile } from '../types/common'
 import { useAppStore } from '../store/useAppStore'
@@ -63,6 +66,9 @@ export default function Tools() {
   const [saving, setSaving] = useState(false)
 
   const [viewing, setViewing] = useState<ToolNote | null>(null)
+  // รูปแบบต้นฉบับที่วางมา (ตาราง/ลิงก์/รูป) — เก็บต่อท้ายเนื้อหา
+  // ไวยากรณ์เดิมของโน้ต (## หัวข้อ, -, [[ไฟล์]]) จึงยังทำงานกับส่วนที่พิมพ์เองครบ
+  const rich = useRichPaste(msg => addToast('info', msg))
   const [focusNotes, setFocusNotes] = useState<FocusItem[]>([])
   const [pinBusy, setPinBusy] = useState<number | null>(null)
 
@@ -156,23 +162,27 @@ export default function Tools() {
   function openCreate() {
     setEditing(null)
     setForm({ ...EMPTY_FORM })
+    rich.clear()          // ไม่ให้รูปแบบจากโน้ตที่เพิ่งแก้ค้างมาถึงโน้ตใหม่
     setShowModal(true)
   }
 
   function openEdit(note: ToolNote) {
     setEditing(note)
-    setForm({ title: note.Title, category: note.Category ?? '', noteContent: note.NoteContent, sharedWith: sharedList(note.SharedWith) })
+    // แยกบล็อกรูปแบบออกจากข้อความ ไม่งั้นแท็กจะไปโผล่ในช่องพิมพ์ให้แก้มือ
+    const { plain, html } = splitRich(note.NoteContent)
+    rich.setHtml(html)
+    setForm({ title: note.Title, category: note.Category ?? '', noteContent: plain, sharedWith: sharedList(note.SharedWith) })
     setShowModal(true)
     setViewing(null)
   }
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.title.trim() || !form.noteContent.trim()) return
+    if (!form.title.trim() || (!form.noteContent.trim() && !rich.html)) return
     setSaving(true)
     const payload = {
       Title: form.title.trim(),
-      NoteContent: form.noteContent,
+      NoteContent: joinRich(form.noteContent, rich.html),
       Category: form.category || undefined,
       SharedWith: form.sharedWith.join(', '),
     }
@@ -185,6 +195,7 @@ export default function Tools() {
         addToast('success', 'บันทึก Note แล้ว')
       }
       setShowModal(false)
+      rich.clear()
       load()
     } catch {
       addToast('error', 'เกิดข้อผิดพลาด')
@@ -208,7 +219,7 @@ export default function Tools() {
   const allCats = ['ทั้งหมด', ...CATEGORIES]
   const filtered = notes.filter(n => {
     const matchSearch = n.Title.toLowerCase().includes(search.toLowerCase()) ||
-      n.NoteContent.toLowerCase().includes(search.toLowerCase())
+      commentPlain(n.NoteContent).toLowerCase().includes(search.toLowerCase())
     const matchCat = catFilter === 'ทั้งหมด' || n.Category === catFilter
     return matchSearch && matchCat
   })
@@ -326,7 +337,7 @@ export default function Tools() {
                   )}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-4 whitespace-pre-wrap leading-relaxed">
-                  {note.NoteContent}
+                  {commentPlain(note.NoteContent)}
                 </p>
                 <p className="text-xs text-gray-300 dark:text-gray-600 mt-3 text-right">
                   {formatDate(note.Modified)}
@@ -399,17 +410,31 @@ export default function Tools() {
           <div>
             <label className={lc}>{tr('tools.content')} *</label>
             <textarea
-              required
+              required={!rich.html}
               value={form.noteContent}
               onChange={e => setForm(f => ({ ...f, noteContent: e.target.value }))}
+              onPaste={e => {
+                // เก็บรูปแบบเฉพาะตอนที่มีรูปแบบจริง ไม่ใช่ทุกครั้งที่วาง
+                // ไม่งั้นข้อความธรรมดาจะหลุดจากไวยากรณ์โน้ต (## / - / [[ไฟล์]]) ทั้งที่ไม่มีเหตุ
+                if (rich.capture(e.clipboardData.getData('text/html'))) e.preventDefault()
+              }}
               className={ic}
               rows={14}
               placeholder={tr('tools.contentPlaceholder')}
             />
+            <div className="mt-1.5">
+              <RichPasteChip html={rich.html}
+                onFlatten={() => rich.flatten(t => setForm(f => ({
+                  ...f,
+                  noteContent: f.noteContent.trim() ? `${f.noteContent.replace(/\s+$/, '')}\n${t}` : t,
+                })))}
+                onDiscard={rich.clear} />
+            </div>
             <p className="text-[11px] text-gray-400 mt-1">
               หัวข้อใหม่ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">## ชื่อหัวข้อ</code> ·
               รายการย่อย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">-</code> ·
-              วาง URL ได้เลย · แทรกไฟล์แนบด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[[ชื่อไฟล์.png]]</code>
+              วาง URL ได้เลย · แทรกไฟล์แนบด้วย <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">[[ชื่อไฟล์.png]]</code> ·
+              ก็อปตารางจากเมล/Excel มาวางได้ รูปแบบจะถูกเก็บไว้
             </p>
           </div>
 
@@ -454,6 +479,7 @@ export default function Tools() {
               )}
               {(() => {
                 const attached = (editing.AttachmentFiles ?? []).map(f => f.FileName.toLowerCase())
+                // [[ไฟล์]] ใช้ได้แค่ในส่วนข้อความ บล็อกรูปแบบไม่ได้ผ่านตัวแกะนี้
                 const missingFiles = referencedFiles(form.noteContent).filter(n => !attached.includes(n.toLowerCase()))
                 return missingFiles.length > 0 ? (
                   <p className="text-[11px] text-amber-600">⚠ เนื้อหาอ้างถึงไฟล์ที่ยังไม่ได้แนบ: {missingFiles.join(', ')}</p>

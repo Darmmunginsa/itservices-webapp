@@ -9,9 +9,10 @@ import { Button } from './Button'
 import { timeAgo } from '../../utils/dateUtils'
 import { useT } from '../../i18n/useT'
 import { pickFiles, pastedName, dedupeName, previewKind, prettySize } from '../../utils/filePreview'
-import { joinRich, splitRich, htmlToPlain, hasRichMarkup, plainSnippet } from '../../utils/richComment'
-import { sanitizeHtml } from '../../utils/sanitizeDom'
+import { joinRich, splitRich, plainSnippet } from '../../utils/richComment'
 import { RichHtml } from './RichHtml'
+import { useRichPaste } from '../../hooks/useRichPaste'
+import { RichPasteChip } from './RichPaste'
 
 // ไอคอนของไฟล์ที่รอส่ง — บอกตั้งแต่ก่อนกดว่าไฟล์นี้จะเปิดดูในหน้าได้ไหม
 const QUEUE_ICON: Record<string, string> = {
@@ -77,8 +78,8 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
   const [dragDepth, setDragDepth] = useState(0)
   // รูปแบบต้นฉบับที่วางมา (ตาราง/ลิงก์/ตัวหนา) — เก็บแยกจากคำที่คนพิมพ์เอง
   // ของเดิมที่เกาะบนข้อความล้วน (@mention, จับวันที่, พับเมลเก่า) จึงไม่ต้องเขียนใหม่
-  const [richHtml, setRichHtml] = useState('')
-  const [showRich, setShowRich] = useState(false)
+  const rich = useRichPaste(msg => addToast('info', msg))
+  const richHtml = rich.html
 
   /**
    * ทางเข้าเดียวของไฟล์แนบ — ปุ่มเลือก, วาง (Ctrl+V) และลากมาทิ้ง ใช้ตัวนี้ทั้งหมด
@@ -100,31 +101,6 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
       }
       return next
     })
-  }
-
-  /**
-   * รับรูปแบบที่วางมา — กรองทันทีตอนวาง ไม่เก็บ HTML ดิบไว้เลย
-   * คืน true ถ้าเก็บไว้จริง (ผู้เรียกจะได้รู้ว่าควรกัน paste ปกติหรือไม่)
-   */
-  function takePastedHtml(raw: string): boolean {
-    if (!hasRichMarkup(raw)) return false
-    const clean = sanitizeHtml(raw)
-    if (!clean.html.trim()) return false
-    // วางหลายครั้งให้ต่อกัน ไม่ใช่ทับของเดิม — คนมักวางตารางสองอันติดกัน
-    setRichHtml(prev => (prev ? `${prev}\n<hr>\n${clean.html}` : clean.html))
-    setShowRich(true)
-    if (clean.droppedImages > 0) {
-      addToast('info', `เก็บรูปแบบไว้แล้ว แต่มีรูป ${clean.droppedImages} รูปคัดลอกมาไม่ได้ — แนบเป็นไฟล์ได้`)
-    }
-    return true
-  }
-
-  /** ทิ้งรูปแบบ เอาแต่ข้อความไปต่อท้ายที่พิมพ์อยู่ */
-  function flattenRich() {
-    const text = htmlToPlain(richHtml)
-    setRichHtml('')
-    setShowRich(false)
-    if (text) setComment(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n${text}` : text))
   }
 
   // @mention
@@ -225,8 +201,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
       const hadFiles = commentFiles.length > 0
       setComment('')
       setCommentFiles([])
-      setRichHtml('')
-      setShowRich(false)
+      rich.clear()
       if (replyTo) setOpenThreads(p => ({ ...p, [replyTo.id]: true }))
       setReplyTo(null)
       load()
@@ -373,7 +348,7 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
                 if (files.length) addFiles(files, true)
                 // รูปแบบต้นฉบับ: เก็บเฉพาะตอนที่มีรูปแบบจริง ไม่ใช่ทุกครั้งที่วาง
                 // ไม่งั้นข้อความธรรมดาจะหลุดจากทาง @mention/จับวันที่ ทั้งที่ไม่มีเหตุ
-                const kept = takePastedHtml(e.clipboardData.getData('text/html'))
+                const kept = rich.capture(e.clipboardData.getData('text/html'))
                 // กัน paste ปกติเฉพาะเมื่อมีไฟล์ — ถ้าเก็บรูปแบบไว้ ยังให้ข้อความลงช่องพิมพ์
                 // ตามปกติ เพื่อให้แก้คำและใช้ @mention กับสิ่งที่วางมาได้
                 if (files.length) e.preventDefault()
@@ -419,31 +394,9 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
               <Send size={14} /> {sending ? tr('ticket.sending') : 'Comment'}
             </Button>
           </div>
-          {/* บอกว่ารูปแบบถูกเก็บไว้ — ช่องพิมพ์เป็นข้อความล้วน ถ้าไม่บอกจะดูเหมือนวางไม่ติด */}
-          {richHtml && (
-            <div className="rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50/60 dark:bg-primary-900/20 p-2 space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                <span className="font-medium text-primary-700 dark:text-primary-300">
-                  📋 เก็บรูปแบบต้นฉบับไว้แล้ว (ตาราง/ลิงก์/รูป)
-                </span>
-                <button type="button" onClick={() => setShowRich(o => !o)}
-                  className="text-primary-600 hover:underline">
-                  {showRich ? 'ซ่อนตัวอย่าง' : 'ดูตัวอย่าง'}
-                </button>
-                <button type="button" onClick={flattenRich}
-                  className="text-gray-500 hover:underline" title="เอาแต่ข้อความ ทิ้งตาราง/รูปแบบ">
-                  ล้างรูปแบบ
-                </button>
-                <button type="button" onClick={() => { setRichHtml(''); setShowRich(false) }}
-                  className="text-red-500 hover:underline">ทิ้งทั้งบล็อก</button>
-              </div>
-              {showRich && (
-                <div className="bg-white dark:bg-gray-900 rounded-md p-2 max-h-64 overflow-auto">
-                  <RichHtml html={richHtml} />
-                </div>
-              )}
-            </div>
-          )}
+          <RichPasteChip html={richHtml}
+            onFlatten={() => rich.flatten(t => setComment(p => (p.trim() ? `${p.replace(/\s+$/, '')}\n${t}` : t)))}
+            onDiscard={rich.clear} />
           {commentFiles.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {commentFiles.map((f, i) => (

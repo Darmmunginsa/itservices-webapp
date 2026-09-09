@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { ExternalLink, ChevronRight } from 'lucide-react'
 import { parseSections, parseInline, type NoteSection } from '../../utils/richNote'
+import { splitRich } from '../../utils/richComment'
+import { RichHtml } from './RichHtml'
 import { AttachmentThumb } from './AttachmentThumb'
 
 /** ไฟล์แนบที่ถูกแทรกกลางเนื้อหาด้วย [[ชื่อไฟล์]] */
@@ -76,13 +78,18 @@ export function RichNote({ text, defaultOpenFirst = true, className = '', files 
   className?: string
   files?: NoteFiles            // ให้ [[ชื่อไฟล์]] ในเนื้อหาแสดงไฟล์แนบได้
 }) {
-  const sections = parseSections(text)
+  // เนื้อหาที่วางมาแบบมีรูปแบบเก็บต่อท้ายหลังเครื่องหมายคั่น — โน้ตเก่าไม่มีจึงไม่กระทบ
+  const { plain, html } = splitRich(text)
+  const sections = parseSections(plain)
   const titled = sections.filter(s => s.heading)
   // เปิดหัวข้อไหนอยู่บ้าง — เริ่มที่หัวข้อแรกเท่านั้น ที่เหลือพับ
   const [open, setOpen] = useState<Set<number>>(() =>
     new Set(defaultOpenFirst && titled.length > 1 ? [0] : sections.map((_, i) => i)))
 
-  if (sections.length === 0) return null
+  // มีแต่บล็อกรูปแบบ ไม่มีข้อความ — ยังต้องแสดง ไม่ใช่คืนค่าว่าง
+  if (sections.length === 0) {
+    return html ? <RichHtml html={html} className={className} /> : null
+  }
 
   const toggle = (i: number) => setOpen(prev => {
     const next = new Set(prev)
@@ -116,6 +123,9 @@ export function RichNote({ text, defaultOpenFirst = true, className = '', files 
       {sections.map((s, i) => (
         <Section key={i} section={s} files={files} open={open.has(i)} onToggle={() => toggle(i)} collapsible={titled.length > 1 && !!s.heading} />
       ))}
+
+      {/* ตาราง/รูปแบบที่วางมา — ไม่พับตามหัวข้อ เพราะไม่ได้อยู่ในหัวข้อไหน */}
+      {html && <RichHtml html={html} className="mt-2" />}
     </div>
   )
 }
