@@ -18,7 +18,7 @@ import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WAR
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
-import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots } from '../src/utils/orgBranch'
+import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -1215,6 +1215,57 @@ eq(selfTree.roots.join(''), 'me@x.co', 'approving your own leave puts you at the
 
 eq(buildOrgTree([{ Title: 'ไม่มีเมล', EmailText: '' }]).roots.length, 0,
   'a row with no email is skipped instead of creating a blank node')
+
+
+
+// -- ดูเฉพาะแผนกเดียว (SupportGroup) --
+// แผนกไม่เท่ากับสายบังคับบัญชา: หัวหน้าคนเดียวคุมได้หลายแผนก
+const DEPT = [
+  { Title: 'บอส', EmailText: 'boss@x.co', ApproverEmail: '' },
+  { Title: 'หัวหน้า A', EmailText: 'a@x.co', ApproverEmail: 'boss@x.co', SupportGroup: 'Network' },
+  { Title: 'หัวหน้า B', EmailText: 'b@x.co', ApproverEmail: 'boss@x.co', SupportGroup: 'Helpdesk' },
+  { Title: 'ช่าง A1', EmailText: 'a1@x.co', ApproverEmail: 'a@x.co', SupportGroup: 'Network' },
+  // คนแผนก Network แต่ไปอยู่ใต้หัวหน้าฝั่ง Helpdesk — เคสที่การกรองด้วยสายทำไม่ได้
+  { Title: 'ช่าง B1', EmailText: 'b1@x.co', ApproverEmail: 'b@x.co', SupportGroup: 'Network' },
+  { Title: 'ไม่ระบุแผนก', EmailText: 'n@x.co', ApproverEmail: 'boss@x.co', SupportGroup: '  ' },
+]
+const dtree = buildOrgTree(DEPT)
+
+const depts = departmentOptions(DEPT)
+eq(depts.map(d => d.group).join(','), 'Helpdesk,Network', 'departments are listed alphabetically')
+eq(depts.find(d => d.group === 'Network')?.count, 3, 'each department shows how many people it holds')
+eq(depts.some(d => d.group.trim() === ''), false, 'a blank department is not offered as a choice')
+eq(departmentOptions([{ EmailText: '', SupportGroup: 'Network' }]).length, 0,
+  'a row with no email does not invent a department')
+
+const view = departmentView(dtree, 'Network')
+eq([...view.members].sort().join(','), 'a1@x.co,a@x.co,b1@x.co', 'everyone in the department is kept')
+// หัวหน้าเหนือขึ้นไปต้องถูกวาดด้วย ไม่งั้นแผนกจะลอยเป็นหลายก้อนแยกกัน
+eq(view.context.has('boss@x.co'), true, 'managers above are drawn so the department is not left floating')
+eq(view.context.has('b@x.co'), true, 'a manager from another department is kept as context')
+eq(view.members.has('b@x.co'), false, 'that manager is not counted as a member of this department')
+eq(view.context.has('n@x.co'), false, 'unrelated people are left out')
+eq(departmentView(dtree, '').members.size, 0, 'picking no department keeps nobody')
+
+const dt = departmentTree(dtree, 'Network')
+eq(dt.roots.join(','), 'boss@x.co', 'the trimmed chart starts from the one manager above')
+eq(dt.childrenOf.get('boss@x.co')?.sort().join(','), 'a@x.co,b@x.co',
+  'only branches leading into the department survive')
+eq(dt.childrenOf.get('boss@x.co')?.includes('n@x.co'), false, 'a branch with nobody in the department is cut')
+eq(dt.childrenOf.get('b@x.co')?.join(','), 'b1@x.co', 'a context manager keeps only the reports that matter')
+eq(dt.childrenOf.has('a1@x.co'), false, 'someone with no reports left is not given an empty entry')
+
+// แผนกที่ไม่มีคน / ไม่ได้เลือก ต้องกลับไปทั้งใบ ไม่ใช่จอว่าง
+eq(departmentTree(dtree, 'ไม่มีแผนกนี้').roots.length, dtree.roots.length,
+  'a department that matches nobody falls back to the whole chart')
+eq(departmentTree(dtree, '').roots.length, dtree.roots.length, 'no department picked draws the whole chart')
+
+// สายวนต้องไม่ทำให้การกรองแผนกค้าง
+const dloop = buildOrgTree([
+  { Title: 'วน A', EmailText: 'la@x.co', ApproverEmail: 'lb@x.co', SupportGroup: 'Ops' },
+  { Title: 'วน B', EmailText: 'lb@x.co', ApproverEmail: 'la@x.co', SupportGroup: 'Ops' },
+])
+eq(departmentView(dloop, 'Ops').members.size, 2, 'a reporting loop does not hang the department filter')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

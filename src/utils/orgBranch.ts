@@ -10,6 +10,8 @@ export interface OrgPerson {
   EmailText?: string
   ApproverEmail?: string
   Title?: string
+  /** แผนก/ทีม — ช่องเดิมใน HD_AgentProfiles ไม่ต้องเพิ่มคอลัมน์ */
+  SupportGroup?: string
 }
 
 const norm = (e?: string) => (e ?? '').trim().toLowerCase()
@@ -148,4 +150,87 @@ export function visibleRoots<T extends OrgPerson>(tree: OrgTree<T>, branch: stri
   const key = norm(branch)
   if (!key || !tree.byEmail.has(key)) return tree.roots
   return [key]
+}
+
+// ── กรองตามแผนก (SupportGroup) ────────────────────────────────────────────
+// สายบังคับบัญชากับแผนกไม่ใช่สิ่งเดียวกันเสมอ: หัวหน้าคนหนึ่งอาจคุมคนหลายแผนก
+// และคนแผนกเดียวกันอาจกระจายอยู่ใต้หัวหน้าหลายคน จึงต้องกรองได้อีกทาง
+
+export interface DeptOption {
+  group: string
+  count: number
+}
+
+/** รายชื่อแผนกที่มีคนอยู่จริง เรียงตามชื่อ */
+export function departmentOptions<T extends OrgPerson>(people: T[]): DeptOption[] {
+  const count = new Map<string, number>()
+  for (const p of people) {
+    const g = (p.SupportGroup ?? '').trim()
+    if (!g || !norm(p.EmailText)) continue
+    count.set(g, (count.get(g) ?? 0) + 1)
+  }
+  return [...count.entries()]
+    .map(([group, n]) => ({ group, count: n }))
+    .sort((a, b) => a.group.localeCompare(b.group, 'th'))
+}
+
+export interface DeptView {
+  /** คนในแผนกที่เลือก */
+  members: Set<string>
+  /** หัวหน้าเหนือขึ้นไป — วาดไว้ให้เห็นว่าแผนกนี้ขึ้นกับใคร ไม่ได้อยู่ในแผนก */
+  context: Set<string>
+}
+
+/**
+ * คนที่ต้องวาดเมื่อเลือกแผนกหนึ่ง
+ *
+ * วาดหัวหน้าที่อยู่เหนือขึ้นไปด้วย ไม่งั้นคนในแผนกจะลอยเป็นหลายก้อนแยกกัน
+ * มองไม่ออกว่าใครขึ้นกับใคร — แต่แยกสีให้รู้ว่าคนไหนไม่ได้อยู่ในแผนกนี้
+ */
+export function departmentView<T extends OrgPerson>(tree: OrgTree<T>, group: string): DeptView {
+  const key = group.trim()
+  const members = new Set<string>()
+  if (!key) return { members, context: new Set() }
+
+  for (const [email, p] of tree.byEmail) {
+    if ((p.SupportGroup ?? '').trim() === key) members.add(email)
+  }
+
+  const context = new Set<string>()
+  for (const m of members) {
+    for (const up of pathToRoot(m, tree.parentOf)) {
+      if (!members.has(up)) context.add(up)
+    }
+  }
+  return { members, context }
+}
+
+/**
+ * ตัดกิ่งที่ไม่เกี่ยวกับแผนกออก แล้วคืนจุดเริ่มวาด
+ * หัวหน้าที่เก็บไว้เป็นบริบทจะเหลือลูกเฉพาะที่นำไปถึงคนในแผนก
+ */
+export function departmentTree<T extends OrgPerson>(
+  tree: OrgTree<T>,
+  group: string,
+): { roots: string[]; childrenOf: Map<string, string[]>; view: DeptView } {
+  const view = departmentView(tree, group)
+  const keep = new Set([...view.members, ...view.context])
+  if (keep.size === 0) return { roots: tree.roots, childrenOf: tree.childrenOf, view }
+
+  const childrenOf = new Map<string, string[]>()
+  for (const [parent, kids] of tree.childrenOf) {
+    if (!keep.has(parent)) continue
+    const trimmed = kids.filter(k => keep.has(k))
+    if (trimmed.length) childrenOf.set(parent, trimmed)
+  }
+  // บนสุดของผังที่ตัดแล้ว = คนที่หัวหน้าตัวเองไม่ได้ถูกเก็บไว้
+  const roots = tree.roots.filter(r => keep.has(r))
+  for (const e of keep) {
+    const up = tree.parentOf.get(e)
+    if ((!up || !keep.has(up)) && !roots.includes(e)) roots.push(e)
+  }
+  const sortByName = (a: string, b: string) =>
+    (tree.byEmail.get(a)?.Title ?? '').localeCompare(tree.byEmail.get(b)?.Title ?? '', 'th')
+  roots.sort(sortByName)
+  return { roots, childrenOf, view }
 }

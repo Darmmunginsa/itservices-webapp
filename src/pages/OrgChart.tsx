@@ -11,7 +11,10 @@ import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
 import { RoleMatrixView } from '../components/common/RoleMatrixView'
 import { buildRoleMatrix, filterPeople, projectsWithoutManager } from '../utils/projectRoles'
-import { buildOrgTree, branchOptions, pathToRoot, visibleRoots, subtreeSize } from '../utils/orgBranch'
+import {
+  buildOrgTree, branchOptions, pathToRoot, visibleRoots, subtreeSize,
+  departmentOptions, departmentTree,
+} from '../utils/orgBranch'
 import type { ProjectMember, Project } from '../types/project'
 import type { AgentProfile } from '../types/common'
 
@@ -45,6 +48,8 @@ export default function OrgChart() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   // ดูเฉพาะสายบังคับบัญชาของใครคนหนึ่ง — ว่าง = ทั้งใบ
   const [branch, setBranch] = useState('')
+  // ดูเฉพาะแผนกเดียว (SupportGroup) — ว่าง = ทุกแผนก
+  const [dept, setDept] = useState('')
 
   // โหลดทีมโครงการเมื่อเข้ามุมมองบทบาท — ไม่ดึงตอนเปิดหน้าเพราะคนส่วนใหญ่มาดูผังปกติ
   useEffect(() => {
@@ -136,11 +141,29 @@ export default function OrgChart() {
 
   // ── สร้างโครงต้นไม้จาก ApproverEmail (ตรรกะอยู่ใน utils/orgBranch มีเทสต์) ──
   const tree = useMemo(() => buildOrgTree(agents, SELF_APPROVE), [agents])
-  const { childrenOf, parentOf, byEmail, orphans } = tree
+  const { parentOf, byEmail, orphans } = tree
 
   // หัวสายที่เลือกดูได้ — เฉพาะคนที่มีลูกน้อง
   const branches = useMemo(() => branchOptions(tree), [tree])
-  const roots = useMemo(() => visibleRoots(tree, branch), [tree, branch])
+
+  // แผนก (SupportGroup) — กรองอีกทางหนึ่ง เพราะหัวหน้าคนเดียวอาจคุมหลายแผนก
+  // และคนแผนกเดียวกันอาจกระจายอยู่ใต้หัวหน้าหลายคน ซึ่งเลือกด้วยสายทำไม่ได้
+  const depts = useMemo(() => departmentOptions(agents), [agents])
+  const deptCut = useMemo(() => departmentTree(tree, dept), [tree, dept])
+  const childrenOf = deptCut.childrenOf
+  const inDept = deptCut.view.members
+  const deptContext = deptCut.view.context
+
+  const roots = useMemo(() => {
+    // เลือกทั้งแผนกและสาย: วาดจากหัวสาย แต่ใช้กิ่งที่ตัดตามแผนกแล้ว
+    // ถ้าหัวสายไม่เหลืออยู่ในแผนกนี้ ตัวเลือกสายจะไม่มีความหมาย — ใช้ผังของแผนก
+    if (dept && branch) {
+      const keep = new Set([...inDept, ...deptContext])
+      return keep.has(branch) ? [branch] : deptCut.roots
+    }
+    if (dept) return deptCut.roots
+    return visibleRoots(tree, branch)
+  }, [tree, branch, dept, deptCut, inDept, deptContext])
   // ทางเดินจากบนสุดลงมา — ไม่ให้หลงว่าสายที่ดูอยู่ตรงไหนขององค์กร
   const trail = useMemo(
     () => (branch && byEmail.has(branch) ? pathToRoot(branch, parentOf) : []),
@@ -179,9 +202,12 @@ export default function OrgChart() {
     const isMe = norm(user?.email) === email
     const hit = matches(email)
     const isCollapsed = collapsed.has(email)
+    // เลือกแผนกไว้ แต่คนนี้อยู่แผนกอื่น — วาดไว้เป็นบริบทว่าแผนกขึ้นกับใคร
+    const outsideDept = !!dept && !inDept.has(email)
     return (
       <div className={`group relative w-52 rounded-xl border px-3 py-2.5 bg-white dark:bg-gray-900 transition-colors ${
-        isMe ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900'
+        outsideDept ? 'border-dashed border-gray-200 dark:border-gray-700 opacity-60'
+        : isMe ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900'
         : hit ? 'border-amber-400 ring-2 ring-amber-200 dark:ring-amber-900/50'
         : 'border-gray-200 dark:border-gray-700'}`}>
         <div className="flex items-start gap-2">
@@ -236,7 +262,20 @@ export default function OrgChart() {
         </div>
         <div className="flex flex-wrap items-center gap-1 mt-2">
           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${ROLE_STYLE[a.Role] ?? ROLE_STYLE.EndUser}`}>{a.Role}</span>
-          {a.SupportGroup && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{a.SupportGroup}</span>}
+          {a.SupportGroup && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${
+              dept && a.SupportGroup.trim() === dept
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 font-semibold'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
+              {a.SupportGroup}
+            </span>
+          )}
+          {outsideDept && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-50 dark:bg-gray-800/60 text-gray-400 border border-dashed border-gray-200 dark:border-gray-700"
+              title="ไม่ได้อยู่ในแผนกที่เลือก — แสดงไว้ให้เห็นว่าแผนกนี้ขึ้นกับใคร">
+              คนละแผนก
+            </span>
+          )}
           {a.IsAvailable === false && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">ไม่ว่าง</span>}
           {orphans.has(email) && (
             <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 inline-flex items-center gap-0.5"
@@ -370,6 +409,16 @@ export default function OrgChart() {
           {/* ย่อ/ขยาย/กาง มีความหมายกับผังเท่านั้น — มุมมองบทบาทเป็นการ์ด ไม่ใช่ผัง */}
           {view === 'chart' && (
           <>
+          {/* เลือกดูเฉพาะแผนกเดียว */}
+          {depts.length > 0 && (
+            <select value={dept} onChange={e => { setDept(e.target.value); setCollapsed(new Set()) }}
+              className="px-2 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 max-w-44">
+              <option value="">ทุกแผนก</option>
+              {depts.map(d => (
+                <option key={d.group} value={d.group}>{d.group} ({d.count})</option>
+              ))}
+            </select>
+          )}
           {/* เลือกดูเฉพาะสาย — ย่อหน้าในรายการบอกว่าใครอยู่ใต้ใคร */}
           <select value={branch} onChange={e => { setBranch(e.target.value); setCollapsed(new Set()) }}
             className="px-2 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 max-w-56">
@@ -436,9 +485,11 @@ export default function OrgChart() {
               </div>
             </div>
             <p className="text-xs text-gray-400">
-              {trail.length > 0
-                ? `กำลังดูเฉพาะสายของ ${byEmail.get(branch)?.Title ?? ''} · ทั้งองค์กร ${agents.length} คน`
-                : `ทั้งหมด ${agents.length} คน`}
+              {dept
+                ? `แผนก ${dept} ${inDept.size} คน · หัวหน้าเหนือขึ้นไป ${deptContext.size} คน (เส้นประ) · ทั้งองค์กร ${agents.length} คน`
+                : trail.length > 0
+                  ? `กำลังดูเฉพาะสายของ ${byEmail.get(branch)?.Title ?? ''} · ทั้งองค์กร ${agents.length} คน`
+                  : `ทั้งหมด ${agents.length} คน`}
               {' · '}สายบังคับบัญชาอ่านจากช่อง “ผู้อนุมัติ” (ApproverEmail) ใน HD_AgentProfiles
             </p>
           </>
