@@ -18,6 +18,7 @@ import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WAR
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
+import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
 import { parseTemplate, parseJobData, emptyJobData, numberFigures, figuresOf, progressOf, slotKey, shotFileName,
   serializeTemplate, emptyTemplate, newDeviceKey, renumberTasks, nextTaskNo, parseTaskLines, parseInventoryLines, moveItem } from '../src/utils/pmReport'
@@ -1153,6 +1154,67 @@ eq(countUpdated([1, 2, 3], act, based), 1, 'only genuinely newer activity is cou
 eq(countUpdated([1, 2, 3], act, { '1': '2026-08-01T00:00:00Z', '2': '2026-08-01T00:00:00Z', '3': '2026-08-01T00:00:00Z' }), 3,
   'an old visit to everything counts them all')
 eq(countUpdated([], act, based), 0, 'no projects means no count, not a crash')
+
+
+
+// -- เลือกดูเฉพาะสายบังคับบัญชา (utils/orgBranch) --
+const STAFF = [
+  { Title: 'บอส', EmailText: 'boss@x.co', ApproverEmail: '' },
+  { Title: 'หัวหน้า A', EmailText: 'a@x.co', ApproverEmail: 'boss@x.co' },
+  { Title: 'หัวหน้า B', EmailText: 'b@x.co', ApproverEmail: 'BOSS@X.CO' },
+  { Title: 'ลูกน้อง A1', EmailText: 'a1@x.co', ApproverEmail: 'a@x.co' },
+  { Title: 'ลูกน้อง A2', EmailText: 'a2@x.co', ApproverEmail: 'a@x.co' },
+  { Title: 'ลูกน้อง A1a', EmailText: 'a1a@x.co', ApproverEmail: 'a1@x.co' },
+  { Title: 'คนนอก', EmailText: 'out@x.co', ApproverEmail: 'ไม่มีคนนี้@x.co' },
+]
+const tree = buildOrgTree(STAFF)
+
+eq(tree.roots.includes('boss@x.co'), true, 'someone with no approver sits at the top')
+eq(tree.roots.includes('out@x.co'), true, 'an approver who is not on the list does not hide the person')
+eq(tree.childrenOf.get('boss@x.co')?.length, 2, 'a mixed-case approver email still links up')
+eq(tree.parentOf.get('a1a@x.co'), 'a1@x.co', 'each person remembers who they report to')
+
+// นับทั้งสาย ไม่ใช่แค่ชั้นถัดไป — ตัวเลขนี้บอกว่าเลือกแล้วจะเห็นกี่คน
+eq(subtreeSize('a@x.co', tree.childrenOf), 3, 'the count covers the whole branch, not just direct reports')
+eq(subtreeSize('a1a@x.co', tree.childrenOf), 0, 'someone with no reports counts zero')
+
+// รายการหัวสาย — เฉพาะคนที่มีลูกน้อง
+const branches = branchOptions(tree)
+eq(branches.some(o => o.email === 'a2@x.co'), false, 'a person with no reports is not offered as a branch')
+eq(branches.find(o => o.email === 'a@x.co')?.depth, 1, 'the list shows how deep each branch sits')
+eq(branches.find(o => o.email === 'boss@x.co')?.size, 5, 'the top branch counts everyone below it')
+
+// breadcrumb — ไม่ให้หลงว่าสายที่ดูอยู่ตรงไหนขององค์กร
+eq(pathToRoot('a1a@x.co', tree.parentOf).join('>'), 'boss@x.co>a@x.co>a1@x.co>a1a@x.co',
+  'the trail runs from the top down to the person')
+eq(pathToRoot('boss@x.co', tree.parentOf).length, 1, 'the top of the chart is its own trail')
+
+// จุดเริ่มวาด
+eq(visibleRoots(tree, 'a@x.co').join(''), 'a@x.co', 'picking a branch draws from that person')
+eq(visibleRoots(tree, 'A@X.CO').join(''), 'a@x.co', 'the pick is not case sensitive')
+eq(visibleRoots(tree, '').length, tree.roots.length, 'picking nothing draws the whole chart')
+eq(visibleRoots(tree, 'ไม่มีคนนี้@x.co').length, tree.roots.length,
+  'a branch head who has left falls back to the whole chart instead of a blank screen')
+
+// ข้อมูลวน A→B→A ต้องไม่ทำให้ค้าง และต้องไม่มีใครหาย
+const LOOP = [
+  { Title: 'วน A', EmailText: 'la@x.co', ApproverEmail: 'lb@x.co' },
+  { Title: 'วน B', EmailText: 'lb@x.co', ApproverEmail: 'la@x.co' },
+]
+const loop = buildOrgTree(LOOP)
+eq(loop.roots.length, 2, 'a reporting loop still shows both people')
+eq(loop.orphans.has('la@x.co'), true, 'a looped chain is flagged rather than dropped')
+eq(subtreeSize('la@x.co', loop.childrenOf), 1, 'counting a loop terminates')
+eq(pathToRoot('la@x.co', loop.parentOf).length, 2, 'walking up a loop terminates')
+eq(branchOptions(loop).length >= 1, true, 'a looped chain still yields a usable branch list')
+
+// อนุมัติเอง = ระดับสูงสุด
+const selfTree = buildOrgTree(
+  [{ Title: 'ตัวเอง', EmailText: 'me@x.co', ApproverEmail: 'self' }], 'SELF')
+eq(selfTree.roots.join(''), 'me@x.co', 'approving your own leave puts you at the top')
+
+eq(buildOrgTree([{ Title: 'ไม่มีเมล', EmailText: '' }]).roots.length, 0,
+  'a row with no email is skipped instead of creating a blank node')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle, Camera, X, Pencil } from 'lucide-react'
+import { Users, Search, ChevronDown, ChevronRight, ZoomIn, ZoomOut, FileDown, AlertTriangle, Camera, X, Pencil, GitBranch, CornerDownRight } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { Button } from '../components/common/Button'
@@ -11,6 +11,7 @@ import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
 import { RoleMatrixView } from '../components/common/RoleMatrixView'
 import { buildRoleMatrix, filterPeople, projectsWithoutManager } from '../utils/projectRoles'
+import { buildOrgTree, branchOptions, pathToRoot, visibleRoots, subtreeSize } from '../utils/orgBranch'
 import type { ProjectMember, Project } from '../types/project'
 import type { AgentProfile } from '../types/common'
 
@@ -42,6 +43,8 @@ export default function OrgChart() {
   const [projects, setProjects] = useState<Project[]>([])
   const [members, setMembers] = useState<ProjectMember[]>([])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // ดูเฉพาะสายบังคับบัญชาของใครคนหนึ่ง — ว่าง = ทั้งใบ
+  const [branch, setBranch] = useState('')
 
   // โหลดทีมโครงการเมื่อเข้ามุมมองบทบาท — ไม่ดึงตอนเปิดหน้าเพราะคนส่วนใหญ่มาดูผังปกติ
   useEffect(() => {
@@ -131,44 +134,17 @@ export default function OrgChart() {
     } catch { addToast('error', 'ลบรูปไม่สำเร็จ') }
   }
 
-  // ── สร้างโครงต้นไม้จาก ApproverEmail ──
-  const { roots, childrenOf, byEmail, orphans } = useMemo(() => {
-    const byEmail = new Map<string, AgentProfile>()
-    for (const a of agents) if (norm(a.EmailText)) byEmail.set(norm(a.EmailText), a)
+  // ── สร้างโครงต้นไม้จาก ApproverEmail (ตรรกะอยู่ใน utils/orgBranch มีเทสต์) ──
+  const tree = useMemo(() => buildOrgTree(agents, SELF_APPROVE), [agents])
+  const { childrenOf, parentOf, byEmail, orphans } = tree
 
-    const childrenOf = new Map<string, string[]>()
-    const roots: string[] = []
-    for (const a of agents) {
-      const me = norm(a.EmailText)
-      if (!me) continue
-      const boss = norm(a.ApproverEmail)
-      // เป็นระดับสูงสุดเมื่อ: ไม่ได้กำหนดผู้อนุมัติ / อนุมัติเอง / ชี้กลับมาที่ตัวเอง / ผู้อนุมัติไม่มีใน profile
-      if (!boss || boss === norm(SELF_APPROVE) || boss === me || !byEmail.has(boss)) {
-        roots.push(me)
-      } else {
-        const arr = childrenOf.get(boss) ?? []
-        arr.push(me); childrenOf.set(boss, arr)
-      }
-    }
-
-    // กันข้อมูลวน (A→B→A) ทำให้บางคนหลุดจากผัง — หาคนที่เข้าไม่ถึงจาก root แล้วยกขึ้นเป็น root
-    const reachable = new Set<string>()
-    const queue = [...roots]
-    while (queue.length) {
-      const cur = queue.shift()!
-      if (reachable.has(cur)) continue
-      reachable.add(cur)
-      for (const k of childrenOf.get(cur) ?? []) queue.push(k)
-    }
-    const orphans = [...byEmail.keys()].filter(e => !reachable.has(e))
-
-    const sortByName = (a: string, b: string) =>
-      (byEmail.get(a)?.Title ?? '').localeCompare(byEmail.get(b)?.Title ?? '', 'th')
-    roots.sort(sortByName)
-    for (const [, arr] of childrenOf) arr.sort(sortByName)
-
-    return { roots: [...roots, ...orphans], childrenOf, byEmail, orphans: new Set(orphans) }
-  }, [agents])
+  // หัวสายที่เลือกดูได้ — เฉพาะคนที่มีลูกน้อง
+  const branches = useMemo(() => branchOptions(tree), [tree])
+  const roots = useMemo(() => visibleRoots(tree, branch), [tree, branch])
+  // ทางเดินจากบนสุดลงมา — ไม่ให้หลงว่าสายที่ดูอยู่ตรงไหนขององค์กร
+  const trail = useMemo(
+    () => (branch && byEmail.has(branch) ? pathToRoot(branch, parentOf) : []),
+    [branch, byEmail, parentOf])
 
   const matches = (email: string) => {
     if (!search.trim()) return false
@@ -269,6 +245,13 @@ export default function OrgChart() {
             </span>
           )}
         </div>
+        {/* เจาะดูเฉพาะสายนี้ — เร็วกว่าไปหาชื่อในรายการเลือก */}
+        {kids.length > 0 && branch !== email && (
+          <button onClick={() => { setBranch(email); setCollapsed(new Set()) }} title="ดูเฉพาะสายนี้"
+            className="no-print absolute top-1.5 right-1.5 text-gray-300 hover:text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
+            <GitBranch size={11} />
+          </button>
+        )}
         {kids.length > 0 && (
           <button onClick={() => toggle(email)}
             className="no-print absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-500 hover:text-primary-600 hover:border-primary-300">
@@ -311,6 +294,22 @@ export default function OrgChart() {
   }
 
   const matchCount = search.trim() ? [...byEmail.keys()].filter(matches).length : 0
+
+  // ค้นเจอคน แต่คนนั้นอยู่นอกสายที่กำลังดู — ต้องบอก ไม่งั้นดูเหมือนค้นไม่เจอ
+  const hitsOutsideBranch = useMemo(() => {
+    if (!search.trim() || !branch || !byEmail.has(branch)) return 0
+    const inBranch = new Set<string>([branch])
+    const queue = [...(childrenOf.get(branch) ?? [])]
+    while (queue.length) {
+      const cur = queue.shift()!
+      if (inBranch.has(cur)) continue
+      inBranch.add(cur)
+      for (const k of childrenOf.get(cur) ?? []) queue.push(k)
+    }
+    return [...byEmail.keys()].filter(e => matches(e) && !inBranch.has(e)).length
+    // matches อ่านจาก search/byEmail ซึ่งอยู่ใน deps อยู่แล้ว
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, branch, byEmail, childrenOf])
 
   // เตรียมข้อมูลมุมมองบทบาท — ค้นหาใช้ช่องเดียวกับผังปกติ
   const people = useMemo(() => buildRoleMatrix(projects, members), [projects, members])
@@ -363,9 +362,24 @@ export default function OrgChart() {
               พบ {view === 'roles' ? shownPeople.length : matchCount} คน
             </span>
           )}
+          {view === 'chart' && hitsOutsideBranch > 0 && (
+            <button onClick={() => setBranch('')} className="text-xs text-amber-600 underline">
+              อีก {hitsOutsideBranch} คนอยู่นอกสายนี้ — ดูทั้งองค์กร
+            </button>
+          )}
           {/* ย่อ/ขยาย/กาง มีความหมายกับผังเท่านั้น — มุมมองบทบาทเป็นการ์ด ไม่ใช่ผัง */}
           {view === 'chart' && (
           <>
+          {/* เลือกดูเฉพาะสาย — ย่อหน้าในรายการบอกว่าใครอยู่ใต้ใคร */}
+          <select value={branch} onChange={e => { setBranch(e.target.value); setCollapsed(new Set()) }}
+            className="px-2 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 max-w-56">
+            <option value="">ทุกสายบังคับบัญชา</option>
+            {branches.map(o => (
+              <option key={o.email} value={o.email}>
+                {'\u00A0'.repeat(o.depth * 3)}{o.name} ({o.size})
+              </option>
+            ))}
+          </select>
           <span className="text-[10px] text-gray-400 w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))} title="ย่อ"
             className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-primary-600"><ZoomOut size={13} /></button>
@@ -392,6 +406,29 @@ export default function OrgChart() {
             photoOf={photoByEmail} totalPeople={agents.length} />
         ) : (
           <>
+            {trail.length > 0 && (
+              <div className="flex items-center flex-wrap gap-1 text-xs text-gray-500">
+                <CornerDownRight size={13} className="text-gray-300" />
+                {trail.map((e, i) => (
+                  <span key={e} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-gray-300">/</span>}
+                    {/* กดชื่อกลางทางเพื่อถอยขึ้นไปดูสายที่กว้างกว่า */}
+                    <button onClick={() => setBranch(i === 0 && trail.length === 1 ? '' : e)}
+                      disabled={i === trail.length - 1}
+                      className={i === trail.length - 1
+                        ? 'font-semibold text-gray-700 dark:text-gray-200'
+                        : 'no-print text-primary-600 hover:underline'}>
+                      {byEmail.get(e)?.Title || e}
+                    </button>
+                  </span>
+                ))}
+                <button onClick={() => setBranch('')}
+                  className="no-print ml-2 text-primary-600 underline">ดูทั้งองค์กร</button>
+                <span className="text-gray-400">
+                  · สายนี้ {subtreeSize(branch, childrenOf) + 1} คน
+                </span>
+              </div>
+            )}
             <div className="overflow-x-auto pb-6">
               <div className="inline-flex items-start gap-10 min-w-full justify-center px-4 py-2"
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
@@ -399,7 +436,10 @@ export default function OrgChart() {
               </div>
             </div>
             <p className="text-xs text-gray-400">
-              ทั้งหมด {agents.length} คน · สายบังคับบัญชาอ่านจากช่อง “ผู้อนุมัติ” (ApproverEmail) ใน HD_AgentProfiles
+              {trail.length > 0
+                ? `กำลังดูเฉพาะสายของ ${byEmail.get(branch)?.Title ?? ''} · ทั้งองค์กร ${agents.length} คน`
+                : `ทั้งหมด ${agents.length} คน`}
+              {' · '}สายบังคับบัญชาอ่านจากช่อง “ผู้อนุมัติ” (ApproverEmail) ใน HD_AgentProfiles
             </p>
           </>
         )}
