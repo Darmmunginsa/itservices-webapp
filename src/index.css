@@ -213,3 +213,63 @@ html[data-fx='on'] .urgent-row::before {
 html[data-fx='on'] .urgent-badge {
   animation: urgent-badge 1.7s ease-in-out infinite;
 }
+
+/* ── เนื้อหาที่วางมาแบบมีรูปแบบในคอมเมนต์ (RichHtml) ──
+   HTML ที่ก็อปมาจากเมล/Word มาพร้อมรูปแบบของที่อื่น ซึ่งเราตัด style ออกไปแล้ว
+   จึงต้องให้เส้นตารางและระยะห่างของเราเอง ไม่งั้นตารางจะแบนอ่านไม่ออก */
+.hd-rich table {
+  border-collapse: collapse;
+  width: auto;
+  max-width: 100%;
+  margin: 0.4rem 0;
+  font-size: 0.8125rem;
+}
+.hd-rich th,
+.hd-rich td {
+  border: 1px solid rgb(229 231 235);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.hd-rich th { background: rgb(249 250 251); font-weight: 600; }
+.dark .hd-rich th, .dark .hd-rich td { border-color: rgb(55 65 81); }
+.dark .hd-rich th { background: rgb(31 41 55); }
+
+.hd-rich ul, .hd-rich ol { margin: 0.3rem 0; padding-left: 1.25rem; }
+.hd-rich ul { list-style: disc; }
+.hd-rich ol { list-style: decimal; }
+.hd-rich li { margin: 0.1rem 0; }
+.hd-rich p { margin: 0.3rem 0; }
+.hd-rich a { color: rgb(37 99 235); text-decoration: underline; }
+.hd-rich img { max-width: 100%; height: auto; border-radius: 0.375rem; margin: 0.25rem 0; }
+.hd-rich h1, .hd-rich h2, .hd-rich h3,
+.hd-rich h4, .hd-rich h5, .hd-rich h6 { font-weight: 600; margin: 0.5rem 0 0.25rem; }
+.hd-rich h1 { font-size: 1rem; }
+.hd-rich h2 { font-size: 0.9375rem; }
+.hd-rich h3, .hd-rich h4, .hd-rich h5, .hd-rich h6 { font-size: 0.875rem; }
+.hd-rich pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgb(249 250 251);
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+}
+.dark .hd-rich pre { background: rgb(31 41 55); }
+.hd-rich code { font-family: ui-monospace, monospace; font-size: 0.8125em; }
+.hd-rich blockquote {
+  border-left: 2px solid rgb(209 213 219);
+  padding-left: 0.6rem;
+  margin: 0.3rem 0;
+  color: rgb(107 114 128);
+}
+.hd-rich hr { border: 0; border-top: 1px solid rgb(229 231 235); margin: 0.5rem 0; }
+/* ตำแหน่งที่เคยมีรูปแต่คัดลอกมาไม่ได้ — ให้เห็นว่ามีอะไรหายไป ไม่ใช่ช่องว่างเงียบ ๆ */
+.hd-rich [data-hd-dropped-img] {
+  display: inline-block;
+  font-size: 0.6875rem;
+  color: rgb(156 163 175);
+  border: 1px dashed rgb(209 213 219);
+  border-radius: 0.375rem;
+  padding: 0.05rem 0.3rem;
+}

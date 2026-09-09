@@ -20,6 +20,7 @@ import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutMan
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { buildRoleGrid } from '../src/utils/projectRoles'
 import { ticketRows, incidentRows, taskRows, workStats, filterWork, statusOptions, priorityOptions, workLink, isDone } from '../src/utils/dashboardWork'
+import { splitRich, joinRich, isRich, RICH_MARK, isAllowedTag, isDropWhole, isAllowedAttr, safeHref, safeImgSrc, htmlToPlain, commentPlain, plainSnippet, hasRichMarkup, MAX_INLINE_IMAGE } from '../src/utils/richComment'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
 import { renderClose, kbUrl, kbLinksBlock, kbBaseMissing, templatesFor, scopeOf, DEFAULT_TEMPLATES, type CloseTemplate } from '../src/utils/closeTemplate'
@@ -1480,6 +1481,100 @@ eq(workLink({ ...dTasks[0], projectId: undefined }), '/projects',
 
 eq(workStats([]).total, 0, 'an empty dashboard is zeros, not a crash')
 eq(statusOptions([]).length, 0, 'no rows means no filter choices')
+
+
+
+// -- วางเนื้อหาที่มีรูปแบบลงในคอมเมนต์ (utils/richComment) --
+
+// เก็บสองส่วนไว้ในค่าเดียว คอมเมนต์เก่าจึงไม่ต้องแปลงข้อมูล
+eq(splitRich('แค่ข้อความ').html, '', 'an old plain comment stays entirely plain')
+eq(splitRich('แค่ข้อความ').plain, 'แค่ข้อความ', 'and its text is untouched')
+eq(splitRich(undefined).plain, '', 'a missing comment is empty, not a crash')
+const rc = splitRich(`ดูตารางนี้\n${RICH_MARK}\n<table><tr><td>a</td></tr></table>`)
+eq(rc.plain, 'ดูตารางนี้', 'the typed words are kept separate from the pasted markup')
+eq(rc.html, '<table><tr><td>a</td></tr></table>', 'the pasted markup is recovered whole')
+eq(joinRich('ดูนี่', '<b>x</b>'), `ดูนี่\n${RICH_MARK}\n<b>x</b>`, 'the two parts round-trip')
+eq(joinRich('ดูนี่', ''), 'ดูนี่', 'nothing pasted means nothing extra is stored')
+eq(joinRich('', '<b>x</b>').startsWith(RICH_MARK), true, 'pasting without typing still works')
+eq(splitRich(joinRich('a', '<b>x</b>')).plain, 'a', 'round-trip keeps the text')
+eq(isRich('plain'), false, 'a plain comment is not treated as rich')
+eq(isRich(joinRich('a', '<i>x</i>')), true, 'a rich comment is recognised')
+
+// รายการขาว — บล็อกเป็นรายการดำต้องเดาให้ครบ ซึ่งเดาไม่ครบแน่
+eq(isAllowedTag('TABLE') && isAllowedTag('td') && isAllowedTag('a') && isAllowedTag('img'), true,
+  'tables, links and images survive because they are the point')
+eq(isAllowedTag('script'), false, 'a script tag is never allowed')
+eq(isDropWhole('script') && isDropWhole('iframe') && isDropWhole('style'), true,
+  'dangerous tags are dropped with their contents, not just unwrapped')
+eq(isDropWhole('span'), false, 'ordinary tags keep their contents')
+
+// on* คือทางรันโค้ดที่ตรงที่สุด
+eq(isAllowedAttr('a', 'onclick'), false, 'an event handler is never kept')
+eq(isAllowedAttr('img', 'ONERROR'), false, 'event handlers are stripped whatever their case')
+eq(isAllowedAttr('div', 'onmouseover'), false, 'not on any tag either')
+eq(isAllowedAttr('a', 'href') && isAllowedAttr('img', 'src') && isAllowedAttr('td', 'colspan'), true,
+  'the attributes the content needs are kept')
+eq(isAllowedAttr('a', 'target'), false, 'anything not needed is dropped rather than passed through')
+eq(isAllowedAttr('div', 'style'), false, 'inline style is not carried over')
+
+// ลิงก์
+eq(safeHref('https://itservices.co.th'), 'https://itservices.co.th', 'an https link is kept')
+eq(!!safeHref('mailto:a@b.co') && !!safeHref('tel:0812345678'), true, 'mail and phone links are kept')
+eq(safeHref('javascript:alert(1)'), '', 'a javascript link is refused')
+eq(safeHref('JaVaScRiPt:alert(1)'), '', 'case does not get it past')
+// ช่องว่าง/อักขระควบคุมกลาง scheme เป็นวิธีเลี่ยงตัวกรองแบบคลาสสิก
+eq(safeHref('java\tscript:alert(1)'), '', 'a tab inside the scheme does not get it past')
+eq(safeHref(' java script:alert(1)'), '', 'spaces inside the scheme do not either')
+eq(safeHref('data:text/html,<script>'), '', 'a data link is refused')
+eq(safeHref('vbscript:msgbox'), '', 'old vbscript links are refused too')
+eq(safeHref('#/projects/3'), '#/projects/3', 'a link inside our own app is kept')
+eq(safeHref(''), '', 'an empty href is nothing')
+eq(safeHref(undefined), '', 'a missing href is nothing')
+
+// รูป
+eq(safeImgSrc('data:image/png;base64,AAAA'), 'data:image/png;base64,AAAA', 'an embedded image is kept')
+eq(safeImgSrc('https://x.co/a.png'), 'https://x.co/a.png', 'an https image is kept')
+// ชี้ไปเครื่องคนวางหรือกล่องเมลของเขา — แสดงไม่ได้เลย
+eq(safeImgSrc('file:///C:/Users/a/img.png'), '', 'an image on the pasting person machine cannot be shown')
+eq(safeImgSrc('cid:image001.png@01D2'), '', 'an Outlook inline reference cannot be shown')
+eq(safeImgSrc('blob:http://x/123'), '', 'a blob url from another page cannot be shown')
+eq(safeImgSrc('data:text/html;base64,AAA'), '', 'a data url that is not an image is refused')
+eq(safeImgSrc('http://x.co/a.png'), '', 'plain http is refused so the page stays secure')
+eq(safeImgSrc('data:image/png;base64,' + 'A'.repeat(MAX_INLINE_IMAGE)), '',
+  'an embedded image too big for a text column is dropped')
+
+// HTML -> ข้อความล้วน (ใช้ตอนส่งเมลและตอนกดล้างรูปแบบ)
+eq(htmlToPlain('<p>สวัสดี</p><p>ครับ</p>'), 'สวัสดี\nครับ', 'paragraphs become line breaks')
+// ช่องตารางต้องคั่น ไม่งั้นเลขสองคอลัมน์จะกลายเป็นเลขเดียวที่อ่านผิดได้
+eq(htmlToPlain('<table><tr><td>100</td><td>200</td></tr></table>'), '100\t200',
+  'table cells stay separated instead of merging into one number')
+eq(htmlToPlain('<ul><li>a</li><li>b</li></ul>'), '- a\n- b', 'list items keep their bullets')
+eq(htmlToPlain('a<br>b'), 'a\nb', 'a line break is a line break')
+eq(htmlToPlain('<b>ตัวหนา</b>'), 'ตัวหนา', 'formatting tags leave their text behind')
+eq(htmlToPlain('<script>alert(1)</script>hi'), 'hi', 'script contents never reach the plain text')
+eq(htmlToPlain('&amp;&lt;&gt;&nbsp;&#39;'), `&<> '`, 'entities are decoded, not left as codes')
+eq(htmlToPlain(''), '', 'empty html is empty text')
+eq(htmlToPlain(undefined), '', 'missing html is empty text')
+
+eq(commentPlain(joinRich('ดูตาราง', '<table><tr><td>x</td></tr></table>')), 'ดูตาราง\nx',
+  'the readable version covers both halves')
+eq(commentPlain('ธรรมดา'), 'ธรรมดา', 'a plain comment reads as itself')
+// แท็กหลุดไปโผล่ในอีเมลแจ้งเตือนไม่ได้
+eq(plainSnippet(joinRich('ดู', '<b>ตาราง</b>')).includes('<'), false,
+  'no markup leaks into a notification')
+eq(plainSnippet(joinRich('', '<p>' + 'ก'.repeat(300) + '</p>'), 50).length, 50,
+  'a long comment is cut to the asked length')
+eq(plainSnippet('สั้น', 50), 'สั้น', 'a short comment is not padded or cut')
+
+// คลิปบอร์ดใส่ text/html มาแทบทุกครั้ง — ต้องรู้ว่าครั้งไหนคุ้มเก็บ
+eq(hasRichMarkup('<table><tr><td>x</td></tr></table>'), true, 'a table is worth keeping')
+eq(hasRichMarkup('<ul><li>x</li></ul>'), true, 'a list is worth keeping')
+eq(hasRichMarkup('<a href="https://x.co">x</a>'), true, 'a link is worth keeping')
+eq(hasRichMarkup('<img src="x">'), true, 'an image is worth keeping')
+eq(hasRichMarkup('<span style="color:red">แค่ข้อความ</span>'), false,
+  'a bare span around ordinary text is not formatting worth keeping')
+eq(hasRichMarkup('<p>ย่อหน้าเปล่า</p>'), false, 'a plain paragraph stays on the plain-text path')
+eq(hasRichMarkup(''), false, 'nothing pasted is not rich')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
