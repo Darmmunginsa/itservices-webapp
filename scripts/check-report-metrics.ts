@@ -16,6 +16,7 @@ import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOpti
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
+import { findTemplate, isOn, templateProblem } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
@@ -1644,6 +1645,46 @@ eq(ackOnCreate('a@b.co', undefined).IsAcknowledged, false,
 // ไม่ต้องมีชื่อ/วันที่ตอนสร้าง — ยังไม่มีใครรับ จะเขียนชื่อคนรับไปทำไม
 eq(Object.keys(ackOnCreate('a@b.co', 'b@c.co')).join(','), 'IsAcknowledged',
   'creating work writes only the flag, not an accepter who does not exist yet')
+
+
+
+// -- หา template อีเมล (services/emailService) --
+// บั๊กจริง: ผู้ใช้เปิด template ไว้แล้ว แต่ระบบบอกว่า "ยังไม่ได้เปิด template"
+// EventKey เป็นข้อความที่คนพิมพ์เองใน SharePoint ช่องว่างท้ายบรรทัดก็ทำให้หาไม่เจอ
+const MAILTPL = [
+  { id: 1, Title: 'รับงาน', EventKey: ' work_acknowledged ', Subject: 'ส', Body: 'บ', IsEnabled: true, Recipients: '' },
+  { id: 2, Title: 'ปิดเคส', EventKey: 'Incident_Resolved', Subject: 'ส', Body: 'บ', IsEnabled: true, Recipients: '' },
+  { id: 3, Title: 'ปิดไว้', EventKey: 'ticket_created', Subject: 'ส', Body: 'บ', IsEnabled: false, Recipients: '' },
+]
+
+eq(findTemplate(MAILTPL, 'work_acknowledged')?.id, 1, 'a stray space around the key does not hide the template')
+eq(findTemplate(MAILTPL, 'incident_resolved')?.id, 2, 'the key match ignores letter case')
+eq(findTemplate(MAILTPL, ' WORK_ACKNOWLEDGED ')?.id, 1, 'spaces and case together still match')
+eq(findTemplate(MAILTPL, 'ticket_created'), undefined, 'a row switched off is not used')
+eq(findTemplate(MAILTPL, 'ไม่มีอันนี้'), undefined, 'a key nobody added finds nothing')
+eq(findTemplate([], 'work_acknowledged'), undefined, 'an empty list is not a crash')
+
+// IsEnabled ถูกสร้างเป็น Yes/No, Choice หรือ Text ก็ได้ แล้วแต่คนสร้างลิสต์
+eq(isOn(true), true, 'a real boolean works')
+eq(isOn(false), false, 'and so does false')
+eq(isOn('Yes'), true, 'a text column reading Yes counts as on')
+eq(isOn('ใช่'), true, 'and so does the Thai word')
+eq(isOn('No'), false, 'No is off')
+eq(isOn('ปิด'), false, 'and so is the Thai word for closed')
+eq(isOn(''), false, 'a blank value is off')
+// ไม่มีคอลัมน์เลย = การมีแถวอยู่ก็คือความตั้งใจจะใช้แล้ว ดีกว่าเงียบเพราะคอลัมน์ที่ไม่มี
+eq(isOn(undefined), true, 'a list with no IsEnabled column still sends')
+eq(isOn(null), true, 'and so does a row that never set it')
+
+// ข้อความต้องชี้ไปที่สิ่งที่ต้องไปแก้จริง ไม่ใช่บอกว่า "ยังไม่ได้เปิด" ทุกกรณี
+eq(templateProblem(MAILTPL, 'ticket_created').includes('IsEnabled'), true,
+  'a row that exists but is switched off says so')
+eq(templateProblem(MAILTPL, 'work_assigned').includes('work_acknowledged'), true,
+  'a near-miss key suggests what is actually in the list')
+eq(templateProblem([], 'work_assigned').includes('0 แถว'), true,
+  'an empty list says the list is empty rather than blaming a switch')
+eq(templateProblem(MAILTPL, 'zzzzzz').includes('ไม่พบแถว'), true,
+  'a key with nothing like it says the row is missing')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)

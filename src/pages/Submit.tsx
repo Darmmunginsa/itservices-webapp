@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
 import { ackOnCreate } from '../utils/ackInbox'
+import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -264,6 +265,20 @@ export default function Submit() {
             linkPath: form.projectId ? `/projects/${form.projectId}` : '/my-work',
             eventType: 'task_assigned',
           })
+        }
+        // Task ไม่มีเมลของตัวเองเลย — แจ้งในแอปอย่างเดียวคือหวังว่าเขาจะเปิดแอปมาเห็น
+        // Ticket ไม่ต้องเพิ่มตรงนี้ เพราะผู้รับผิดชอบถูก CC ในเมล ticket_created อยู่แล้ว
+        // ส่งสองฉบับเรื่องเดียวกันแย่กว่าฉบับเดียวที่ดี
+        if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
+          const mail = await notifyAssigned({
+            kind: 'Task', id: 0, title: form.title,
+            link: form.projectId ? `/projects/${form.projectId}` : '/my-work',
+            fromEmail: user.email, fromName: user.displayName,
+            due: dueDate ?? undefined, status: 'Open',
+            agentName: form.assignedName || form.assignedEmail, agentEmail: form.assignedEmail,
+          })
+          const warn = mail.sent ? null : assignFailMessage(mail.reason, mail.detail)
+          if (warn) addToast('error', warn)
         }
         addToast('success', 'สร้าง Task สำเร็จ')
 

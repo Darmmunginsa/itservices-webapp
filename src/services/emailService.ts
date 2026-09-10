@@ -4,6 +4,7 @@
  */
 import { spGet } from './sharepoint'
 import { sendMail } from './graph'
+import { findTemplate, templateProblem } from '../utils/emailTemplate'
 
 // CC ทุกครั้งที่เปิด Ticket ใหม่ (ทีมวิศวกรต้องรับรู้ทุกเคส)
 export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
@@ -122,12 +123,20 @@ export async function sendTemplateEmail(
 ): Promise<SendResult> {
   try {
     const templates = await getTemplates()
-    const tpl = templates.find(t => t.EventKey === eventKey && t.IsEnabled)
-    if (!tpl) return { ok: false, reason: 'no-template' }  // ไม่มี template หรือ disabled
+    const found = findTemplate(templates, eventKey)
+    // "ไม่มี template" กับ "มีแต่ยังไม่เปิด" กับ "เปิดแล้วแต่เนื้อว่าง" คนละเรื่องกัน
+    // เดิมตอบเหมือนกันหมดว่า "ยังไม่ได้เปิด" ซึ่งพาคนไปแก้ผิดจุด
+    if (!found) return { ok: false, reason: 'no-template', detail: templateProblem(templates, eventKey) }
+    const tpl = found
 
     let subject = render(tpl.Subject || '', vars)
     let body    = render(tpl.Body    || '', vars)
-    if (!subject || !body) return { ok: false, reason: 'no-template' }
+    if (!subject || !body) {
+      return {
+        ok: false, reason: 'no-template',
+        detail: `template "${eventKey}" เปิดอยู่ แต่ช่อง ${!subject ? 'Subject' : 'Body'} ว่าง`,
+      }
+    }
 
     // ── เมลของ Ticket: ใช้ "ชื่อเรื่องของลูกค้า" เป็นหัวข้อ ไม่ใช่เลข Ticket ──
     // (หลักการเดียวกับ Add-in) เลข Ticket ย้ายไปเป็นแถบบนเนื้อเมลแทน

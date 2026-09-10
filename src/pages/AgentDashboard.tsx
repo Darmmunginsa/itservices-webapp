@@ -12,6 +12,7 @@ import { spGet } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { incidentMailPlan } from '../utils/incidentMail'
 import { assignWork, ackColumnWarning } from '../services/assignWork'
+import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
@@ -124,6 +125,19 @@ export default function AgentDashboard() {
         t.kind === 'ticket' ? 'AssignedToName' : 'AssignedTo', extra)
       if (res.missingAckColumns) addToast('error', ackColumnWarning(LIST_OF[t.kind]))
       addToast('success', `Assign ให้ ${agent?.Title ?? selectedAgentEmail} แล้ว`)
+
+      // Ticket/Task ไม่มีเมลเฉพาะของตัวเอง — ใช้เมล "มีงานรอให้คุณรับ" ร่วมกัน
+      if (t.kind !== 'incident') {
+        const mail = await notifyAssigned({
+          kind: t.kind === 'ticket' ? 'Ticket' : 'Task',
+          id: t.id, title: t.title, link: workLink(t),
+          fromEmail: user.email, fromName: user.displayName,
+          due: t.due, tag: t.priority, status: t.status,
+          agentName: agent?.Title ?? selectedAgentEmail, agentEmail: selectedAgentEmail,
+        })
+        const warn = mail.sent ? null : assignFailMessage(mail.reason, mail.detail)
+        if (warn) addToast('error', warn)
+      }
 
       if (t.kind === 'incident') {
         const inc = incidents.find(i => i.id === t.id)

@@ -472,7 +472,7 @@ export default function ProjectDetail() {
         due: task.DueDate, status: task.IsCompleted ? 'Completed' : 'Active',
         agentName: user.displayName, agentEmail: user.email,
       })
-      const msg = res.sent ? null : ackFailMessage(res.reason)
+      const msg = res.sent ? null : ackFailMessage(res.reason, res.detail)
       if (msg) addToast('error', msg)
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }

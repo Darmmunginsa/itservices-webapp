@@ -20,7 +20,7 @@ import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem 
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
-import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
+import { notifyAcknowledged, ackFailMessage, notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket, TicketComment, TicketStatus, TicketMember } from '../types/ticket'
 import type { Project } from '../types/project'
@@ -505,6 +505,19 @@ export default function TicketDetail() {
         })
       }
       addToast('success', `Reassign ให้ ${agent?.Title} แล้ว`)
+      // งานไปรออยู่ในกล่อง "รอรับงาน" ของเขา — ต้องบอกเขาด้วย
+      // ไม่งั้นเขาต้องบังเอิญเปิดหน้างานของฉันถึงจะรู้ว่ามีงานเข้า
+      if (!selfAssign) {
+        const mail = await notifyAssigned({
+          kind: 'Ticket', id: ticket.id, title: ticket.Title,
+          link: `/tickets/${ticket.id}`,
+          fromEmail: user?.email, fromName: user?.displayName,
+          due: ticket.DueDate, tag: ticket.Priority, status: ticket.Status,
+          agentName: agent?.Title ?? newAssignedEmail, agentEmail: newAssignedEmail,
+        })
+        const warn = mail.sent ? null : assignFailMessage(mail.reason, mail.detail)
+        if (warn) addToast('error', warn)
+      }
       setNewAssignedEmail('')
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setReassigning(false) }
   }
@@ -528,7 +541,7 @@ export default function TicketDetail() {
         due: ticket.DueDate, tag: ticket.Priority, status: ticket.Status,
         agentName: user.displayName, agentEmail: user.email,
       })
-      const msg = res.sent ? null : ackFailMessage(res.reason)
+      const msg = res.sent ? null : ackFailMessage(res.reason, res.detail)
       if (msg) addToast('error', msg)
     } catch { addToast('error', 'เกิดข้อผิดพลาด') }
   }

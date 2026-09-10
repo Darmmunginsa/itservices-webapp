@@ -635,3 +635,58 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
   </td></tr>
 </table>
 ```
+
+---
+
+## 8. Work Assigned — `work_assigned`
+
+ส่งถึง **คนที่ถูกมอบหมาย** เมื่อมีงานเข้ามารอในกล่อง "รอรับงาน"
+(ใช้กับ Ticket และ Task · Incident มี `incident_assigned` ของตัวเองที่มีบริบทของเคสอยู่แล้ว)
+
+ตัวแปรชุดเดียวกับ `work_acknowledged` — `{{work_kind}}` `{{work_title}}`
+`{{agent_name}}` `{{from_name}}` `{{due_date}}` `{{tag}}` `{{status}}` `{{link}}`
+
+**Subject:**
+```
+มีงานรอให้คุณรับ: {{work_title}}
+```
+
+**Body:**
+```html
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
+      <tr><td bgcolor="#1a5276" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#d4e6f1;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td bgcolor="#2471a3" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">มีงานรอให้คุณรับ</td></tr>
+      <tr><td bgcolor="#1a5276" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#c5dcea;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
+      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
+        <p style="margin:0 0 14px;font-size:15px;">เรียน คุณ <strong>{{agent_name}}</strong></p>
+        <p style="margin:0 0 24px;color:#555555;"><strong>{{from_name}}</strong> ได้มอบหมายงานให้คุณ งานรออยู่ในกล่อง <strong>“รอรับงาน”</strong> ที่หน้างานของฉัน</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
+          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">รายละเอียดงาน</td></tr>
+          <tr><td style="padding:0 18px 16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
+              <tr><td style="padding:5px 0;color:#888888;width:110px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#222222;font-weight:bold;">{{work_title}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ประเภทงาน</td><td style="padding:5px 0;color:#222222;">{{work_kind}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ผู้มอบหมาย</td><td style="padding:5px 0;color:#222222;">{{from_name}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความสำคัญ</td><td style="padding:5px 0;color:#222222;">{{tag}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">สถานะ</td><td style="padding:5px 0;color:#222222;">{{status}}</td></tr>
+              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">กำหนดส่ง</td><td style="padding:5px 0;color:#c0392b;font-weight:bold;">{{due_date}}</td></tr>
+            </table>
+          </td></tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
+          <tr><td bgcolor="#fef5e7" style="padding:12px 16px;border-left:4px solid #e67e22;font-family:'Segoe UI',Arial,sans-serif;color:#7e5109;font-size:13px;line-height:1.6;">งานนี้ <strong>ยังไม่เข้ารายการงานของคุณ</strong> จนกว่าจะกดรับ — กดรับเพื่อยืนยันว่าเห็นแล้ว ระบบจะแจ้งผู้มอบหมายให้อัตโนมัติ</td></tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;">
+          <tr><td bgcolor="#1c2e4a" style="padding:11px 26px;"><a href="{{link}}" style="font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">เปิดดูและกดรับงาน</a></td></tr>
+        </table>
+      </td></tr>
+      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
+      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
+      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
+      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
+    </table>
+  </td></tr>
+</table>
+```

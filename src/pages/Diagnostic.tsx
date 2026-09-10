@@ -3,6 +3,7 @@ import { CheckCircle, XCircle, Loader } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { spGet } from '../services/sharepoint'
+import { findTemplate, templateProblem, type TemplateRow } from '../utils/emailTemplate'
 
 const ALL_LISTS = [
   'HD_AgentProfiles',
@@ -21,6 +22,30 @@ const ALL_LISTS = [
   'PM_Notes',
   'PM_Incidents',
 ]
+
+/**
+ * EventKey ที่โค้ดเรียกใช้จริง — ต้องตรงกับที่กรอกใน HD_EmailTemplates
+ *
+ * ทำหน้านี้เพราะเคยเจอว่า EventKey มีช่องว่างท้ายบรรทัด ระบบจึงบอกว่า
+ * "ยังไม่ได้เปิด template" ทั้งที่แถวนั้นเปิดอยู่ — ไม่มีทางรู้เลยถ้าไม่เทียบทีละตัว
+ */
+const EVENT_KEYS = [
+  'ticket_created',
+  'comment_added',
+  'incident_created',
+  'incident_assigned',
+  'incident_resolved',
+  'work_assigned',
+  'work_acknowledged',
+]
+
+interface TplRow extends TemplateRow { id: number; Title: string }
+
+interface TplResult {
+  key: string
+  ok: boolean
+  note: string
+}
 
 type Status = 'pending' | 'ok' | 'error'
 
@@ -43,6 +68,30 @@ async function testList(name: string): Promise<Result> {
 export default function Diagnostic() {
   const [results, setResults] = useState<Result[]>(ALL_LISTS.map(l => ({ list: l, status: 'pending' })))
   const [done, setDone] = useState(false)
+  const [tpl, setTpl] = useState<TplResult[] | null>(null)
+  const [tplError, setTplError] = useState('')
+
+  // ตรวจ template อีเมลด้วยกฎเดียวกับตอนส่งจริง — ไม่ใช่กฎที่เขียนใหม่ให้หน้านี้
+  // ถ้าเขียนใหม่ หน้านี้จะบอกว่าผ่านทั้งที่ส่งจริงแล้วไม่ออก
+  useEffect(() => {
+    let cancelled = false
+    spGet<TplRow>('HD_EmailTemplates', undefined, 'Id,Title,EventKey,Subject,Body,IsEnabled')
+      .then(rows => {
+        if (cancelled) return
+        setTpl(EVENT_KEYS.map(key => {
+          const hit = findTemplate(rows, key)
+          if (!hit) return { key, ok: false, note: templateProblem(rows, key) }
+          if (!hit.Subject?.trim()) return { key, ok: false, note: 'เปิดอยู่ แต่ช่อง Subject ว่าง' }
+          if (!hit.Body?.trim()) return { key, ok: false, note: 'เปิดอยู่ แต่ช่อง Body ว่าง' }
+          // ช่องว่างมองไม่เห็นด้วยตา ต้องบอกให้รู้ว่าค่าจริงไม่ตรงกับที่ตาเห็น
+          const raw = String(hit.EventKey ?? '')
+          const spaces = raw !== raw.trim() ? ' · EventKey มีช่องว่างหน้า/หลัง (ระบบทนให้ แต่ควรลบ)' : ''
+          return { key, ok: true, note: `พร้อมใช้ (แถว "${hit.Title}")${spaces}` }
+        }))
+      })
+      .catch(e => { if (!cancelled) setTplError((e as Error).message) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -74,6 +123,28 @@ export default function Diagnostic() {
           {pending > 0 && <span className="text-gray-400">{pending} กำลังทดสอบ...</span>}
           {done && <span className="text-gray-500 font-normal">เสร็จสิ้น</span>}
         </div>
+
+        {/* Template อีเมล — เช็คด้วยกฎเดียวกับตอนส่งจริง */}
+        <Card>
+          <p className="text-sm font-semibold mb-2">Template อีเมล (HD_EmailTemplates)</p>
+          {tplError ? (
+            <p className="text-xs text-red-500">อ่านลิสต์ไม่ได้: {tplError}</p>
+          ) : !tpl ? (
+            <p className="text-xs text-gray-400">กำลังตรวจ...</p>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {tpl.map(t => (
+                <div key={t.key} className="flex items-start gap-3 py-2 text-sm">
+                  {t.ok
+                    ? <CheckCircle size={16} className="text-green-500 flex-shrink-0 mt-0.5" />
+                    : <XCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />}
+                  <span className="font-mono text-xs w-44 flex-shrink-0">{t.key}</span>
+                  <span className={`text-xs ${t.ok ? 'text-gray-500' : 'text-red-500'}`}>{t.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         <Card className="divide-y divide-gray-100 dark:divide-gray-800">
           {results.map(r => (

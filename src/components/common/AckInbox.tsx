@@ -49,7 +49,7 @@ export function AckInbox({ rows, loading, onAcked }: Props) {
         due: row.due, tag: row.tag, status: row.status,
         agentName: user.displayName, agentEmail: user.email,
       })
-      const msg = res.sent ? null : ackFailMessage(res.reason)
+      const msg = res.sent ? null : ackFailMessage(res.reason, res.detail)
       if (msg) addToast('error', msg)
     } catch {
       addToast('error', 'รับงานไม่สำเร็จ')
