@@ -118,3 +118,23 @@ export function availableContacts<T extends { Title?: string; Company?: string; 
     return [c.Title, c.Company, email].some(v => (v ?? '').toLowerCase().includes(q))
   })
 }
+
+/**
+ * อีเมลลูกค้าของโครงการ — ใช้ "เลือกไว้ให้ก่อน" ตอนสร้าง Ticket/Task/Incident จากในโครงการ
+ *
+ * เดิมต้องกดเลือกลูกค้าเองทุกครั้ง ทั้งที่งานในโครงการเกือบทั้งหมดก็เกี่ยวกับลูกค้าชุดเดิม
+ * เลือกให้ก่อนแล้วปล่อยให้เอาออก ง่ายกว่าให้เพิ่มทีละคน — และไม่มีใครลืมคนสำคัญ
+ * ตัดซ้ำแบบไม่สนตัวพิมพ์ เพราะอีเมลเดียวกันอาจถูกกรอกต่างกันสองแถว
+ */
+export function presetCustomerEmails(members: ProjectCustomer[], projectId: number): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const c of customersOf(members, projectId)) {
+    const e = (c.CustomerEmail ?? '').trim()
+    const k = e.toLowerCase()
+    if (!e || !k.includes('@') || seen.has(k)) continue
+    seen.add(k)
+    out.push(e)
+  }
+  return out
+}

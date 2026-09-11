@@ -18,6 +18,7 @@ import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
 import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from '../src/utils/reporter'
 import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pagePerms'
+import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1853,6 +1854,21 @@ const gp = groupPages([
 eq(gp.map(g => g.group).join(','), 'main,system', 'groups come in a fixed order and empty groups are dropped')
 eq(gp[0].pages.length, 2, 'pages land in their group')
 
+
+
+// -- ลูกค้าของโครงการถูกเลือกไว้ก่อน ตอนสร้างงานจากในโครงการ (customerGroups.presetCustomerEmails) --
+const PC = [
+  { id: 1, Title: 'สมชาย', CustomerEmail: 'somchai@acme.co', ProjectID: 7 },
+  { id: 2, Title: 'สมชาย (ซ้ำ)', CustomerEmail: 'SOMCHAI@acme.co', ProjectID: 7 },
+  { id: 3, Title: 'ไม่มีเมล', CustomerEmail: '', ProjectID: 7 },
+  { id: 4, Title: 'ผิดรูป', CustomerEmail: 'not-an-email', ProjectID: 7 },
+  { id: 5, Title: 'อารีย์', CustomerEmail: 'aree@acme.co', ProjectID: 7 },
+  { id: 6, Title: 'คนโครงการอื่น', CustomerEmail: 'x@other.co', ProjectID: 8 },
+]
+eq(presetCustomerEmails(PC, 7).join(','), 'somchai@acme.co,aree@acme.co',
+  'the project customers are preselected, duplicates and junk dropped, other projects ignored')
+eq(presetCustomerEmails(PC, 9).length, 0, 'a project with no customers preselects nobody')
+eq(presetCustomerEmails([], 7).length, 0, 'no customer list at all is not a crash')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

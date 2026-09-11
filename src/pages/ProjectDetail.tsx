@@ -20,6 +20,7 @@ import { countProjectChildren, deleteProjectCascade } from '../services/projectS
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { assignFields } from '../utils/ackInbox'
+import { customerOptions, presetCustomerEmails, type ProjectCustomer } from '../utils/customerGroups'
 import { mailFailText } from '../utils/emailTemplate'
 import { reporterLine } from '../utils/reporter'
 import { createNotification } from '../services/notificationService'
@@ -146,6 +147,8 @@ export default function ProjectDetail() {
   const [savingTask, setSavingTask] = useState(false)
   // Task: Track + Outlook Calendar (เหมือนหน้าแจ้งงาน)
   const [contracts, setContracts] = useState<Contract[]>([])
+  // ลูกค้าที่ผูกกับโครงการนี้ — ถูกเลือกไว้ให้ก่อนตอนสร้างงานในโครงการ
+  const [projectCustomers, setProjectCustomers] = useState<ProjectCustomer[]>([])
   const [trackTask, setTrackTask] = useState(false)
   const [addCalendar, setAddCalendar] = useState(false)
   const [isOnlineMeeting, setIsOnlineMeeting] = useState(false)
@@ -210,10 +213,9 @@ export default function ProjectDetail() {
     label: `${a.Title}${a.SupportGroup ? ` · ${a.SupportGroup}` : ''}`,
   }))
 
-  // Customer (contract) options for calendar attendees
-  const contractEmailOptions = contracts
-    .filter(c => c.CustomerEmail)
-    .map(c => ({ value: c.CustomerEmail, label: `${c.Title}${c.Company ? ` (${c.Company})` : ''}` }))
+  // ตัวเลือกลูกค้า = สัญญา + ผู้ติดต่อในโครงการ — ไม่งั้นคนที่ถูกเลือกไว้ให้จะเห็นเป็นอีเมลลอย ๆ ไม่มีชื่อ
+  const contractEmailOptions = customerOptions(contracts, projectCustomers)
+  const projectCustomerEmails = presetCustomerEmails(projectCustomers, Number(id))
 
   const buildCalendarAttendees = () => [...new Set([
     // คนที่ถูก assign → ใส่เป็น attendee อัตโนมัติ เพื่อให้ Outlook ส่ง invite
@@ -314,6 +316,9 @@ export default function ProjectDetail() {
       .then(setAllAssets).catch(() => {})
     spGet<Contract>('HD_Contracts', undefined, 'Id,Title,CustomerEmail,Company', 'Title asc', 500)
       .then(setContracts).catch(() => {})
+    // ยังไม่ได้สร้างลิสต์นี้ก็ไม่เป็นไร — แค่ไม่มีลูกค้ามารอไว้ให้
+    spGet<ProjectCustomer>('PM_ProjectCustomers', `ProjectID eq ${Number(id)}`, undefined, 'Title asc', 500)
+      .then(setProjectCustomers).catch(() => {})
     spGet<MonitorStatusRow>('HD_MonitorStatus', undefined, 'Id,MonitorId,Status,LastCheck,Uptime24', undefined, 500)
       .then(rows => {
         const m: Record<number, MonitorStatusRow> = {}
@@ -497,6 +502,8 @@ export default function ProjectDetail() {
     setEditingTask(null)
     setTaskForm({ ...EMPTY_TASK })
     resetTaskExtras()
+    // ลูกค้าของโครงการรอไว้ให้ก่อน — จะเอาออกก็ค่อยตัด ง่ายกว่าให้เพิ่มทีละคนทุกครั้ง
+    setCalCustomerEmails(projectCustomerEmails)
     setShowTaskModal(true)
   }
 

@@ -13,7 +13,7 @@ import { SearchSelect, SearchMultiSelect } from '../components/common/SearchSele
 import { getDirectoryPeople, DirectoryConsentError } from '../services/graph'
 import { mergePeople, type DirectoryPerson } from '../utils/people'
 import { incidentMailPlan } from '../utils/incidentMail'
-import { buildGroups, toggleGroup, customerOptions, type ProjectCustomer } from '../utils/customerGroups'
+import { buildGroups, toggleGroup, customerOptions, presetCustomerEmails, type ProjectCustomer } from '../utils/customerGroups'
 import { spGet, spCreate } from '../services/sharepoint'
 import { sendTemplateEmail } from '../services/emailService'
 import { createNotification } from '../services/notificationService'
@@ -104,7 +104,13 @@ export default function Submit() {
       .then(setContracts).catch(() => {})
     // ยังไม่ได้สร้างลิสต์นี้ก็ไม่เป็นไร — แค่ไม่มีกลุ่มให้เลือก
     spGet<ProjectCustomer>('PM_ProjectCustomers', undefined, undefined, 'Title asc', 2000)
-      .then(setProjectCustomers).catch(() => {})
+      .then(rows => {
+        setProjectCustomers(rows)
+        // มาจากปุ่มในโครงการ (?project=) → ลูกค้าของโครงการนั้นถูกเลือกไว้ให้เลย เอาออกได้
+        const pid = Number(searchParams.get('project') ?? '')
+        if (pid) setCalCustomerEmails(presetCustomerEmails(rows, pid))
+      }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // กรอง Active อย่างเดียวก็จริง แต่โครงการที่เลือกไว้แล้วต้องอยู่ในลิสต์เสมอ
@@ -115,6 +121,13 @@ export default function Submit() {
 
   const set = (key: keyof typeof EMPTY_FORM, val: string) =>
     setForm(f => ({ ...f, [key]: val }))
+
+  // เปลี่ยนโครงการ = เปลี่ยนชุดลูกค้าที่รอไว้ — แทนที่ทั้งชุด ไม่ใช่เติมทับ
+  // ไม่งั้นสลับโครงการไปมาแล้วลูกค้าของโครงการก่อนจะติดมาด้วย
+  const selectProject = (pid: string) => {
+    set('projectId', pid)
+    setCalCustomerEmails(pid ? presetCustomerEmails(projectCustomers, Number(pid)) : [])
+  }
 
   const selectAgent = (email: string) => {
     const agent = agents.find(a => a.EmailText === email)
@@ -641,7 +654,7 @@ export default function Submit() {
                 {/* ผูกกับโครงการ (ไม่บังคับ) — Ticket ก็เป็นงานส่วนหนึ่งของโครงการได้ */}
                 <div>
                   <label className={lx}>{t('submit.projectOptional')}</label>
-                  <select value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                  <select value={form.projectId} onChange={e => selectProject(e.target.value)} className={cx}>
                     <option value="">{t('submit.noProject')}</option>
                     {filteredProjects.map(p => (
                       <option key={p.id} value={String(p.id)}>
@@ -708,7 +721,7 @@ export default function Submit() {
                       {t('submit.onlyActive')}
                     </label>
                   </div>
-                  <select required value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                  <select required value={form.projectId} onChange={e => selectProject(e.target.value)} className={cx}>
                     <option value="">{t('submit.selectProject')}</option>
                     {filteredProjects.length > 0
                       ? filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)
@@ -827,7 +840,7 @@ export default function Submit() {
                     </div>
                     {/* Incident ต้องมีโครงการเสมอ — ปัญหาที่ไม่รู้ว่าของงานไหน ตามต่อไม่ได้
                         และหลุดจากรายงานทั้งหมดที่จัดกลุ่มตามโครงการ */}
-                    <select required value={form.projectId} onChange={e => set('projectId', e.target.value)} className={cx}>
+                    <select required value={form.projectId} onChange={e => selectProject(e.target.value)} className={cx}>
                       <option value="">— เลือกโครงการ —</option>
                       {filteredProjects.map(p => <option key={p.id} value={String(p.id)}>{p.Title}{p.Status !== 'Active' ? ` [${p.Status}]` : ''}{p.Company ? ` (${p.Company})` : ''}</option>)}
                     </select>
