@@ -248,7 +248,8 @@ export default function Submit() {
           link: appLink(),
         },
           [form.customerEmail || user.email],            // To
-          [form.assignedEmail, user.email].filter(Boolean) as string[],  // CC
+          // CC = ผู้รับผิดชอบ + ผู้แจ้ง + ลูกค้าใน loop (ลูกค้าหลักอยู่ที่ To แล้ว service ตัดซ้ำให้)
+          [form.assignedEmail, user.email, ...calCustomerEmails].filter(Boolean) as string[],  // CC
         )
         const mailWarn = mailFailText(`สร้าง Ticket ${ticketNum} แล้ว`, mailRes, 'ticket_created', 'ลูกค้ายังไม่ได้รับเมล')
         if (mailWarn) addToast('error', mailWarn)
@@ -306,6 +307,7 @@ export default function Submit() {
         if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
           const mail = await notifyAssigned({
             kind: 'Task', id: 0, title: form.title,
+            cc: calCustomerEmails,
             link: form.projectId ? `/projects/${form.projectId}` : '/my-work',
             fromEmail: user.email, fromName: user.displayName,
             due: dueDate ?? undefined, status: 'Open', note: form.taskNote,
@@ -394,7 +396,7 @@ export default function Submit() {
             assignedEmail: form.assignedEmail,
             requesterEmail: user.email,
             // คนแจ้งสำรองคือเจ้าของปัญหาจริง — ต้องได้เมลด้วย เหมือนลูกค้าของ Ticket
-            watchers: [proj?.CreatedByEmail, ...reporterWatchers(form.customerEmail)],
+            watchers: [proj?.CreatedByEmail, ...reporterWatchers(form.customerEmail), ...calCustomerEmails],
             actorEmail: user.email,
             baseUrl: window.location.origin + window.location.pathname,
           })
@@ -485,6 +487,39 @@ export default function Submit() {
     )
   }
 
+  /**
+   * ลูกค้าใน loop — คนชุดเดียวกันได้ทั้ง "เมลแจ้ง" และ "นัดหมายปฏิทิน"
+   *
+   * เดิมอยู่ในส่วนปฏิทิน จึงเห็นก็ต่อเมื่อติ๊กเพิ่มนัด และมีผลแค่กับนัด
+   * แต่ลูกค้าของโครงการควรรู้เรื่องงานที่เกี่ยวกับเขาตั้งแต่เมลฉบับแรก ไม่ใช่รอนัดถึงจะเห็น
+   * เลือกไว้ให้ก่อนจากลูกค้าของโครงการ — ตัดออกได้ ตัวที่เหลือคือคนที่จะได้เมลจริง
+   */
+  function renderCustomerLoop() {
+    return (
+      <div>
+        <label className={lx}>🔔 ลูกค้าใน loop (ได้เมลแจ้ง + นัดหมาย)</label>
+        <SearchMultiSelect
+          label="ลูกค้า"
+          options={contractEmailOptions}
+          groups={customerGroups}
+          onToggleGroup={g => setCalCustomerEmails(prev => toggleGroup(
+            { ...g, projectId: 0 }, prev))}
+          selected={calCustomerEmails}
+          onToggle={v => setCalCustomerEmails(prev =>
+            prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]
+          )}
+        />
+        <p className="text-[11px] text-gray-400 mt-1 truncate">
+          {calCustomerEmails.length > 0
+            ? `จะได้เมล: ${calCustomerEmails.join(', ')}`
+            : form.projectId
+              ? 'โครงการนี้ยังไม่มีลูกค้าผูกไว้ — เลือกเพิ่มได้ หรือเว้นไว้'
+              : 'เลือกโครงการแล้วลูกค้าของโครงการจะถูกเลือกไว้ให้'}
+        </p>
+      </div>
+    )
+  }
+
   // เหตุผลเดียวกับ renderReporter — ประกาศเป็น component ในตัวแล้วช่องวันที่หลุดโฟกัสตอนพิมพ์
   function renderCalendar() {
     return (
@@ -553,24 +588,7 @@ export default function Submit() {
           )}
         </div>
 
-        {/* Customer attendees */}
-        <div>
-          <label className={lx}>{t('submit.customerAttendees')}</label>
-          <SearchMultiSelect
-            label="ลูกค้า"
-            options={contractEmailOptions}
-            groups={customerGroups}
-            onToggleGroup={g => setCalCustomerEmails(prev => toggleGroup(
-              { ...g, projectId: 0 }, prev))}
-            selected={calCustomerEmails}
-            onToggle={v => setCalCustomerEmails(prev =>
-              prev.includes(v) ? prev.filter(e => e !== v) : [...prev, v]
-            )}
-          />
-          {calCustomerEmails.length > 0 && (
-            <p className="text-xs text-gray-400 mt-1 truncate">{calCustomerEmails.join(', ')}</p>
-          )}
-        </div>
+        {/* ลูกค้าย้ายไปอยู่นอกส่วนปฏิทิน (renderCustomerLoop) — เขาอยู่ใน loop เมลด้วย ไม่ใช่แค่นัดหมาย */}
 
         {/* External emails */}
         <div>
@@ -665,6 +683,7 @@ export default function Submit() {
                 </div>
 
                 {isAgent && renderReporter()}
+                {isAgent && renderCustomerLoop()}
 
                 <div>
                   <label className={lx}>{t('submit.assignAgent')}</label>
@@ -730,6 +749,7 @@ export default function Submit() {
                 </div>
 
                 {isAgent && renderReporter()}
+                {isAgent && renderCustomerLoop()}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -858,6 +878,7 @@ export default function Submit() {
                 </div>
 
                 {isAgent && renderReporter()}
+                {isAgent && renderCustomerLoop()}
 
                 <div>
                   <label className={lx}>{t('submit.assignAgent')}</label>

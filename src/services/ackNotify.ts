@@ -22,6 +22,8 @@ export interface AckNotifyInput {
   agentEmail: string
   /** รายละเอียดงาน (Task) — ใส่ในเมล task_assigned */
   note?: string
+  /** คนที่ต้องอยู่ใน loop ด้วย (เช่นลูกค้าของโครงการ) — CC ไม่ใช่ To */
+  cc?: string[]
 }
 
 export type AckNotifyResult = {
@@ -101,12 +103,12 @@ export async function notifyAssigned(i: AckNotifyInput): Promise<AckNotifyResult
   // Task มี template เฉพาะของตัวเอง (task_assigned) — ถ้าตั้งไว้ใช้ตัวนั้น ไม่มีค่อยใช้ตัวรวม
   // ส่งฉบับเดียวเสมอ ไม่ใช่สองฉบับเรื่องเดียวกัน
   if (i.kind === 'Task') {
-    const specific = await sendTemplateEmail('task_assigned', vars, [to])
+    const specific = await sendTemplateEmail('task_assigned', vars, [to], i.cc ?? [])
     if (specific.ok || specific.reason !== 'no-template') {
       return specific.ok ? { sent: true } : { sent: false, reason: specific.reason, detail: specific.detail }
     }
   }
-  const res = await sendTemplateEmail('work_assigned', vars, [to])
+  const res = await sendTemplateEmail('work_assigned', vars, [to], i.cc ?? [])
   return res.ok ? { sent: true } : { sent: false, reason: res.reason, detail: res.detail }
 }
 

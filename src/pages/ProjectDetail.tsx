@@ -676,7 +676,8 @@ export default function ProjectDetail() {
       requesterEmail: editingIncident?.Author?.EMail || editingIncident?.CreatedByEmail || user?.email,
       // ผู้รับต้องเหมือนกันทุกหน้า: หน้า Incident / แจ้งงาน / Dashboard CC เจ้าของโครงการเท่านั้น
       // เดิมหน้านี้ CC สมาชิกทีมทั้งหมดด้วย — เหตุการณ์เดียวกันแต่คนได้เมลต่างกันแล้วแต่กดจากหน้าไหน
-      watchers: [project?.CreatedByEmail],
+      // ลูกค้าของโครงการอยู่ใน loop เมลด้วย — โมดัลนี้ไม่มีช่องเลือก จึงใช้ทั้งชุด
+      watchers: [project?.CreatedByEmail, ...projectCustomerEmails],
       actorEmail: user?.email,
       baseUrl: window.location.origin + window.location.pathname,
     })
