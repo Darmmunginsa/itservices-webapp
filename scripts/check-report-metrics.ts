@@ -17,6 +17,7 @@ import { incidentRecipients, incidentVars, justResolved, justAssigned } from '..
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
 import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from '../src/utils/reporter'
+import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pagePerms'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1826,6 +1827,31 @@ eq(reporterLine(undefined, undefined), '', 'nothing recorded shows nothing, so t
 eq(reporterWatchers('somchai@acme.co').join(','), 'somchai@acme.co', 'a reporter email joins the mail watchers')
 eq(reporterWatchers('  ').length, 0, 'a blank reporter adds nobody')
 eq(reporterWatchers(undefined).length, 0, 'a missing reporter adds nobody')
+
+
+
+// -- สิทธิ์เข้าถึงหน้า: บันทึกทีเดียวหลายคน (utils/pagePerms) --
+eq(parseKeys('projects, dashboard ,, tools').join('|'), 'projects|dashboard|tools', 'stored keys are split and cleaned')
+eq(parseKeys(undefined).length, 0, 'no row means no pages')
+eq(sameKeys(new Set(['a','b']), new Set(['b','a'])), true, 'order does not matter')
+eq(sameKeys(new Set(['a']), new Set(['a','b'])), false, 'a missing key is a difference')
+
+// ตัว "แก้แล้วยังไม่บันทึก" — บันทึกคนที่ไม่ได้แก้ = เสียเวลา, ข้ามคนที่แก้ = หายเงียบ
+const savedP = new Map([['a@x.co', new Set(['projects'])], ['b@x.co', new Set(['tools'])]])
+const draftP = new Map([
+  ['a@x.co', new Set(['projects'])],            // เท่าเดิม
+  ['b@x.co', new Set(['tools', 'dashboard'])],  // แก้
+  ['c@x.co', new Set<string>()],                // คนใหม่ ยังไม่ติ๊ก
+  ['d@x.co', new Set(['tools'])],               // คนใหม่ ติ๊กแล้ว
+])
+eq(dirtyEmails(draftP, savedP).join(','), 'b@x.co,d@x.co', 'only people whose draft differs from what is saved')
+eq(dirtyEmails(new Map(), savedP).length, 0, 'nothing drafted means nothing to save')
+
+const gp = groupPages([
+  { key: 'x', group: 'system' as const }, { key: 'y', group: 'main' as const }, { key: 'z', group: 'main' as const },
+])
+eq(gp.map(g => g.group).join(','), 'main,system', 'groups come in a fixed order and empty groups are dropped')
+eq(gp[0].pages.length, 2, 'pages land in their group')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
