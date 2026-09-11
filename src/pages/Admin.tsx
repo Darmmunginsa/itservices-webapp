@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane, Mail, Eye } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -21,6 +22,17 @@ const HOLIDAY_TYPES: Holiday['HolidayType'][] = ['ราชการ', 'บร�
 const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษัท' as Holiday['HolidayType'] }
 
 const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
+
+type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates'
+const ADMIN_TABS: { key: AdminTab; label: string; icon: string }[] = [
+  { key: 'announcements', label: 'ข้อความวิ่ง',     icon: '📢' },
+  { key: 'holidays',      label: 'วันหยุด',         icon: '📅' },
+  { key: 'approvers',     label: 'ผู้อนุมัติการลา',  icon: '✅' },
+  { key: 'quotas',        label: 'โควต้าวันลา',      icon: '🧮' },
+  { key: 'templates',     label: 'Template อีเมล',  icon: '✉️' },
+  { key: 'video',         label: 'วิดีโอหน้าหลัก',   icon: '▶️' },
+  { key: 'permissions',   label: 'สิทธิ์เข้าหน้า',   icon: '🔐' },
+]
 
 export default function Admin() {
   const { addToast } = useAppStore()
@@ -521,18 +533,37 @@ export default function Admin() {
     return text.replace(/\{\{(\w+)\}\}/g, (_, k) => (k in SAMPLE_VARS ? escapeHtml(SAMPLE_VARS[k]) : `{{${k}}}`))
   }
 
+  // หมวดที่เปิดอยู่ — อ่านจาก URL เพื่อให้ลิงก์ตรงหมวดได้ (เช่นจาก Diagnostic ไป templates)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab') ?? ''
+  const tab: AdminTab = ADMIN_TABS.some(t => t.key === tabParam) ? (tabParam as AdminTab) : 'announcements'
+  const setTab = (k: AdminTab) => setSearchParams({ tab: k }, { replace: true })
+
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
   return (
     <div>
       <Header title={tr('admin.title')} />
-      <div className="p-4 md:p-6 space-y-6 max-w-3xl">
+      <div className="p-4 md:p-6 space-y-6 max-w-4xl">
+        {/* แยกเป็นหน้าย่อยตามหมวด — หน้าเดียวยาว 7 หมวดต้องเลื่อนหาทุกครั้ง
+            เก็บแท็บไว้ใน ?tab= เพื่อให้รีเฟรช/ส่งลิงก์แล้วเปิดหมวดเดิมได้ */}
+        <nav className="flex flex-wrap gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 sticky top-0 z-10">
+          {ADMIN_TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                tab === t.key ? 'bg-white dark:bg-gray-900 shadow text-gray-900 dark:text-gray-100' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`}>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </nav>
+
 
         {/* สิทธิ์การเข้าถึงหน้า รายคน (Admin เท่านั้น) */}
-        <PagePermissionsPanel />
+        {tab === 'permissions' && <PagePermissionsPanel />}
 
         {/* Announcements Management */}
+        {tab === 'announcements' && (
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Megaphone size={18} className="text-primary-600" />
@@ -579,8 +610,10 @@ export default function Admin() {
           </div>
           <p className="text-xs text-gray-400 mt-2">{announcements.length} {tr('admin.announcementsUnit')}</p>
         </Card>
+        )}
 
         {/* Holiday Management */}
+        {tab === 'holidays' && (
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <CalendarDays size={18} className="text-primary-600" />
@@ -623,8 +656,10 @@ export default function Admin() {
           </div>
           <p className="text-xs text-gray-400 mt-2">{filtered.length} {tr('admin.daysUnit')}</p>
         </Card>
+        )}
 
         {/* Leave Approver Management (per-employee) */}
+        {tab === 'approvers' && (
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Plane size={18} className="text-primary-600" />
@@ -653,8 +688,10 @@ export default function Admin() {
             ))}
           </div>
         </Card>
+        )}
 
         {/* Leave Quota Management (per-employee) */}
+        {tab === 'quotas' && (
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Plane size={18} className="text-primary-600" />
@@ -725,8 +762,10 @@ export default function Admin() {
             </>
           )}
         </Card>
+        )}
 
         {/* Home Video */}
+        {tab === 'video' && (
         <Card>
           <div className="flex items-center gap-2 mb-3">
             <CalendarDays size={16} className="text-red-600" />
@@ -740,7 +779,9 @@ export default function Admin() {
             <Button size="sm" onClick={saveVideo} disabled={savingVideo}>{savingVideo ? '...' : 'บันทึก'}</Button>
           </div>
         </Card>
+        )}
         {/* Email Templates */}
+        {tab === 'templates' && (
         <Card>
           <div className="flex items-center gap-3 mb-4">
             <Mail size={18} className="text-primary-600" />
@@ -822,6 +863,7 @@ export default function Admin() {
               </div>
             ))}
         </Card>
+        )}
 
       </div>
 
