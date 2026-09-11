@@ -83,6 +83,9 @@ export function incidentVars(i: IncidentMailInput): MailVars {
     incident_title: i.title ?? '',
     severity: i.severity ?? '',
     status: i.status ?? '',
+    // ชื่อพ้องจากเอกสารเวอร์ชันเก่า — มี template ที่วางแบบนั้นอยู่จริง ช่องสถานะจึงว่างมาตลอด
+    // รับไว้ดีกว่าให้คนไปแก้ HTML เอง
+    incident_status: i.status ?? '',
     // คำอธิบายมีหลายบรรทัด — ต้องแปลง <br> ให้ ไม่งั้นยุบเป็นบรรทัดเดียวในเมล
     // และต้องหนีอักขระก่อน เพราะเป็นข้อความที่คนพิมพ์เอง ไม่ใช่ HTML
     description: textToHtml(i.description),

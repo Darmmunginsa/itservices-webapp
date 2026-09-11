@@ -899,6 +899,7 @@ eq(incidentRecipients({ ...INC, requesterEmail: 'AGENT@its.co.th' }).cc.join(','
 const iv = incidentVars(INC)
 eq(iv.incident_title, 'VDI เข้าไม่ได้', 'the title is available to the template')
 eq(iv.sla_hours, '4 ชั่วโมง', 'SLA reads as hours')
+eq(iv.incident_status, iv.status, 'the old template name for status still fills in — real templates were pasted with it')
 eq(incidentVars({ ...INC, slaHours: 24 }).sla_hours, '1 วัน', 'a whole day reads as days')
 eq(incidentVars({ ...INC, slaHours: null }).sla_hours, 'ไม่ได้กำหนด',
   'no SLA reads as words, so the template does not render a blank cell')

@@ -123,9 +123,9 @@ export const placeholdersOf = (s: string | undefined): string[] =>
 export const EVENT_VARS: Record<string, readonly string[]> = {
   ticket_created:    ['ticket_number', 'ticket_title', 'priority', 'category', 'description', 'customer_name', 'assigned_name', 'link'],
   comment_added:     ['ticket_number', 'ticket_title', 'customer_name', 'assigned_name', 'comment_text', 'link'],
-  incident_created:  ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
-  incident_assigned: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
-  incident_resolved: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
+  incident_created:  ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link', 'incident_status'],
+  incident_assigned: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link', 'incident_status'],
+  incident_resolved: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link', 'incident_status'],
   work_assigned:     ['work_kind', 'work_title', 'agent_name', 'from_name', 'due_date', 'tag', 'status', 'link'],
   work_acknowledged: ['work_kind', 'work_title', 'agent_name', 'from_name', 'due_date', 'tag', 'status', 'link'],
   leave_requested:   ['requester_name', 'leave_type', 'leave_date', 'approver_name', 'link'],
