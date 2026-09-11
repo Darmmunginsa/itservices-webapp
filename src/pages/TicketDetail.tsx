@@ -598,7 +598,12 @@ export default function TicketDetail() {
       repliesByParent.set(c.ParentID, arr)
     }
   })
-  const topComments = comments.filter(c => !c.ParentID)
+  // ใหม่สุดขึ้นบน — เมลลูกค้าที่เพิ่งตอบกลับต้องเห็นทันที ไม่ใช่ไปอยู่ล่างสุดจนดูเหมือนไม่มา
+  // ส่วนคำตอบในเธรดยังเรียงเก่า→ใหม่ เพราะอ่านเป็นบทสนทนา
+  // ใช้ CommentDate ก่อน ถ้าไม่มี (แถวจาก Power Automate บางตัว) ใช้ Id แทน
+  const newestFirst = (a: TicketComment, b: TicketComment) =>
+    (b.CommentDate ?? '').localeCompare(a.CommentDate ?? '') || b.id - a.id
+  const topComments = comments.filter(c => !c.ParentID).sort(newestFirst)
 
   const renderComment = (c: TicketComment, isReply: boolean) => {
     // แยกบล็อกรูปแบบออกก่อน แล้วค่อยแกะเมลที่ relay มาจากส่วนข้อความ

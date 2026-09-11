@@ -241,7 +241,10 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
   comments.forEach(c => {
     if (c.ParentID) { const arr = repliesByParent.get(c.ParentID) ?? []; arr.push(c); repliesByParent.set(c.ParentID, arr) }
   })
-  const topComments = comments.filter(c => !c.ParentID)
+  // ใหม่สุดขึ้นบน — กติกาเดียวกับหน้า Ticket
+  const newestFirst = (a: CommentRow, b: CommentRow) =>
+    (b.CommentDate ?? '').localeCompare(a.CommentDate ?? '') || b.id - a.id
+  const topComments = comments.filter(c => !c.ParentID).sort(newestFirst)
 
   const renderComment = (c: CommentRow, isReply: boolean) => {
     const author = c.Author?.Title ?? '—'
