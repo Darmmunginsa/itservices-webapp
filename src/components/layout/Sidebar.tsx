@@ -87,11 +87,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
 
+      {/* เวอร์ชันแทนชื่อคน — ชื่อ/ตำแหน่งดูได้ที่เมนูโปรไฟล์มุมบนอยู่แล้ว
+          ส่วน "ใช้ตัวไหนอยู่" คือสิ่งที่ต้องบอกได้ตอนแจ้งปัญหา · กดแล้วไปหน้า Diagnostic */}
       <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-        <div className="px-3 py-2">
-          <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{user?.displayName}</p>
-          <p className="text-xs text-gray-400 truncate">{user?.role}</p>
-        </div>
+        <Link to="/debug" className="block px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title={`${user?.displayName ?? ''}${user?.role ? ` · ${user.role}` : ''} — กดเพื่อเปิดหน้า Diagnostic`}>
+          <p className="text-xs font-medium text-gray-700 dark:text-gray-200">Helpdesk v{__APP_VERSION__}</p>
+          <p className="text-[10px] text-gray-400 truncate">
+            build {__BUILD_DATE__}{__GIT_SHA__ ? ` · ${__GIT_SHA__}` : ''}
+          </p>
+        </Link>
       </div>
     </div>
   )
