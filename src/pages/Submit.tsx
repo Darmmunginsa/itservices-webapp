@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
 import { ackOnCreate } from '../utils/ackInbox'
+import { reporterFields, reporterWatchers, REPORTER_COLUMNS, type ReporterKind } from '../utils/reporter'
 import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { textToHtml, appLink, mailFailText } from '../utils/emailTemplate'
 import { Header } from '../components/layout/Header'
@@ -125,6 +126,23 @@ export default function Submit() {
     setForm(f => ({ ...f, customerName: title, customerEmail: contract?.CustomerEmail ?? '' }))
   }
 
+  /**
+   * สร้างรายการพร้อมคนแจ้งสำรอง — ถ้าลิสต์ยังไม่มีคอลัมน์ ReporterName/Email
+   * SharePoint จะปฏิเสธทั้งรายการ → สร้างซ้ำโดยไม่ใส่ แล้วบอกให้ไปเพิ่มคอลัมน์
+   * งานต้องถูกสร้างได้เสมอ คอลัมน์ที่ขาดเป็นเรื่องรอง
+   */
+  async function createWithReporter(list: string, kind: ReporterKind, payload: Record<string, unknown>) {
+    const rep = reporterFields(kind, { name: form.customerName, email: form.customerEmail })
+    if (Object.keys(rep).length === 0 || kind === 'Ticket') return spCreate(list, { ...payload, ...rep })
+    try {
+      return await spCreate(list, { ...payload, ...rep })
+    } catch {
+      const created = await spCreate(list, payload)
+      addToast('error', `บันทึกแล้ว แต่เก็บคนแจ้งสำรองไม่ได้ — ต้องเพิ่มคอลัมน์ ${REPORTER_COLUMNS[kind]} ก่อน`)
+      return created
+    }
+  }
+
   const computedDueDate = () => {
     if (form.daysCount && Number(form.daysCount) > 0) {
       const d = new Date()
@@ -225,7 +243,7 @@ export default function Submit() {
 
       } else if (type === 'Task') {
         const dueDate = computedDueDate()
-        const created = await spCreate('PM_Tasks', {
+        const created = await createWithReporter('PM_Tasks', 'Task', {
           Title: form.title,
           ProjectID: Number(form.projectId),
           IsCompleted: false,
@@ -293,7 +311,7 @@ export default function Submit() {
           return
         }
         const agent = agents.find(a => a.EmailText === form.assignedEmail)
-        await spCreate('PM_Incidents', {
+        const createdInc = await createWithReporter('PM_Incidents', 'Incident', {
           Title: form.title,
           ProjectID: Number(form.projectId),
           Severity: form.incidentSeverity,
@@ -311,6 +329,31 @@ export default function Submit() {
           // เปิดเป็น Resolved เลย ก็ต้องรู้ว่าปิดเมื่อไหร่ ไม่งั้นวัด SLA ไม่ได้
           ...(form.incidentStatus === 'Resolved' ? { ResolvedDate: new Date().toISOString() } : {}),
         })
+        // ปฏิทินกับ Track — Incident เคยไม่มีสองอย่างนี้ ทั้งที่เป็นงานที่ต้องนัดและตามมากกว่า Ticket
+        if (addCalendar && form.calendarDate) {
+          try {
+            await createCalendarEvent({
+              subject: `[Incident] ${form.title}`,
+              start: `${form.calendarDate}T${form.startHour}:00`,
+              end: `${form.calendarDate}T${form.endHour}:00`,
+              attendees: buildCalendarAttendees(),
+              body: form.description,
+              isOnlineMeeting,
+            })
+          } catch { addToast('error', 'บันทึก Incident แล้ว แต่สร้างนัดหมายไม่สำเร็จ') }
+        }
+        if (trackItem && createdInc?.id) {
+          await spCreate('HD_Tracking', {
+            Title: form.title,
+            TrackingType: 'Incident',
+            RefID: createdInc.id,
+            TrackedBy: user.displayName,
+            TrackedEmail: user.email,
+            AssignedTo: form.assignedName,
+            Status: form.incidentStatus,
+            IsAcknowledged: false,
+          })
+        }
         // แจ้งเตือน Assigned เมื่อสร้าง Incident (in-app) — ยกเว้นคนสร้างเอง
         if (form.assignedEmail && form.assignedEmail.toLowerCase() !== user.email.toLowerCase()) {
           createNotification({
@@ -337,7 +380,8 @@ export default function Submit() {
             assignedName: form.assignedName,
             assignedEmail: form.assignedEmail,
             requesterEmail: user.email,
-            watchers: [proj?.CreatedByEmail],
+            // คนแจ้งสำรองคือเจ้าของปัญหาจริง — ต้องได้เมลด้วย เหมือนลูกค้าของ Ticket
+            watchers: [proj?.CreatedByEmail, ...reporterWatchers(form.customerEmail)],
             actorEmail: user.email,
             baseUrl: window.location.origin + window.location.pathname,
           })
@@ -400,7 +444,36 @@ export default function Submit() {
   const customerGroups = buildGroups(projects, projectCustomers)
 
   // Calendar section shared by Ticket and Task
-  function CalendarSection() {
+  // คนแจ้งสำรอง — เลือกจากทะเบียนลูกค้า หรือพิมพ์เองก็ได้ (คนนอกที่ไม่อยู่ในทะเบียนมีเสมอ)
+  // ใช้ช่อง customerName/customerEmail ชุดเดียวทั้งสามชนิด แล้วค่อยแปลงชื่อคอลัมน์ตอนบันทึก
+  // เป็นฟังก์ชันคืน JSX ไม่ใช่ component ในตัว — component ที่ประกาศระหว่าง render
+  // จะถูกสร้างใหม่ทุกครั้งที่พิมพ์ ช่องกรอกหลุดโฟกัสทีละตัวอักษร
+  function renderReporter() {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-3 space-y-2">
+        <label className={lx}>🙋 คนแจ้งสำรอง (ลูกค้า / คนนอกที่แจ้งเรื่องมา)</label>
+        <SearchSelect
+          options={contractOptions}
+          value={contracts.some(c => c.Title === form.customerName) ? form.customerName : ''}
+          onChange={selectCustomer}
+          placeholder="เลือกจากทะเบียนลูกค้า…"
+          emptyLabel={`-- ไม่ระบุ (แจ้งเอง: ${user?.displayName ?? ''}) --`}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <input value={form.customerName} onChange={e => set('customerName', e.target.value)}
+            placeholder="หรือพิมพ์ชื่อ" className={cx} />
+          <input type="email" value={form.customerEmail} onChange={e => set('customerEmail', e.target.value)}
+            placeholder="อีเมล (จะได้รับเมลแจ้งด้วย)" className={cx} />
+        </div>
+        <p className="text-[11px] text-gray-400">
+          ว่างไว้ = คุณเป็นผู้แจ้งเอง · ระบุแล้วคนนี้จะขึ้นเป็น "แจ้งแทน" และได้เมลตอนเปิด/มอบหมาย/ปิดงาน
+        </p>
+      </div>
+    )
+  }
+
+  // เหตุผลเดียวกับ renderReporter — ประกาศเป็น component ในตัวแล้วช่องวันที่หลุดโฟกัสตอนพิมพ์
+  function renderCalendar() {
     return (
       <div className="space-y-3 pl-4 border-l-2 border-primary-200 dark:border-primary-800">
         <p className="text-xs font-medium text-primary-600">{t('submit.calTitle')}</p>
@@ -578,19 +651,7 @@ export default function Submit() {
                   </select>
                 </div>
 
-                {isAgent && (
-                  <div>
-                    <label className={lx}>{t('submit.customer')}</label>
-                    <SearchSelect
-                      options={contractOptions}
-                      value={form.customerName}
-                      onChange={selectCustomer}
-                      placeholder={`ตัวเอง (${user?.displayName ?? ''})`}
-                      emptyLabel={`-- ตัวเอง (${user?.displayName ?? ''}) --`}
-                    />
-                    {form.customerEmail && <p className="text-xs text-gray-400 mt-1">📧 {form.customerEmail}</p>}
-                  </div>
-                )}
+                {isAgent && renderReporter()}
 
                 <div>
                   <label className={lx}>{t('submit.assignAgent')}</label>
@@ -631,7 +692,7 @@ export default function Submit() {
                     <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.addCalendar')}</span>
                   </label>
                 </div>
-                {addCalendar && <CalendarSection />}
+                {addCalendar && renderCalendar()}
               </>
             )}
 
@@ -654,6 +715,8 @@ export default function Submit() {
                       : <option disabled>{t('common.loading')}</option>}
                   </select>
                 </div>
+
+                {isAgent && renderReporter()}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -700,7 +763,7 @@ export default function Submit() {
                     <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.addCalendar')}</span>
                   </label>
                 </div>
-                {addCalendar && <CalendarSection />}
+                {addCalendar && renderCalendar()}
               </>
             )}
 
@@ -781,6 +844,8 @@ export default function Submit() {
                   </div>
                 </div>
 
+                {isAgent && renderReporter()}
+
                 <div>
                   <label className={lx}>{t('submit.assignAgent')}</label>
                   <SearchSelect
@@ -791,6 +856,21 @@ export default function Submit() {
                     emptyLabel="-- ยังไม่ Assign --"
                   />
                 </div>
+
+                {/* Track + ปฏิทิน — เหมือน Ticket/Task · Incident เคยไม่มี ทั้งที่ต้องนัดและตามมากกว่า */}
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={trackItem} onChange={e => setTrackItem(e.target.checked)}
+                      className="rounded accent-primary-600" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">📌 Track Incident นี้</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={addCalendar} onChange={e => setAddCalendar(e.target.checked)}
+                      className="rounded accent-primary-600" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t('submit.addCalendar')}</span>
+                  </label>
+                </div>
+                {addCalendar && renderCalendar()}
               </>
             )}
 

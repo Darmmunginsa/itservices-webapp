@@ -42,6 +42,9 @@ export interface Task {
   AcknowledgedDate?: string
   Author?: { Title: string; EMail?: string }   // ผู้สั่งงาน — ใช้ส่งเมลกลับตอนกดรับ
   CreatedByEmail?: string
+  // คนแจ้งสำรอง — คนนอกที่ทีมรับเรื่องมาแล้วเปิดงานแทน
+  ReporterName?: string
+  ReporterEmail?: string
   AssignedTo: string
   AssignedEmail?: string
   DueDate?: string
@@ -82,6 +85,9 @@ export interface ProjectIncident {
   Created: string
   CreatedByEmail?: string
   Author?: { Title: string; EMail?: string }  // SP Created By — ผู้แจ้ง (expand via $expand=Author)
+  // คนแจ้งสำรอง — เจ้าของปัญหาจริงที่อยู่นอกทีม
+  ReporterName?: string
+  ReporterEmail?: string
 }
 
 export interface ProjectLink {

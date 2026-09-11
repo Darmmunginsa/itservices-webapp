@@ -24,6 +24,7 @@ import { SLA_OPTIONS, computeSlaDue, slaInfo, slaCountdown, SLA_STATE_META } fro
 import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentMail'
 import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { mailFailText } from '../utils/emailTemplate'
+import { reporterLine, reporterWatchers } from '../utils/reporter'
 import { useT } from '../i18n/useT'
 
 const STATUSES: ProjectIncident['Status'][] = ['Open', 'In Progress', 'Resolved']
@@ -122,7 +123,8 @@ export default function IncidentDetail() {
       assignedName: agent?.Title ?? inc?.AssignedTo,
       assignedEmail: inc?.AssignedEmail,
       requesterEmail: inc?.Author?.EMail || inc?.CreatedByEmail,
-      watchers: [project?.CreatedByEmail],
+      // คนแจ้งสำรองคือเจ้าของปัญหาจริง — ต้องได้เมลทุกฉบับเหมือนลูกค้าของ Ticket
+      watchers: [project?.CreatedByEmail, ...reporterWatchers(inc?.ReporterEmail)],
       actorEmail: user?.email,
       baseUrl: window.location.origin + window.location.pathname,
       ...overrides,
@@ -329,6 +331,12 @@ export default function IncidentDetail() {
                 <p className="text-xs text-gray-400">{tr('ticket.reporter')}</p>
                 <p className="font-medium">{inc.Author?.Title || '-'}</p>
                 <p className="text-xs text-gray-400 truncate">{inc.Author?.EMail || inc.CreatedByEmail}</p>
+                {/* คนนอกที่แจ้งเรื่องมา — เจ้าของปัญหาจริง ไม่ใช่คนกดสร้าง */}
+                {reporterLine(inc.ReporterName, inc.ReporterEmail) && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5 truncate" title="คนแจ้งสำรอง (คนนอกที่แจ้งเรื่องมา)">
+                    🙋 แจ้งแทน: {reporterLine(inc.ReporterName, inc.ReporterEmail)}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-gray-400">Assigned</p>
@@ -503,6 +511,7 @@ export default function IncidentDetail() {
                 inc.AssignedEmail,
                 inc.Author?.EMail || inc.CreatedByEmail,
                 project?.CreatedByEmail,
+                inc.ReporterEmail,
               ].filter(Boolean) as string[])]}
             />
           )}

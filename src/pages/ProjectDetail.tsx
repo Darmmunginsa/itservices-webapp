@@ -21,6 +21,7 @@ import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { assignFields } from '../utils/ackInbox'
 import { mailFailText } from '../utils/emailTemplate'
+import { reporterLine } from '../utils/reporter'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
 import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
@@ -863,6 +864,9 @@ export default function ProjectDetail() {
           <div className="space-y-2">
             {task.DueDate && <p className="text-xs text-gray-500">{tr('common.dueDate')}: {formatDate(task.DueDate)}</p>}
             {task.AssignedTo && <p className="text-xs text-gray-500">{tr('pd.assignee')}: {task.AssignedTo}</p>}
+            {reporterLine(task.ReporterName, task.ReporterEmail) && (
+              <p className="text-xs text-amber-700 dark:text-amber-300">🙋 แจ้งแทน: {reporterLine(task.ReporterName, task.ReporterEmail)}</p>
+            )}
             {task.TaskNote && <p className="text-xs text-gray-600 dark:text-gray-300 italic">{task.TaskNote}</p>}
             <div className="flex items-center gap-1 flex-wrap">
               {!task.IsAcknowledged && task.AssignedEmail === user?.email && (

@@ -79,7 +79,7 @@ export interface FocusItem {
 export interface TrackingItem {
   id: number
   Title: string
-  TrackingType: 'Ticket' | 'Task'
+  TrackingType: 'Ticket' | 'Task' | 'Incident'
   RefID: number           // Numeric SP ID of the referenced ticket/task
   TrackedBy: string       // Display name of who is tracking
   TrackedEmail: string    // Email of who is tracking — use this for filter

@@ -79,6 +79,9 @@ export default function Tracking() {
       if (item.TrackingType === 'Ticket') {
         const rows = await spGet<{ Status: string }>('HD_Tickets', `Id eq ${item.RefID}`, 'Id,Status')
         if (rows[0]) latestStatus = rows[0].Status
+      } else if (item.TrackingType === 'Incident') {
+        const rows = await spGet<{ Status: string }>('PM_Incidents', `Id eq ${item.RefID}`, 'Id,Status')
+        if (rows[0]) latestStatus = rows[0].Status
       } else {
         const rows = await spGet<{ IsCompleted: boolean }>('PM_Tasks', `Id eq ${item.RefID}`, 'Id,IsCompleted')
         if (rows[0]) latestStatus = rows[0].IsCompleted ? 'Completed' : 'Active'
@@ -199,6 +202,7 @@ export default function Tracking() {
             <option value="">{tr('tracking.allTypes')}</option>
             <option value="Ticket">Ticket</option>
             <option value="Task">Task</option>
+            <option value="Incident">Incident</option>
           </select>
           <select value={ackFilter} onChange={e => setAckFilter(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
@@ -218,7 +222,8 @@ export default function Tracking() {
                   <div key={item.id} className="flex items-center gap-3 p-3 border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-sm">
                     <div className="flex-1 min-w-0">
                       <Link
-                        to={item.TrackingType === 'Ticket' ? `/tickets/${item.RefID}` : `/projects`}
+                        to={item.TrackingType === 'Ticket' ? `/tickets/${item.RefID}`
+                          : item.TrackingType === 'Incident' ? `/incidents/${item.RefID}` : `/projects`}
                         className="font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 truncate block"
                       >
                         {item.Title}

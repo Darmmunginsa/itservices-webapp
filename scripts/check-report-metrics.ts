@@ -16,6 +16,7 @@ import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOpti
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
+import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from '../src/utils/reporter'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1798,6 +1799,33 @@ eq(ticketRows([{ id: 7, Title: 'x', CustomerEmail: 'cust@acme.co', Author: { EMa
   'the person who raised the row is the requester, even when a customer is named')
 eq(ticketRows([{ id: 8, Title: 'x', CustomerEmail: 'cust@acme.co' }])[0].requesterEmail, 'cust@acme.co',
   'with no author on the row the customer is the best guess')
+
+
+
+// -- คนแจ้งสำรอง (utils/reporter) --
+// ทีมรับเรื่องจากคนนอกแล้วมาเปิดเคสเอง ระบบเห็นแต่คนกดสร้าง — ต้องมีที่เก็บเจ้าของปัญหาจริง
+eq(JSON.stringify(reporterFields('Ticket', { name: 'สมชาย', email: 'somchai@acme.co' })),
+  '{"CustomerName":"สมชาย","CustomerEmail":"somchai@acme.co"}', 'a ticket keeps using its existing customer columns')
+eq(JSON.stringify(reporterFields('Incident', { name: 'สมชาย', email: 'somchai@acme.co' })),
+  '{"ReporterName":"สมชาย","ReporterEmail":"somchai@acme.co"}', 'an incident gets the new reporter columns')
+eq(JSON.stringify(reporterFields('Task', { name: '  อารีย์ ', email: '' })), '{"ReporterName":"อารีย์"}',
+  'a name alone is fine, and stray spaces are trimmed')
+eq(JSON.stringify(reporterFields('Task', { name: '', email: 'a@b.co' })), '{"ReporterEmail":"a@b.co"}',
+  'an email alone is fine too')
+eq(JSON.stringify(reporterFields('Incident', { name: '', email: '  ' })), '{}',
+  'nothing entered writes nothing — the creator is the reporter')
+eq(isBlankReporter({ name: ' ', email: '' }), true, 'blank means self-reported')
+eq(isBlankReporter({ name: '', email: 'x@y.co' }), false, 'any value means someone else reported it')
+
+eq(reporterLine('สมชาย', 'somchai@acme.co'), 'สมชาย (somchai@acme.co)', 'the display line shows both')
+eq(reporterLine('สมชาย', ''), 'สมชาย', 'name only shows the name')
+eq(reporterLine('', 'somchai@acme.co'), 'somchai@acme.co', 'email only shows the email')
+eq(reporterLine(undefined, undefined), '', 'nothing recorded shows nothing, so the row can be hidden')
+
+// เจ้าของปัญหาจริงต้องได้เมลด้วย
+eq(reporterWatchers('somchai@acme.co').join(','), 'somchai@acme.co', 'a reporter email joins the mail watchers')
+eq(reporterWatchers('  ').length, 0, 'a blank reporter adds nobody')
+eq(reporterWatchers(undefined).length, 0, 'a missing reporter adds nobody')
 
 
 console.log(`\n${pass} passed, ${fail} failed`)
