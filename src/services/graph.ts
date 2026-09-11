@@ -100,6 +100,8 @@ export async function createCalendarEvent(event: {
   location?: string
   attendees?: string[]
   body?: string
+  /** HTML สำเร็จรูป (เช่นจาก meetingBody) — ใช้ตามนั้น ไม่แปลงบรรทัด */
+  bodyHtml?: string
   isOnlineMeeting?: boolean
   isAllDay?: boolean
 }): Promise<OutlookEvent> {
@@ -115,7 +117,9 @@ export async function createCalendarEvent(event: {
       emailAddress: { address: email },
       type: 'required',
     })),
-    body: event.body ? { contentType: 'HTML', content: event.body.replace(/\n/g, '<br>') } : undefined,
+    body: event.bodyHtml
+      ? { contentType: 'HTML', content: event.bodyHtml }
+      : event.body ? { contentType: 'HTML', content: event.body.replace(/\n/g, '<br>') } : undefined,
     isOnlineMeeting: event.isOnlineMeeting ?? false,
     onlineMeetingProvider: event.isOnlineMeeting ? 'teamsForBusiness' : undefined,
   }

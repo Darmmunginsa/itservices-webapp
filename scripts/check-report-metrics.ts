@@ -19,6 +19,7 @@ import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox
 import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from '../src/utils/reporter'
 import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pagePerms'
 import { presetCustomerEmails } from '../src/utils/customerGroups'
+import { meetingBody } from '../src/utils/meetingBody'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1869,6 +1870,33 @@ eq(presetCustomerEmails(PC, 7).join(','), 'somchai@acme.co,aree@acme.co',
   'the project customers are preselected, duplicates and junk dropped, other projects ignored')
 eq(presetCustomerEmails(PC, 9).length, 0, 'a project with no customers preselects nobody')
 eq(presetCustomerEmails([], 7).length, 0, 'no customer list at all is not a crash')
+
+
+// -- เนื้อนัดหมายแบบทางการ (utils/meetingBody) --
+const mb = meetingBody({
+  kind: 'Ticket', ref: 'TK-0042', title: 'VPN สาขา <2> ใช้ไม่ได้', projectName: '#VDI',
+  assigneeName: 'สมชาย', customerName: 'ACME', priority: 'High', due: '2026-09-20',
+  description: 'บรรทัด 1\nบรรทัด 2', link: 'https://itservices.co.th/helpdesk/#/tickets/42',
+  organizer: 'หัวหน้า', isOnlineMeeting: true,
+})
+eq(mb.includes('Ticket · TK-0042'), true, 'the header names the kind and reference')
+eq(mb.includes('VPN สาขา &lt;2&gt; ใช้ไม่ได้'), true, 'angle brackets in the title are escaped, not rendered as tags')
+eq(mb.includes('บรรทัด 1<br>บรรทัด 2'), true, 'a multi-line description keeps its line breaks')
+eq(mb.includes('#VDI') && mb.includes('สมชาย') && mb.includes('ACME'), true, 'project, assignee and customer appear')
+eq(mb.includes('ความสำคัญ') && mb.includes('กำหนดส่ง'), true, 'a ticket uses priority and due labels')
+eq(mb.includes('Microsoft Teams'), true, 'an online meeting says so')
+eq(mb.includes('href="https://itservices.co.th/helpdesk/#/tickets/42"'), true, 'the button links into the ticket')
+eq(mb.includes('<script'), false, 'nothing unescaped slips through')
+
+const inc = meetingBody({ kind: 'Incident', title: 'ล่ม', priority: 'Critical', due: '10/9/69 14:00' })
+eq(inc.includes('ความรุนแรง') && inc.includes('ครบ SLA'), true, 'an incident uses severity and SLA labels')
+eq(inc.includes('#c0392b'), true, 'an incident carries the warning colour')
+eq(inc.includes('โครงการ'), false, 'a row with no value is not shown at all')
+eq(inc.includes('เปิดดูในระบบ'), false, 'no link means no button')
+
+const plain = meetingBody({ kind: 'Meeting', title: 'คุยงาน' })
+eq(plain.includes('นัดหมาย'), true, 'a personal meeting is labelled as one')
+eq(plain.includes('undefined'), false, 'missing fields never print as undefined')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

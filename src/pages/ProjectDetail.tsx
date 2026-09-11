@@ -23,6 +23,8 @@ import { assignFields } from '../utils/ackInbox'
 import { customerOptions, presetCustomerEmails, type ProjectCustomer } from '../utils/customerGroups'
 import { mailFailText } from '../utils/emailTemplate'
 import { reporterLine } from '../utils/reporter'
+import { meetingBody } from '../utils/meetingBody'
+import { appLink } from '../utils/emailTemplate'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
 import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
@@ -561,7 +563,12 @@ export default function ProjectDetail() {
               start: `${taskForm.calendarDate}T${taskForm.startHour}:00`,
               end: `${taskForm.calendarDate}T${taskForm.endHour}:00`,
               attendees: buildCalendarAttendees(),
-              body: taskForm.taskNote,
+              bodyHtml: meetingBody({
+                kind: 'Task', title: taskForm.title, projectName: project?.Title,
+                assigneeName: agent?.Title ?? taskForm.assignedEmail, due: dueDate ?? undefined,
+                description: taskForm.taskNote, organizer: user?.displayName,
+                link: appLink(`/projects/${id}`), isOnlineMeeting,
+              }),
               isOnlineMeeting,
             })
           } catch { addToast('error', 'สร้าง Task แล้ว แต่สร้างนัดหมายไม่สำเร็จ') }

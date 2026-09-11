@@ -5,6 +5,7 @@ import { ackOnCreate } from '../utils/ackInbox'
 import { reporterFields, reporterWatchers, REPORTER_COLUMNS, type ReporterKind } from '../utils/reporter'
 import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { textToHtml, appLink, mailFailText } from '../utils/emailTemplate'
+import { meetingBody } from '../utils/meetingBody'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -218,7 +219,15 @@ export default function Submit() {
             start: `${form.calendarDate}T${form.startHour}:00`,
             end: `${form.calendarDate}T${form.endHour}:00`,
             attendees: buildCalendarAttendees(),
-            body: form.description,
+            // เนื้อนัดแบบทางการ — ผู้เข้าร่วม (รวมลูกค้าที่เข้าระบบไม่ได้) เห็นครบในนัดเดียว
+            bodyHtml: meetingBody({
+              kind: 'Ticket', ref: ticketNum, title: form.title,
+              projectName: projects.find(p => String(p.id) === form.projectId)?.Title,
+              assigneeName: form.assignedName, customerName: form.customerName,
+              priority: form.priority, due: computedDueDate() ?? form.dueDate,
+              description: form.description, organizer: user.displayName,
+              link: created?.id ? appLink(`/tickets/${created.id}`) : appLink(), isOnlineMeeting,
+            }),
             isOnlineMeeting,
           })
         }
@@ -274,7 +283,14 @@ export default function Submit() {
             start: `${form.calendarDate}T${form.startHour}:00`,
             end: `${form.calendarDate}T${form.endHour}:00`,
             attendees: buildCalendarAttendees(),
-            body: form.taskNote || form.description,
+            bodyHtml: meetingBody({
+              kind: 'Task', title: form.title,
+              projectName: projects.find(p => String(p.id) === form.projectId)?.Title,
+              assigneeName: form.assignedName, customerName: form.customerName,
+              due: dueDate ?? undefined, description: form.taskNote || form.description,
+              organizer: user.displayName,
+              link: form.projectId ? appLink(`/projects/${form.projectId}`) : appLink(), isOnlineMeeting,
+            }),
             isOnlineMeeting,
           })
         }
@@ -352,7 +368,15 @@ export default function Submit() {
               start: `${form.calendarDate}T${form.startHour}:00`,
               end: `${form.calendarDate}T${form.endHour}:00`,
               attendees: buildCalendarAttendees(),
-              body: form.description,
+              bodyHtml: meetingBody({
+                kind: 'Incident', title: form.title,
+                projectName: projects.find(p => String(p.id) === form.projectId)?.Title,
+                assigneeName: form.assignedName, customerName: form.customerName,
+                priority: form.incidentSeverity,
+                due: (() => { const d = computeSlaDue(form.incidentSlaHours ? Number(form.incidentSlaHours) : null); return d ? new Date(d).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : undefined })(),
+                description: form.description, organizer: user.displayName,
+                link: createdInc?.id ? appLink(`/incidents/${createdInc.id}`) : appLink(), isOnlineMeeting,
+              }),
               isOnlineMeeting,
             })
           } catch { addToast('error', 'บันทึก Incident แล้ว แต่สร้างนัดหมายไม่สำเร็จ') }

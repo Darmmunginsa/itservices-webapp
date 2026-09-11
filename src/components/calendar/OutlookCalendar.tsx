@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
+import { meetingBody } from '../../utils/meetingBody'
+import { appLink } from '../../utils/emailTemplate'
 import {
   format, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addDays, addWeeks, addMonths, subWeeks, subMonths, isSameDay, isSameMonth,
@@ -282,7 +284,15 @@ export function OutlookCalendar() {
         subject:         taskForm.title,
         start:           `${taskForm.date}T${taskForm.startTime}:00`,
         end:             `${taskForm.date}T${taskForm.endTime}:00`,
-        body:            taskForm.note,
+        bodyHtml:        meetingBody({
+          kind: taskForm.taskType === 'project' ? 'Task' : 'Meeting',
+          title: taskForm.title,
+          projectName: projects.find(p => String(p.id) === taskForm.projectId)?.Title,
+          assigneeName: taskForm.taskType === 'project' ? user.displayName : undefined,
+          description: taskForm.note, organizer: user.displayName,
+          link: taskForm.taskType === 'project' && taskForm.projectId ? appLink(`/projects/${taskForm.projectId}`) : undefined,
+          isOnlineMeeting: taskForm.isOnlineMeeting,
+        }),
         attendees:       [...internalEmails, ...customerEmails, ...taskForm.externalAttendees.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean)],
         isOnlineMeeting: taskForm.isOnlineMeeting,
       })
