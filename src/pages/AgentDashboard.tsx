@@ -13,6 +13,7 @@ import { sendTemplateEmail } from '../services/emailService'
 import { incidentMailPlan } from '../utils/incidentMail'
 import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
+import { mailFailText } from '../utils/emailTemplate'
 import { useAppStore } from '../store/useAppStore'
 import type { Ticket } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
@@ -160,11 +161,8 @@ export default function AgentDashboard() {
         const res = await sendTemplateEmail('incident_assigned', plan.vars, plan.to, plan.cc)
         // มอบหมายสำเร็จแล้ว เมลไม่ออกคือคนละเรื่อง — บอกแยก ไม่ใช่กลบเป็นความสำเร็จ
         // ถ้อยคำเดียวกับหน้า Incident เพราะเป็นความล้มเหลวแบบเดียวกัน
-        if (!res.ok) {
-          addToast('error', res.reason === 'no-template'
-            ? 'Assign แล้ว แต่ไม่ได้ส่งเมล — ยังไม่ได้เปิด template "incident_assigned"'
-            : 'Assign แล้ว แต่ส่งเมลไม่สำเร็จ — ผู้รับผิดชอบยังไม่รู้เรื่อง')
-        }
+        const warn = mailFailText('Assign แล้ว', res, 'incident_assigned', 'ผู้รับผิดชอบยังไม่รู้เรื่อง')
+        if (warn) addToast('error', warn)
       }
 
       setAssignTarget(null)

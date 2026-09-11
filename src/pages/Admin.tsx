@@ -9,6 +9,7 @@ import { SkeletonRow } from '../components/common/Skeleton'
 import { PagePermissionsPanel } from '../components/admin/PagePermissionsPanel'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
+import { appLink, escapeHtml } from '../utils/emailTemplate'
 import type { EmailTemplate } from '../services/emailService'
 import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
@@ -504,7 +505,7 @@ export default function Admin() {
     customer_name: 'คุณสมชาย ใจดี',
     agent_name: 'Darm Munginsa',
     status: 'In Progress',
-    link: window.location.origin,
+    link: appLink(),
     requester_name: 'คุณสมชาย ใจดี',
     leave_type: 'ลาพักร้อน',
     leave_date: '10 มิ.ย. 2569',
@@ -514,8 +515,10 @@ export default function Admin() {
     task_title: 'ติดตั้ง Windows 11',
   }
 
+  // ใช้ตัว render เดียวกับตอนส่งจริง — ตัวอย่างต้องเห็นสิ่งเดียวกับที่ลูกค้าจะเห็น
+  // ตัวแปรที่ไม่รู้จักโชว์เป็น {{x}} ไว้ให้เห็นว่าพิมพ์ผิด (ตอนส่งจริงจะถูกลบ)
   function renderPreview(text: string): string {
-    return text.replace(/\{\{(\w+)\}\}/g, (_, k) => SAMPLE_VARS[k] ?? `{{${k}}}`)
+    return text.replace(/\{\{(\w+)\}\}/g, (_, k) => (k in SAMPLE_VARS ? escapeHtml(SAMPLE_VARS[k]) : `{{${k}}}`))
   }
 
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'

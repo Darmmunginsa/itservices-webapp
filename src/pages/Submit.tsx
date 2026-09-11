@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { SLA_OPTIONS, SLA_BY_SEVERITY, computeSlaDue } from '../utils/sla'
 import { ackOnCreate } from '../utils/ackInbox'
 import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
+import { textToHtml, appLink, mailFailText } from '../utils/emailTemplate'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -204,21 +205,23 @@ export default function Submit() {
           })
         }
         // Email: 1 ฉบับ — To = ลูกค้า, CC = agent + ผู้แจ้ง (อยู่ใน thread เดียว reply ได้)
-        sendTemplateEmail('ticket_created', {
+        // เดิมยิงแล้วไม่รอผล — template หายหรือ Graph ล้ม ลูกค้าไม่ได้เมล แต่หน้าจอบอกสำเร็จ
+        const mailRes = await sendTemplateEmail('ticket_created', {
           ticket_number: ticketNum,
           ticket_title: form.title,
           priority: form.priority || '-',
           category: form.category || '-',
-          description: (form.description || '-').replace(/\n/g, '<br>'),
+          description: textToHtml(form.description || '-'),
           customer_name: form.customerName || user.displayName,
           assigned_name: form.assignedName || '-',
-          link: window.location.origin,
+          link: appLink(),
         },
           [form.customerEmail || user.email],            // To
           [form.assignedEmail, user.email].filter(Boolean) as string[],  // CC
         )
-
-        addToast('success', `สร้าง Ticket สำเร็จ (${ticketNum})`)
+        const mailWarn = mailFailText(`สร้าง Ticket ${ticketNum} แล้ว`, mailRes, 'ticket_created', 'ลูกค้ายังไม่ได้รับเมล')
+        if (mailWarn) addToast('error', mailWarn)
+        else addToast('success', `สร้าง Ticket สำเร็จ (${ticketNum})`)
 
       } else if (type === 'Task') {
         const dueDate = computedDueDate()
@@ -340,11 +343,8 @@ export default function Submit() {
           })
           if (plan.to.length > 0) {
             const res = await sendTemplateEmail('incident_created', plan.vars, plan.to, plan.cc)
-            if (!res.ok) {
-              addToast('error', res.reason === 'no-template'
-                ? 'บันทึกแล้ว แต่ไม่ได้ส่งเมล — ยังไม่ได้เปิด template "incident_created"'
-                : 'บันทึกแล้ว แต่ส่งเมลไม่สำเร็จ — ผู้รับผิดชอบยังไม่รู้เรื่อง')
-            }
+            const warn = mailFailText('บันทึกแล้ว', res, 'incident_created', 'ผู้รับผิดชอบยังไม่รู้เรื่อง')
+            if (warn) addToast('error', warn)
           }
         }
         addToast('success', 'บันทึก Incident สำเร็จ')

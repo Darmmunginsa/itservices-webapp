@@ -18,7 +18,7 @@ const webapp = resolve(here, '..')
 const addin = resolve(webapp, '..', 'itservices-addin')
 
 /** ไฟล์ที่ต้องเหมือนกันทั้งดุ้น (ตรรกะ) */
-const MIRRORED = ['emailQuote.ts', 'incidentMail.ts']
+const MIRRORED = ['emailQuote.ts', 'incidentMail.ts', 'emailTemplate.ts']
 
 /** ไฟล์ที่ Add-in เอาไปแค่บางส่วน — เทียบเฉพาะบรรทัดที่มีทั้งสองฝั่ง */
 const PARTIAL = ['sla.ts']

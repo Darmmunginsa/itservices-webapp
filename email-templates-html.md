@@ -11,6 +11,11 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
+> รายการนี้คือ template ที่โค้ดส่งจริงเท่านั้น (ตรงกับ `EVENT_VARS` ใน `src/utils/emailTemplate.ts`)
+> เคยมี `task_assigned` `ticket_status_changed` `comment_mention` `incident_status_changed`
+> ซึ่งไม่มีทางไหนในระบบส่งเลย — สร้างไปก็ไม่มีอะไรเกิดขึ้น จึงตัดออก
+> ตัวแปรที่ template ใช้แต่โค้ดไม่ได้ส่ง จะถูกลบตอนส่งจริง และหน้า Diagnostic จะชี้ให้เห็นก่อน
+
 ## 1. Ticket Created — `ticket_created`
 
 > ตัวแปร: `{{ticket_number}}` `{{ticket_title}}` `{{priority}}` `{{category}}` `{{description}}` `{{customer_name}}` `{{assigned_name}}` `{{link}}`
@@ -61,97 +66,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 2. Task Assigned — `task_assigned`
-
-> ตัวแปร: `{{task_title}}` `{{assigned_name}}` `{{due_date}}` `{{task_note}}` `{{link}}`
-
-**Subject:**
-```
-มอบหมายงานใหม่: {{task_title}}
-```
-
-**Body:**
-```html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
-      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">มอบหมายงานใหม่</td></tr>
-      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
-      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
-        <p style="margin:0 0 14px;font-size:15px;">เรียน คุณ <strong>{{assigned_name}}</strong></p>
-        <p style="margin:0 0 24px;color:#555555;">คุณได้รับมอบหมาย Task ใหม่ กรุณาตรวจสอบและดำเนินการครับ</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
-          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">รายละเอียด TASK</td></tr>
-          <tr><td style="padding:0 18px 16px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
-              <tr><td style="padding:5px 0;color:#888888;width:90px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#1c2e4a;font-weight:bold;">{{task_title}}</td></tr>
-              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">กำหนดส่ง</td><td style="padding:5px 0;color:#222222;">{{due_date}}</td></tr>
-              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">รายละเอียด</td><td style="padding:5px 0;color:#222222;">{{task_note}}</td></tr>
-            </table>
-          </td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
-          <tr><td bgcolor="#eaf2fb" style="padding:12px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:13px;line-height:1.6;">เปิดดูรายละเอียดงานและอัปเดตสถานะได้ที่ระบบ Helpdesk หรือ <strong>ตอบกลับอีเมลฉบับนี้</strong>เพื่อสอบถามเพิ่มเติม</td></tr>
-        </table>
-      </td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
-      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
-      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
-    </table>
-  </td></tr>
-</table>
-```
-
----
-
-## 3. Ticket Status Changed — `ticket_status_changed`
-
-> ตัวแปร: `{{ticket_number}}` `{{ticket_title}}` `{{ticket_status}}` `{{customer_name}}` `{{assigned_name}}` `{{link}}`
-
-**Subject:**
-```
-อัปเดตสถานะ Ticket: {{ticket_number}} → {{ticket_status}}
-```
-
-**Body:**
-```html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
-      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">อัปเดตสถานะ Ticket</td></tr>
-      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
-      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
-        <p style="margin:0 0 20px;color:#555555;">Ticket มีการเปลี่ยนแปลงสถานะ รายละเอียดดังนี้</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td bgcolor="#f4f6f9" align="center" style="padding:18px;">
-            <div style="font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;margin-bottom:6px;">สถานะปัจจุบัน</div>
-            <div style="font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:22px;font-weight:bold;">{{ticket_status}}</div>
-          </td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;margin-top:18px;">
-          <tr><td style="padding:5px 0;color:#888888;width:90px;vertical-align:top;">Ticket No.</td><td style="padding:5px 0;color:#1c2e4a;font-weight:bold;">{{ticket_number}}</td></tr>
-          <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">หัวข้อ</td><td style="padding:5px 0;color:#222222;">{{ticket_title}}</td></tr>
-          <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ผู้รับผิดชอบ</td><td style="padding:5px 0;color:#222222;">{{assigned_name}}</td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
-          <tr><td bgcolor="#eaf2fb" style="padding:12px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:13px;line-height:1.6;">อีเมลภายในทีม — <strong>ตอบกลับอีเมลฉบับนี้</strong>เพื่อสื่อสารต่อในเรื่องนี้ได้เลย</td></tr>
-        </table>
-      </td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
-      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
-      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
-    </table>
-  </td></tr>
-</table>
-```
-
----
-
-## 4. Comment Added — `comment_added`
+## 2. Comment Added — `comment_added`
 
 > ตัวแปร: `{{ticket_number}}` `{{ticket_title}}` `{{customer_name}}` `{{assigned_name}}` `{{comment_text}}` `{{link}}`
 
@@ -190,137 +105,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 4.0 Comment Mention — `comment_mention`  (แจ้งคนที่ถูก @ ใน comment)
-
-> ตัวแปร: `{{ticket_number}}` `{{ticket_title}}` `{{mentioned_by}}` `{{comment_text}}` `{{link}}`
-
-**Subject:**
-```
-{{mentioned_by}} ถามถึงคุณใน Ticket {{ticket_number}}
-```
-
-**Body:**
-```html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
-      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">มีคนถามถึงคุณ</td></tr>
-      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
-      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
-        <p style="margin:0 0 16px;color:#555555;"><strong>{{mentioned_by}}</strong> ได้ @ ถึงคุณใน Ticket <strong>{{ticket_number}}</strong> — {{ticket_title}}</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td style="font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;padding-bottom:6px;">คำถาม / ข้อความ</td></tr>
-          <tr><td bgcolor="#eaf2fb" style="padding:14px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:14px;line-height:1.6;">{{comment_text}}</td></tr>
-        </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:24px auto 0;">
-          <tr><td bgcolor="#1c2e4a" style="border-radius:6px;"><a href="{{link}}" style="display:inline-block;padding:12px 32px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;">ตอบกลับใน Ticket</a></td></tr>
-        </table>
-      </td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
-      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
-      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
-    </table>
-  </td></tr>
-</table>
-```
-
----
-
-## 4.1 Incident Created — `incident_created`  (แจ้ง Assigned)
-
-> ตัวแปร: `{{incident_title}}` `{{severity}}` `{{incident_status}}` `{{assigned_name}}` `{{description}}` `{{link}}`
-
-**Subject:**
-```
-แจ้ง Incident ใหม่: {{incident_title}}
-```
-
-**Body:**
-```html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
-      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">แจ้ง Incident ใหม่</td></tr>
-      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
-      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
-        <p style="margin:0 0 14px;font-size:15px;">เรียน คุณ <strong>{{assigned_name}}</strong></p>
-        <p style="margin:0 0 24px;color:#555555;">คุณได้รับมอบหมายให้ดูแล Incident ใหม่ กรุณาตรวจสอบและดำเนินการครับ</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
-          <tr><td style="padding:14px 18px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;">รายละเอียด INCIDENT</td></tr>
-          <tr><td style="padding:0 18px 16px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;">
-              <tr><td style="padding:5px 0;color:#888888;width:100px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#1c2e4a;font-weight:bold;">{{incident_title}}</td></tr>
-              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความรุนแรง</td><td style="padding:5px 0;color:#c0392b;font-weight:bold;">{{severity}}</td></tr>
-              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">สถานะ</td><td style="padding:5px 0;color:#222222;">{{incident_status}}</td></tr>
-              <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">รายละเอียด</td><td style="padding:5px 0;color:#222222;">{{description}}</td></tr>
-            </table>
-          </td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
-          <tr><td bgcolor="#eaf2fb" style="padding:12px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:13px;line-height:1.6;">เข้าระบบเพื่อดูรายละเอียดและอัปเดตสถานะ หรือ <strong>ตอบกลับอีเมลฉบับนี้</strong>เพื่อสอบถามเพิ่มเติม</td></tr>
-        </table>
-      </td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
-      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
-      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
-    </table>
-  </td></tr>
-</table>
-```
-
----
-
-## 4.2 Incident Status Changed — `incident_status_changed`  (แจ้ง Requester)
-
-> ตัวแปร: `{{incident_title}}` `{{incident_status}}` `{{severity}}` `{{assigned_name}}` `{{resolution}}` `{{link}}`
-
-**Subject:**
-```
-อัปเดตสถานะ Incident: {{incident_title}} → {{incident_status}}
-```
-
-**Body:**
-```html
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef1f5;">
-  <tr><td align="center" style="padding:24px 12px;">
-    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;background-color:#ffffff;">
-      <tr><td bgcolor="#3b5278" style="padding:8px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:22px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#ffffff;font-size:20px;font-weight:bold;">อัปเดตสถานะ Incident</td></tr>
-      <tr><td bgcolor="#16263f" style="padding:10px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#9fb0c9;font-size:12px;letter-spacing:1px;">IT SERVICES CO.,LTD. &nbsp;·&nbsp; HELPDESK SYSTEM</td></tr>
-      <tr><td style="padding:28px;font-family:'Segoe UI',Arial,sans-serif;color:#333333;font-size:14px;line-height:1.7;">
-        <p style="margin:0 0 20px;color:#555555;">Incident ที่คุณแจ้งไว้มีการเปลี่ยนแปลงสถานะ รายละเอียดดังนี้</p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td bgcolor="#f4f6f9" align="center" style="padding:18px;">
-            <div style="font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;margin-bottom:6px;">สถานะปัจจุบัน</div>
-            <div style="font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:22px;font-weight:bold;">{{incident_status}}</div>
-          </td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:14px;margin-top:18px;">
-          <tr><td style="padding:5px 0;color:#888888;width:100px;vertical-align:top;">เรื่อง</td><td style="padding:5px 0;color:#1c2e4a;font-weight:bold;">{{incident_title}}</td></tr>
-          <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ความรุนแรง</td><td style="padding:5px 0;color:#222222;">{{severity}}</td></tr>
-          <tr><td style="padding:5px 0;color:#888888;vertical-align:top;">ผู้รับผิดชอบ</td><td style="padding:5px 0;color:#222222;">{{assigned_name}}</td></tr>
-        </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:18px;">
-          <tr><td style="font-family:'Segoe UI',Arial,sans-serif;color:#8a94a6;font-size:11px;font-weight:bold;letter-spacing:1px;padding-bottom:6px;">แนวทางแก้ไข</td></tr>
-          <tr><td bgcolor="#eaf2fb" style="padding:14px 16px;border-left:4px solid #2f6fed;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:14px;line-height:1.6;">{{resolution}}</td></tr>
-        </table>
-      </td></tr>
-      <tr><td bgcolor="#1c2e4a" style="padding:6px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#dfe6f0;font-size:13px;font-weight:bold;letter-spacing:2px;">iT</td></tr>
-      <tr><td style="padding:18px 28px 6px;font-family:'Segoe UI',Arial,sans-serif;color:#1c2e4a;font-size:15px;font-weight:bold;">iT Services Co.,Ltd.</td></tr>
-      <tr><td style="padding:0 28px 16px;font-family:'Segoe UI',Arial,sans-serif;color:#999999;font-size:12px;">ฝ่ายสนับสนุนด้านเทคนิค</td></tr>
-      <tr><td bgcolor="#f4f6f9" style="padding:12px 28px;font-family:'Segoe UI',Arial,sans-serif;color:#aaaaaa;font-size:11px;">iT Services Co.,Ltd. &nbsp;|&nbsp; ฝ่ายสนับสนุนด้านเทคนิค &nbsp;&nbsp; AUTO NOTIFICATION</td></tr>
-    </table>
-  </td></tr>
-</table>
-```
-
----
-
-## 5. Leave Requested — `leave_requested`
+## 3. Leave Requested — `leave_requested`
 
 > ตัวแปร: `{{requester_name}}` `{{leave_type}}` `{{leave_date}}` `{{approver_name}}` `{{link}}`
 
@@ -365,7 +150,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 6. Leave Approved/Rejected — `leave_decision`
+## 4. Leave Approved/Rejected — `leave_decision`
 
 > ตัวแปร: `{{requester_name}}` `{{leave_type}}` `{{leave_date}}` `{{leave_status}}` `{{approver_name}}` `{{link}}`
 
@@ -429,7 +214,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 4. Incident Created — `incident_created`
+## 5. Incident Created — `incident_created`
 
 ส่งตอนเปิดเคสใหม่ · **To** ผู้รับผิดชอบ · **CC** ผู้แจ้ง + เจ้าของโครงการ + ทีม
 
@@ -479,7 +264,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 5. Incident Assigned — `incident_assigned`
+## 6. Incident Assigned — `incident_assigned`
 
 ส่งตอน **เปลี่ยนผู้รับผิดชอบ** เท่านั้น (กดบันทึกเฉย ๆ ไม่ส่ง)
 
@@ -526,7 +311,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 6. Incident Resolved — `incident_resolved`
+## 7. Incident Resolved — `incident_resolved`
 
 ส่งตอน **เพิ่งปิดเคส** เท่านั้น (แก้เคสที่ปิดไปแล้วไม่ส่งซ้ำ)
 
@@ -589,7 +374,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 >
 > Subject ตัวนี้ **ไม่ถูกเขียนทับ** ใส่ตามที่ต้องการได้เลย
 
-## 7. Work Acknowledged — `work_acknowledged`
+## 8. Work Acknowledged — `work_acknowledged`
 
 **Subject:**
 ```
@@ -638,7 +423,7 @@ table-based + bgcolor → render ถูกทุก client (Outlook / Gmail / mo
 
 ---
 
-## 8. Work Assigned — `work_assigned`
+## 9. Work Assigned — `work_assigned`
 
 ส่งถึง **คนที่ถูกมอบหมาย** เมื่อมีงานเข้ามารอในกล่อง "รอรับงาน"
 (ใช้กับ Ticket และ Task · Incident มี `incident_assigned` ของตัวเองที่มีบริบทของเคสอยู่แล้ว)

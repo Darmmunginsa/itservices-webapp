@@ -3,7 +3,7 @@ import { CheckCircle, XCircle, Loader } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { spGet } from '../services/sharepoint'
-import { findTemplate, templateProblem, type TemplateRow } from '../utils/emailTemplate'
+import { findTemplate, templateProblem, placeholdersOf, EVENT_VARS, KNOWN_EVENTS, type TemplateRow } from '../utils/emailTemplate'
 
 const ALL_LISTS = [
   'HD_AgentProfiles',
@@ -29,15 +29,6 @@ const ALL_LISTS = [
  * ทำหน้านี้เพราะเคยเจอว่า EventKey มีช่องว่างท้ายบรรทัด ระบบจึงบอกว่า
  * "ยังไม่ได้เปิด template" ทั้งที่แถวนั้นเปิดอยู่ — ไม่มีทางรู้เลยถ้าไม่เทียบทีละตัว
  */
-const EVENT_KEYS = [
-  'ticket_created',
-  'comment_added',
-  'incident_created',
-  'incident_assigned',
-  'incident_resolved',
-  'work_assigned',
-  'work_acknowledged',
-]
 
 interface TplRow extends TemplateRow { id: number; Title: string }
 
@@ -78,16 +69,31 @@ export default function Diagnostic() {
     spGet<TplRow>('HD_EmailTemplates', undefined, 'Id,Title,EventKey,Subject,Body,IsEnabled')
       .then(rows => {
         if (cancelled) return
-        setTpl(EVENT_KEYS.map(key => {
+        const known = new Set(KNOWN_EVENTS)
+        const checks: TplResult[] = KNOWN_EVENTS.map(key => {
           const hit = findTemplate(rows, key)
           if (!hit) return { key, ok: false, note: templateProblem(rows, key) }
           if (!hit.Subject?.trim()) return { key, ok: false, note: 'เปิดอยู่ แต่ช่อง Subject ว่าง' }
           if (!hit.Body?.trim()) return { key, ok: false, note: 'เปิดอยู่ แต่ช่อง Body ว่าง' }
+          // template อ้างตัวแปรที่โค้ดไม่ได้ส่ง — ตอนส่งจริงช่องนั้นจะว่าง ต้องจับตรงนี้ก่อนถึงลูกค้า
+          const supplied = new Set(EVENT_VARS[key])
+          const unknown = [...placeholdersOf(hit.Subject), ...placeholdersOf(hit.Body)].filter(v => !supplied.has(v))
+          if (unknown.length) {
+            return { key, ok: false, note: `เปิดอยู่ แต่ใช้ตัวแปรที่ระบบไม่ได้ส่ง: {{${unknown.join('}} {{')}}} — ช่องนี้จะว่างในเมลจริง` }
+          }
           // ช่องว่างมองไม่เห็นด้วยตา ต้องบอกให้รู้ว่าค่าจริงไม่ตรงกับที่ตาเห็น
           const raw = String(hit.EventKey ?? '')
           const spaces = raw !== raw.trim() ? ' · EventKey มีช่องว่างหน้า/หลัง (ระบบทนให้ แต่ควรลบ)' : ''
           return { key, ok: true, note: `พร้อมใช้ (แถว "${hit.Title}")${spaces}` }
-        }))
+        })
+        // แถวที่โค้ดไม่เคยส่ง — สร้างไว้ก็ไม่มีอะไรเกิดขึ้น ควรรู้ว่ามันไม่ทำงาน
+        for (const r of rows) {
+          const k = String(r.EventKey ?? '').trim()
+          if (k && !known.has(k.toLowerCase())) {
+            checks.push({ key: k, ok: false, note: 'ระบบไม่มีเหตุการณ์ชื่อนี้ — แถวนี้ไม่เคยถูกส่ง (ตรวจการสะกด หรือลบทิ้ง)' })
+          }
+        }
+        setTpl(checks)
       })
       .catch(e => { if (!cancelled) setTplError((e as Error).message) })
     return () => { cancelled = true }

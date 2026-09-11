@@ -23,6 +23,7 @@ import { formatDate } from '../utils/dateUtils'
 import { SLA_OPTIONS, computeSlaDue, slaInfo, slaCountdown, SLA_STATE_META } from '../utils/sla'
 import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentMail'
 import { assignWork, ackColumnWarning } from '../services/assignWork'
+import { mailFailText } from '../utils/emailTemplate'
 import { useT } from '../i18n/useT'
 
 const STATUSES: ProjectIncident['Status'][] = ['Open', 'In Progress', 'Resolved']
@@ -132,11 +133,9 @@ export default function IncidentDetail() {
     const plan = mailPlan(overrides)
     if (plan.to.length === 0) return
     const res = await sendTemplateEmail(eventKey, plan.vars, plan.to, plan.cc)
-    if (res.ok) return
-    // เงียบไม่ได้ — คนกดจะเชื่อว่าคนที่เกี่ยวข้องรู้เรื่องแล้ว
-    addToast('error', res.reason === 'no-template'
-      ? `บันทึกแล้ว แต่ไม่ได้ส่งเมล${label} — ยังไม่ได้เปิด template "${eventKey}"`
-      : `บันทึกแล้ว แต่ส่งเมล${label}ไม่สำเร็จ — ผู้เกี่ยวข้องยังไม่รู้เรื่อง`)
+    // เงียบไม่ได้ — คนกดจะเชื่อว่าคนที่เกี่ยวข้องรู้เรื่องแล้ว และต้องบอกเหตุจริง
+    const warn = mailFailText(`บันทึกแล้ว (เมล${label})`, res, eventKey, 'ผู้เกี่ยวข้องยังไม่รู้เรื่อง')
+    if (warn) addToast('error', warn)
   }
 
   async function updateStatus() {

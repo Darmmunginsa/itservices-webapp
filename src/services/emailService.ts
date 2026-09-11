@@ -4,7 +4,7 @@
  */
 import { spGet } from './sharepoint'
 import { sendMail } from './graph'
-import { findTemplate, templateProblem } from '../utils/emailTemplate'
+import { findTemplate, templateProblem, renderTemplate, renderSubject, type MailVars } from '../utils/emailTemplate'
 
 // CC ทุกครั้งที่เปิด Ticket ใหม่ (ทีมวิศวกรต้องรับรู้ทุกเคส)
 export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
@@ -103,11 +103,6 @@ export function clearEmailTemplateCache() {
   _sender = null
 }
 
-/** แทนที่ {{variable}} ด้วยค่าจริง */
-function render(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
-}
-
 /**
  * ส่ง email ตาม eventKey — ส่ง "ฉบับเดียว" เพื่อให้ทุกคนอยู่ใน thread เดียวกัน
  * @param eventKey   เช่น 'ticket_created'
@@ -117,7 +112,7 @@ function render(template: string, vars: Record<string, string>): string {
  */
 export async function sendTemplateEmail(
   eventKey: string,
-  vars: Record<string, string>,
+  vars: MailVars,
   recipients: string[],
   cc: string[] = [],
 ): Promise<SendResult> {
@@ -129,8 +124,14 @@ export async function sendTemplateEmail(
     if (!found) return { ok: false, reason: 'no-template', detail: templateProblem(templates, eventKey) }
     const tpl = found
 
-    let subject = render(tpl.Subject || '', vars)
-    let body    = render(tpl.Body    || '', vars)
+    // ตัวแปรถูกหนีอักขระเป็นค่าเริ่มต้น — ตัวที่เป็น HTML จริงต้องห่อ html() มาจากผู้เรียก
+    let subject = renderSubject(tpl.Subject || '', vars)
+    const rendered = renderTemplate(tpl.Body || '', vars)
+    let body = rendered.text
+    // template อ้างตัวแปรที่โค้ดไม่ได้ส่ง — ลบทิ้งแล้วบอกไว้ ดีกว่าปล่อย {{x}} ถึงลูกค้า
+    if (rendered.missing.length) {
+      console.warn(`[mail] template "${eventKey}" ใช้ตัวแปรที่ไม่มี: ${rendered.missing.join(', ')}`)
+    }
     if (!subject || !body) {
       return {
         ok: false, reason: 'no-template',
@@ -141,15 +142,16 @@ export async function sendTemplateEmail(
     // ── เมลของ Ticket: ใช้ "ชื่อเรื่องของลูกค้า" เป็นหัวข้อ ไม่ใช่เลข Ticket ──
     // (หลักการเดียวกับ Add-in) เลข Ticket ย้ายไปเป็นแถบบนเนื้อเมลแทน
     // ผลพลอยได้: ทุกเมลของ ticket เดียวกันใช้หัวข้อเดียวกัน → ไคลเอนต์อีเมลจัดเป็นเธรดเดียว
-    if (TICKET_EVENTS.has(eventKey) && vars.ticket_title?.trim()) {
-      subject = vars.ticket_title.trim()
-      if (vars.ticket_number?.trim()) body = ticketBanner(vars.ticket_number.trim()) + body
+    const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+    if (TICKET_EVENTS.has(eventKey) && str(vars.ticket_title)) {
+      subject = str(vars.ticket_title)
+      if (str(vars.ticket_number)) body = ticketBanner(str(vars.ticket_number)) + body
     }
 
     // ── เมลของ Incident: หัวข้อเดียวกันทั้งสามฉบับ → รวมเป็นเธรดเดียว ──
-    if (INCIDENT_EVENTS.has(eventKey) && vars.incident_title?.trim()) {
-      subject = `[Incident] ${vars.incident_title.trim()}`
-      body = incidentBanner(vars.incident_title.trim(), vars.severity ?? '', vars.project_name ?? '', eventKey === 'incident_resolved') + body
+    if (INCIDENT_EVENTS.has(eventKey) && str(vars.incident_title)) {
+      subject = `[Incident] ${str(vars.incident_title)}`
+      body = incidentBanner(str(vars.incident_title), str(vars.severity), str(vars.project_name), eventKey === 'incident_resolved') + body
     }
 
     // dedupe (case-insensitive) + ตัด CC ที่ซ้ำกับ To

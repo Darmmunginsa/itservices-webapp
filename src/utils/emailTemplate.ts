@@ -50,3 +50,114 @@ export function templateProblem(templates: TemplateRow[], eventKey: string): str
   if (near.length) return `ไม่พบ EventKey "${eventKey}" — ที่ใกล้เคียงในลิสต์: ${near.join(', ')}`
   return `ไม่พบแถว EventKey "${eventKey}" ใน HD_EmailTemplates (มีทั้งหมด ${templates.length} แถว)`
 }
+
+// ── แทนค่าลง template ────────────────────────────────────────────────────────
+// เดิม render() แทนค่าตรง ๆ ทุกตัวแปรถือเป็น HTML หมด — ชื่อลูกค้า คำอธิบาย
+// ข้อความปิดงาน ถูกยัดเข้าเมลดิบ ๆ พิมพ์ "<3" เมลก็เพี้ยน และเป็นช่องให้คนใส่ HTML
+// ที่ตัวเองเลือกเข้าเมลที่ส่งในนามบริษัท
+//
+// กฎใหม่: ตัวแปรเป็น "ข้อความ" เป็นค่าเริ่มต้น → หนีอักขระเสมอ
+// ตัวที่ตั้งใจให้เป็น HTML (ตารางที่วางมา, คำอธิบายที่แปลง <br> แล้ว) ต้องห่อด้วย html()
+// ให้เห็นชัดที่จุดเรียกว่า "ตัวนี้ผ่านการกรองมาแล้ว" ไม่ใช่เดาจากชื่อตัวแปร
+
+/** ค่าที่เป็น HTML จริง ผ่านการกรอง/หนีอักขระมาแล้ว — ห้ามสร้างจากข้อความดิบ */
+export interface HtmlVar { readonly __html: string }
+export const html = (s: string): HtmlVar => ({ __html: s ?? '' })
+export const isHtmlVar = (v: unknown): v is HtmlVar =>
+  !!v && typeof v === 'object' && typeof (v as HtmlVar).__html === 'string'
+
+export type MailVars = Record<string, string | HtmlVar | undefined>
+
+export function escapeHtml(s: string): string {
+  return (s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+/** ข้อความหลายบรรทัด → HTML ที่ปลอดภัย (หนีอักขระก่อน แล้วค่อยขึ้นบรรทัดใหม่) */
+export const textToHtml = (s: string | undefined): HtmlVar =>
+  html(escapeHtml(s ?? '').replace(/\r?\n/g, '<br>'))
+
+export interface Rendered {
+  text: string
+  /** ตัวแปรใน template ที่โค้ดไม่ได้ส่งมา — ต้องบอก ไม่ใช่ปล่อยให้ {{x}} โผล่ในเมล */
+  missing: string[]
+}
+
+/**
+ * แทน {{ตัวแปร}} ลง template
+ *
+ * ตัวแปรที่ไม่รู้จัก: เดิมปล่อย {{sla_hours}} ไว้เป็นตัวหนังสือในเมลถึงลูกค้า
+ * ตอนนี้ลบทิ้งแล้วรายงานชื่อกลับมา — ให้หน้า Diagnostic ชี้ให้เห็นก่อนถึงมือลูกค้า
+ */
+export function renderTemplate(template: string, vars: MailVars): Rendered {
+  const missing: string[] = []
+  const text = (template ?? '').replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    const v = vars[key]
+    if (v === undefined) { missing.push(key); return '' }
+    return isHtmlVar(v) ? v.__html : escapeHtml(v)
+  })
+  return { text, missing: [...new Set(missing)] }
+}
+
+/** Subject เป็นข้อความล้วน ไม่ใช่ HTML — ไม่หนีอักขระ แต่ก็ไม่ให้แท็กหลุดเข้า */
+export function renderSubject(template: string, vars: MailVars): string {
+  return (template ?? '').replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    const v = vars[key]
+    if (v === undefined) return ''
+    return (isHtmlVar(v) ? v.__html.replace(/<[^>]*>/g, '') : v).replace(/\s+/g, ' ').trim()
+  })
+}
+
+/** ดึงชื่อตัวแปรที่ template ใช้ — ให้ Diagnostic เทียบกับที่โค้ดส่งจริง */
+export const placeholdersOf = (s: string | undefined): string[] =>
+  [...new Set([...(s ?? '').matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]))]
+
+/**
+ * ตัวแปรที่โค้ดส่งให้แต่ละ event จริง ๆ — ที่เดียว ใช้ทั้ง Diagnostic และเอกสาร
+ *
+ * เอกสารเคยมี template ที่โค้ดไม่เคยส่ง (ticket_status_changed, task_assigned,
+ * comment_mention, incident_status_changed) คนสร้างไปก็ไม่มีอะไรเกิดขึ้น
+ * รายการนี้คือความจริงจากโค้ด ไม่ใช่จากความตั้งใจ
+ */
+export const EVENT_VARS: Record<string, readonly string[]> = {
+  ticket_created:    ['ticket_number', 'ticket_title', 'priority', 'category', 'description', 'customer_name', 'assigned_name', 'link'],
+  comment_added:     ['ticket_number', 'ticket_title', 'customer_name', 'assigned_name', 'comment_text', 'link'],
+  incident_created:  ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
+  incident_assigned: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
+  incident_resolved: ['incident_title', 'severity', 'status', 'description', 'resolution', 'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
+  work_assigned:     ['work_kind', 'work_title', 'agent_name', 'from_name', 'due_date', 'tag', 'status', 'link'],
+  work_acknowledged: ['work_kind', 'work_title', 'agent_name', 'from_name', 'due_date', 'tag', 'status', 'link'],
+  leave_requested:   ['requester_name', 'leave_type', 'leave_date', 'approver_name', 'link'],
+  leave_decision:    ['requester_name', 'leave_type', 'leave_date', 'leave_status', 'approver_name', 'link'],
+}
+
+export const KNOWN_EVENTS = Object.keys(EVENT_VARS)
+
+/**
+ * ลิงก์เข้าแอปสำหรับใส่ในเมล
+ *
+ * เดิม 6 จุดใช้ window.location.origin → ได้ https://itservices.co.th ไม่มี /helpdesk/
+ * ปุ่ม "เปิดดูในระบบ" จึงพาไปหน้าราก ส่วนอีก 2 จุดใช้ origin+pathname ซึ่งถูก —
+ * สองมาตรฐานในโปรเจกต์เดียว ที่นี่จึงมีทางเดียว
+ */
+export function appLink(route = '', loc: { origin: string; pathname: string } = window.location): string {
+  // pathname ตอนอยู่ในแอปคือ /helpdesk/ (หรือ /helpdesk/index.html) — เอาแค่โฟลเดอร์
+  const dir = loc.pathname.replace(/[^/]*$/, '').replace(/\/+$/, '')
+  const base = `${loc.origin}${dir}`
+  const r = (route ?? '').trim()
+  if (!r) return base || loc.origin
+  return `${base}/#${r.startsWith('/') ? r : `/${r}`}`
+}
+
+/** ข้อความบอกผู้ใช้เมื่อเมลไม่ออก — ต้องบอกเหตุจริง ไม่ใช่ "ยังไม่ได้เปิด template" ทุกกรณี */
+export function mailFailText(
+  prefix: string,
+  res: { ok: boolean; reason?: string; detail?: string },
+  eventKey: string,
+  whoMisses: string,
+): string | null {
+  if (res.ok || res.reason === 'no-recipient') return null
+  if (res.reason === 'no-template') return `${prefix} แต่ไม่ได้ส่งเมล — ${res.detail ?? `ยังไม่มี template "${eventKey}"`}`
+  return `${prefix} แต่ส่งเมลไม่สำเร็จ — ${whoMisses}${res.detail ? ` (${res.detail})` : ''}`
+}

@@ -25,6 +25,7 @@ import {
 } from '../utils/projectActivity'
 import { slaCountdown } from '../utils/sla'
 import { sendTemplateEmail } from '../services/emailService'
+import { appLink, mailFailText } from '../utils/emailTemplate'
 import { GlobalSearch } from '../components/common/GlobalSearch'
 import { useT } from '../i18n/useT'
 
@@ -234,16 +235,18 @@ export default function Home() {
       const leaveItem = pendingLeaves.find(l => l.id === id)
       setPendingLeaves(prev => prev.filter(l => l.id !== id))
       addToast('success', approved ? 'อนุมัติการลาแล้ว' : 'ปฏิเสธการลาแล้ว')
-      // ส่ง email แจ้งผู้ขอลา
+      // ส่ง email แจ้งผู้ขอลา — รอผล ไม่งั้นผู้ขอลาไม่รู้ผลแล้วไม่มีใครรู้ว่าเมลไม่ออก
       if (leaveItem?.RequestedEmail) {
-        sendTemplateEmail('leave_decision', {
+        const leaveRes = await sendTemplateEmail('leave_decision', {
           requester_name:  leaveItem.RequestedBy ?? '',
           leave_type:      leaveItem.LeaveType ?? '',
           leave_date:      leaveItem.LeaveDate ?? '',
           leave_status:    approved ? 'อนุมัติ' : 'ไม่อนุมัติ',
           approver_name:   user?.displayName ?? '',
-          link:            window.location.origin,
+          link:            appLink(),
         }, [leaveItem.RequestedEmail])
+        const warn = mailFailText(approved ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว', leaveRes, 'leave_decision', 'ผู้ขอลายังไม่รู้ผล')
+        if (warn) addToast('error', warn)
       }
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setApprovingId(null) }
   }

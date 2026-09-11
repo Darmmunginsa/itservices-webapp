@@ -15,6 +15,7 @@ import { RichHtml } from '../components/common/RichHtml'
 import { useRichPaste } from '../hooks/useRichPaste'
 import { RichPasteChip } from '../components/common/RichPaste'
 import { joinRich, splitRich, plainSnippet } from '../utils/richComment'
+import { html, textToHtml, appLink, mailFailText } from '../utils/emailTemplate'
 import { pickFiles, pastedName, dedupeName, previewKind, prettySize } from '../utils/filePreview'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
 import { AttachmentThumb } from '../components/common/AttachmentThumb'
@@ -333,12 +334,9 @@ export default function TicketDetail() {
             .filter((e): e is string => !!e && e.toLowerCase() !== me && e.toLowerCase() !== customer.toLowerCase())
           // ข้อความที่คนพิมพ์เป็นข้อความล้วน — ต้องหนีอักขระ HTML ไม่งั้นข้อความอย่าง "<3"
           // จะทำให้เมลเพี้ยน และเป็นช่องฉีด HTML เข้าเมลถึงลูกค้า
-          const escaped = (text || '(แนบไฟล์)')
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/\n/g, '<br>')
           // ตารางที่วางมาส่งเป็นตารางจริงในเมล ไม่ใช่ข้อความคั่น tab
           // ผ่านตัวกรองมาแล้วตอนวาง จึงเหลือแต่แท็กในรายการขาว
-          const bodyText = escaped
+          const bodyText = textToHtml(text || '(แนบไฟล์)').__html
             + (richForMail ? `<div style="margin-top:8px">${richForMail}</div>` : '')
             + (fileCount ? `<p style="color:#64748b;font-size:12px">📎 มีไฟล์แนบ ${fileCount} ไฟล์ — เปิดดูได้ใน Ticket (ไฟล์ไม่ได้แนบมากับอีเมลฉบับนี้)</p>` : '')
           const res = await sendTemplateEmail('comment_added', {
@@ -346,12 +344,13 @@ export default function TicketDetail() {
             ticket_title:  ticket.Title,
             customer_name: ticket.CustomerName || '',
             assigned_name: ticket.AssignedToName || '-',
-            comment_text:  bodyText,
-            link: window.location.origin,
+            // ผ่านการหนีอักขระและกรองมาแล้ว — บอกตัว render ว่าตัวนี้เป็น HTML จริง
+            comment_text:  html(bodyText),
+            link: appLink(`/tickets/${ticket.id}`),
           }, [customer], cc)
-          if (res.ok) addToast('success', `ส่งถึงลูกค้าแล้ว (${customer})`)
-          else if (res.reason === 'no-template') addToast('error', 'บันทึกแล้ว แต่ยังไม่ได้ส่งเมล — ตั้ง template "Comment Added" ในหน้าตั้งค่าก่อน')
-          else addToast('error', 'บันทึกแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็นข้อความนี้')
+          const warn = mailFailText('บันทึกแล้ว', res, 'comment_added', 'ลูกค้ายังไม่เห็นข้อความนี้')
+          if (warn) addToast('error', warn)
+          else addToast('success', `ส่งถึงลูกค้าแล้ว (${customer})`)
         }
       } else {
         addToast('success', 'บันทึก Comment แล้ว')
@@ -434,12 +433,14 @@ export default function TicketDetail() {
               ticket_title: ticket.Title,
               customer_name: ticket.CustomerName || '',
               assigned_name: ticket.AssignedToName || '-',
-              comment_text: resolutionNote.replace(/\n/g, '<br>'),
-              link: window.location.origin,
+              // ข้อความปิดงานเป็นข้อความล้วน (ลิงก์ KB เป็น URL เปล่า) — หนีอักขระเหมือนคอมเมนต์ปกติ
+              // เดิมทางนี้ไม่ได้หนี ทั้งที่ทางคอมเมนต์ปกติหนีแล้ว
+              comment_text: textToHtml(resolutionNote),
+              link: appLink(`/tickets/${ticket.id}`),
             }, [customer], cc)
-            if (res.ok) addToast('success', `ปิดงานและส่งถึงลูกค้าแล้ว (${customer})`)
-            else if (res.reason === 'no-template') addToast('error', 'ปิดงานแล้ว แต่ยังไม่ได้ส่งเมล — ตั้ง template "Comment Added" ก่อน')
-            else addToast('error', 'ปิดงานแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็นข้อความนี้')
+            const warn = mailFailText('ปิดงานแล้ว', res, 'comment_added', 'ลูกค้ายังไม่เห็นข้อความนี้')
+            if (warn) addToast('error', warn)
+            else addToast('success', `ปิดงานและส่งถึงลูกค้าแล้ว (${customer})`)
           } else {
             addToast('success', 'ปิดงานแล้ว (ไม่ได้ส่งเมล — ไม่พบอีเมลลูกค้า)')
           }

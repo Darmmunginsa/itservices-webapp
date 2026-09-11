@@ -16,7 +16,7 @@ import { buildGroups, customersOf, toggleGroup, groupFullySelected, customerOpti
 import { incidentRecipients, incidentVars, justResolved, justAssigned } from '../src/utils/incidentMail'
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
-import { findTemplate, isOn, templateProblem } from '../src/utils/emailTemplate'
+import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
@@ -905,8 +905,13 @@ eq(incidentVars({ ...INC, slaHours: null }).sla_hours, 'ไม่ได้กำ
 eq(iv.link, 'https://itservices.co.th/helpdesk/#/projects/7', 'the link opens the project')
 eq(incidentVars({ title: 'x', severity: '', status: '' }).assigned_name, '-',
   'an unassigned incident does not print "undefined"')
-eq(Object.values(incidentVars({ title: 'x', severity: '', status: '' })).every(x => typeof x === 'string'),
-  true, 'every variable is a string so nothing renders as undefined')
+eq(Object.values(incidentVars({ title: 'x', severity: '', status: '' })).every(x => typeof x === 'string' || isHtmlVar(x)),
+  true, 'every variable is text or marked html so nothing renders as undefined')
+// คำอธิบายเป็นข้อความที่คนพิมพ์ — ต้องหนีอักขระ และขึ้นบรรทัดใหม่ต้องอยู่รอดในเมล
+const ivDesc = incidentVars({ ...INC, description: 'เซิร์ฟเวอร์ <VDI-01>\nล่มตอน 9 โมง' }).description
+eq(isHtmlVar(ivDesc), true, 'the description is delivered as html so its line breaks survive')
+eq(isHtmlVar(ivDesc) && ivDesc.__html, 'เซิร์ฟเวอร์ &lt;VDI-01&gt;<br>ล่มตอน 9 โมง',
+  'angle brackets in a description are escaped, not injected into the mail')
 
 // ส่งเมลเฉพาะตอนที่สถานะเปลี่ยนจริง
 eq(justResolved('Resolved', 'Open'), true, 'closing a live incident sends the mail')
@@ -1686,6 +1691,65 @@ eq(templateProblem([], 'work_assigned').includes('0 แถว'), true,
 eq(templateProblem(MAILTPL, 'zzzzzz').includes('ไม่พบแถว'), true,
   'a key with nothing like it says the row is missing')
 
+
+
+// -- แทนค่าลง template อีเมล: หนีอักขระเป็นค่าเริ่มต้น (utils/emailTemplate) --
+// บั๊กจริง: ชื่อลูกค้า/คำอธิบาย/ข้อความปิดงาน ถูกยัดเข้าเมลดิบ ๆ พิมพ์ "<3" เมลก็เพี้ยน
+eq(escapeHtml('a<b>&"\''), 'a&lt;b&gt;&amp;&quot;&#39;', 'every character that means something to HTML is escaped')
+eq(renderTemplate('สวัสดี {{name}}', { name: '<script>x</script>' }).text, 'สวัสดี &lt;script&gt;x&lt;/script&gt;',
+  'a plain variable cannot inject markup into the mail')
+eq(renderTemplate('{{body}}', { body: html('<b>ok</b>') }).text, '<b>ok</b>',
+  'a variable wrapped in html() is trusted as already-safe markup')
+eq(renderTemplate('{{a}}-{{a}}', { a: 'x' }).text, 'x-x', 'the same variable can appear more than once')
+// ตัวแปรที่โค้ดไม่ได้ส่ง: เดิมปล่อย {{sla_hours}} เป็นตัวหนังสือถึงลูกค้า
+const missingR = renderTemplate('SLA {{sla_hours}} / {{nope}}', {})
+eq(missingR.text, 'SLA  / ', 'an unknown variable is removed rather than shown as {{x}} to the customer')
+eq(missingR.missing.join(','), 'sla_hours,nope', 'and every unknown variable is reported so Diagnostic can show it')
+eq(renderTemplate('{{x}}{{x}}', {}).missing.length, 1, 'a repeated unknown variable is reported once')
+eq(renderTemplate('', { a: 'x' }).text, '', 'an empty template is empty output')
+
+eq(textToHtml('บรรทัด 1\nบรรทัด <2>').__html, 'บรรทัด 1<br>บรรทัด &lt;2&gt;',
+  'multi-line text is escaped first and then given line breaks')
+eq(textToHtml('a\r\nb').__html, 'a<br>b', 'Windows line endings do not leave a stray carriage return')
+eq(textToHtml(undefined).__html, '', 'missing text is empty html, not "undefined"')
+eq(isHtmlVar(html('x')), true, 'html() output is recognised')
+eq(isHtmlVar('x'), false, 'a bare string is not')
+eq(isHtmlVar({ __html: 1 }), false, 'a look-alike with the wrong type is not trusted')
+
+// Subject เป็นข้อความล้วน — ไม่หนี แต่ก็ไม่ให้แท็กจากตัวแปร html หลุดเข้า
+eq(renderSubject('[{{no}}] {{t}}', { no: 'TK-1', t: 'จอ <ดับ>' }), '[TK-1] จอ <ดับ>',
+  'a subject keeps the characters as typed because it is not HTML')
+eq(renderSubject('{{t}}', { t: html('<b>x</b>  y') }), 'x y', 'markup in an html var is stripped from a subject')
+eq(renderSubject('{{t}}', {}), '', 'an unknown variable in a subject is blank')
+
+eq(placeholdersOf('{{a}} {{b}} {{a}}').join(','), 'a,b', 'placeholders are listed once each')
+eq(placeholdersOf(undefined).length, 0, 'no template means no placeholders')
+
+// ลิงก์เข้าแอป — เดิม 6 จุดใช้ origin เปล่า ๆ พาไปหน้ารากที่ไม่มีแอป
+const LOC = { origin: 'https://itservices.co.th', pathname: '/helpdesk/' }
+eq(appLink('', LOC), 'https://itservices.co.th/helpdesk', 'the bare app link includes the folder the app lives in')
+eq(appLink('/tickets/12', LOC), 'https://itservices.co.th/helpdesk/#/tickets/12', 'a route becomes a hash link into the app')
+eq(appLink('tickets/12', LOC), 'https://itservices.co.th/helpdesk/#/tickets/12', 'a route without a leading slash still works')
+eq(appLink('/x', { origin: 'https://itservices.co.th', pathname: '/helpdesk/index.html' }),
+  'https://itservices.co.th/helpdesk/#/x', 'index.html in the path is not treated as a folder')
+eq(appLink('/x', { origin: 'http://localhost:5173', pathname: '/' }), 'http://localhost:5173/#/x',
+  'an app served from the root still gets a usable link')
+
+// ข้อความบอกผู้ใช้ — ต้องบอกเหตุจริง และเงียบเมื่อไม่มีใครต้องรับ
+eq(mailFailText('บันทึกแล้ว', { ok: true }, 'x', 'y'), null, 'success has nothing to warn about')
+eq(mailFailText('บันทึกแล้ว', { ok: false, reason: 'no-recipient' }, 'x', 'y'), null,
+  'nobody to send to is not an error worth a red toast')
+eq(mailFailText('บันทึกแล้ว', { ok: false, reason: 'no-template', detail: 'ไม่พบแถว' }, 'x', 'y'),
+  'บันทึกแล้ว แต่ไม่ได้ส่งเมล — ไม่พบแถว', 'a template problem shows the real cause from the lookup')
+eq(mailFailText('บันทึกแล้ว', { ok: false, reason: 'no-template' }, 'work_assigned', 'y')!.includes('work_assigned'),
+  true, 'with no detail it at least names the event key')
+eq(mailFailText('ปิดงานแล้ว', { ok: false, reason: 'failed', detail: '403' }, 'x', 'ลูกค้ายังไม่เห็น'),
+  'ปิดงานแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็น (403)', 'a send failure says who missed out and why')
+
+// รายการตัวแปรต่อ event คือความจริงจากโค้ด — ทุก event ต้องมี link
+eq(KNOWN_EVENTS.length, 9, 'nine events are actually sent by the code')
+eq(KNOWN_EVENTS.every(k => EVENT_VARS[k].includes('link')), true, 'every mail can link back into the app')
+eq(KNOWN_EVENTS.includes('ticket_status_changed'), false, 'a template the code never sends is not listed as real')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

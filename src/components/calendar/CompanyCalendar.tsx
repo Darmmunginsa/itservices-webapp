@@ -4,6 +4,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOf
 import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
 import { sendTemplateEmail } from '../../services/emailService'
+import { appLink, mailFailText } from '../../utils/emailTemplate'
 import type { Holiday, LeaveRequest, AgentProfile, LeaveQuota } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
@@ -193,17 +194,25 @@ export function CompanyCalendar() {
       if (selfApprove) {
         addToast('success', `บันทึกการลา ${rangeLabel} (${days.length} วัน) แล้ว (ไม่ต้องขออนุมัติ)`)
       } else {
-        addToast('success', `ส่งคำขอลา ${rangeLabel} (${days.length} วัน) แล้ว — รอการอนุมัติ`)
         // ส่ง email แจ้งผู้อนุมัติ (ฉบับเดียว สรุปช่วงวัน)
-        sendTemplateEmail('leave_requested', {
+        // เดิมยิงแล้วไม่รอผล — ถ้ายังไม่ได้ตั้งผู้อนุมัติ หรือ template หาย
+        // หน้าจอบอก "รอการอนุมัติ" ทั้งที่ผู้อนุมัติไม่มีวันรู้
+        const leaveRes = await sendTemplateEmail('leave_requested', {
           requester_name: user.displayName,
           leave_type:     leaveForm.leaveType,
           leave_date:     days.length === 1 ? startStr
                             : leaveMulti ? `${days.map(d => format(d, 'yyyy-MM-dd')).join(', ')} (${days.length} วัน)`
                             : `${startStr} ถึง ${endStr} (${days.length} วัน)`,
           approver_name:  approver?.Title ?? '',
-          link:           window.location.origin,
+          link:           appLink(),
         }, [approverEmail])
+        if (!approverEmail) {
+          addToast('error', `บันทึกคำขอลา ${rangeLabel} แล้ว แต่ยังไม่ได้ตั้งผู้อนุมัติ — ไม่มีใครได้รับแจ้ง ให้ Admin ตั้งผู้อนุมัติที่หน้าตั้งค่า`)
+        } else {
+          const warn = mailFailText(`ส่งคำขอลา ${rangeLabel} แล้ว`, leaveRes, 'leave_requested', 'ผู้อนุมัติยังไม่ได้รับเมล')
+          if (warn) addToast('error', warn)
+          else addToast('success', `ส่งคำขอลา ${rangeLabel} (${days.length} วัน) แล้ว — รอการอนุมัติ`)
+        }
       }
       // refresh balance
       if (user.email) {

@@ -20,6 +20,7 @@ import { countProjectChildren, deleteProjectCascade } from '../services/projectS
 import { createCalendarEvent } from '../services/graph'
 import { useAppStore } from '../store/useAppStore'
 import { assignFields } from '../utils/ackInbox'
+import { mailFailText } from '../utils/emailTemplate'
 import { createNotification } from '../services/notificationService'
 import { sendTemplateEmail } from '../services/emailService'
 import { notifyAcknowledged, ackFailMessage } from '../services/ackNotify'
@@ -665,18 +666,16 @@ export default function ProjectDetail() {
       assignedName: agent?.Title,
       assignedEmail: incidentForm.assignedAgentEmail,
       requesterEmail: editingIncident?.Author?.EMail || editingIncident?.CreatedByEmail || user?.email,
-      watchers: [project?.CreatedByEmail, ...members.map(m => m.AgentEmail)],
+      // ผู้รับต้องเหมือนกันทุกหน้า: หน้า Incident / แจ้งงาน / Dashboard CC เจ้าของโครงการเท่านั้น
+      // เดิมหน้านี้ CC สมาชิกทีมทั้งหมดด้วย — เหตุการณ์เดียวกันแต่คนได้เมลต่างกันแล้วแต่กดจากหน้าไหน
+      watchers: [project?.CreatedByEmail],
       actorEmail: user?.email,
       baseUrl: window.location.origin + window.location.pathname,
     })
     if (plan.to.length === 0) return   // ไม่มีใครให้ส่ง — ไม่ใช่ความผิดพลาด
     const res = await sendTemplateEmail(eventKey, plan.vars, plan.to, plan.cc)
-    if (res.ok) return
-    if (res.reason === 'no-template') {
-      addToast('error', `บันทึกแล้ว แต่ไม่ได้ส่งเมล${label} — ยังไม่ได้เปิด template "${eventKey}"`)
-    } else {
-      addToast('error', `บันทึกแล้ว แต่ส่งเมล${label}ไม่สำเร็จ — ผู้เกี่ยวข้องยังไม่รู้เรื่อง`)
-    }
+    const warn = mailFailText(`บันทึกแล้ว (เมล${label})`, res, eventKey, 'ผู้เกี่ยวข้องยังไม่รู้เรื่อง')
+    if (warn) addToast('error', warn)
   }
 
   async function saveIncident(e: React.FormEvent) {

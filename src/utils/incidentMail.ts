@@ -4,6 +4,8 @@
 // ผู้รับเอง จะเพี้ยนกันจนบางคนได้เมลบางจังหวะเท่านั้น ซึ่งแย่กว่าไม่ได้เลย
 // เพราะคนอ่านจะเชื่อว่าตัวเองได้ครบ
 
+import { textToHtml, type MailVars } from './emailTemplate'
+
 export interface IncidentMailInput {
   title: string
   severity: string
@@ -28,7 +30,7 @@ export interface IncidentMailInput {
 export interface IncidentMailPlan {
   to: string[]
   cc: string[]
-  vars: Record<string, string>
+  vars: MailVars
 }
 
 const norm = (e?: string): string => (e ?? '').trim().toLowerCase()
@@ -75,14 +77,16 @@ const SLA_TEXT = (h?: number | null): string => {
 }
 
 /** ตัวแปรที่ template ใช้แทนค่าได้ — ค่าที่ไม่มีให้เป็นสตริงว่าง ไม่ใช่ undefined */
-export function incidentVars(i: IncidentMailInput): Record<string, string> {
+export function incidentVars(i: IncidentMailInput): MailVars {
   const base = (i.baseUrl ?? '').replace(/\/+$/, '')
   return {
     incident_title: i.title ?? '',
     severity: i.severity ?? '',
     status: i.status ?? '',
-    description: i.description ?? '',
-    resolution: i.resolution ?? '',
+    // คำอธิบายมีหลายบรรทัด — ต้องแปลง <br> ให้ ไม่งั้นยุบเป็นบรรทัดเดียวในเมล
+    // และต้องหนีอักขระก่อน เพราะเป็นข้อความที่คนพิมพ์เอง ไม่ใช่ HTML
+    description: textToHtml(i.description),
+    resolution: textToHtml(i.resolution),
     incident_date: (i.incidentDate ?? '').slice(0, 10),
     sla_hours: SLA_TEXT(i.slaHours),
     project_name: i.projectName ?? '',

@@ -6,6 +6,7 @@
 import { sendTemplateEmail } from './emailService'
 import { createNotification } from './notificationService'
 import { ackVars, type AckKind, type AckRow } from '../utils/ackInbox'
+import { mailFailText } from '../utils/emailTemplate'
 
 export interface AckNotifyInput {
   kind: AckKind
@@ -56,13 +57,7 @@ export async function notifyAcknowledged(i: AckNotifyInput): Promise<AckNotifyRe
 
 /** ข้อความบอกผู้ใช้เมื่อส่งไม่ได้ — เงียบไม่ได้ คนกดจะเชื่อว่าแจ้งไปแล้ว */
 export function ackFailMessage(reason?: string, detail?: string): string | null {
-  if (reason === 'no-recipient') return null   // ไม่มีใครต้องแจ้ง ไม่ใช่ความผิดพลาด
-  // detail บอกว่าเป็น "ไม่มีแถว" / "ปิดอยู่" / "เนื้อว่าง" — คนละที่ที่ต้องไปแก้
-  // เดิมบอกว่า "ยังไม่ได้เปิด template" ทุกกรณี คนที่เปิดไว้แล้วจึงไปหาผิดจุด
-  if (reason === 'no-template') {
-    return `รับงานแล้ว แต่ไม่ได้ส่งเมลแจ้ง — ${detail ?? 'ยังไม่ได้เปิด template "work_acknowledged"'}`
-  }
-  return `รับงานแล้ว แต่ส่งเมลแจ้งไม่สำเร็จ — คนมอบหมายยังไม่รู้${detail ? ` (${detail})` : ''}`
+  return mailFailText('รับงานแล้ว', { ok: false, reason, detail }, 'work_acknowledged', 'คนมอบหมายยังไม่รู้')
 }
 
 /**
@@ -104,9 +99,5 @@ export async function notifyAssigned(i: AckNotifyInput): Promise<AckNotifyResult
 
 /** ข้อความบอกผู้ใช้เมื่อแจ้งคนรับงานไม่ได้ — มอบหมายสำเร็จ กับ แจ้งไม่ถึง คนละเรื่อง */
 export function assignFailMessage(reason?: string, detail?: string): string | null {
-  if (reason === 'no-recipient') return null
-  if (reason === 'no-template') {
-    return `มอบหมายแล้ว แต่ไม่ได้ส่งเมลแจ้ง — ${detail ?? 'ยังไม่ได้ตั้ง template "work_assigned"'}`
-  }
-  return `มอบหมายแล้ว แต่ส่งเมลแจ้งไม่สำเร็จ — ผู้รับงานยังไม่รู้${detail ? ` (${detail})` : ''}`
+  return mailFailText('มอบหมายแล้ว', { ok: false, reason, detail }, 'work_assigned', 'ผู้รับงานยังไม่รู้')
 }
