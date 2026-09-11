@@ -130,6 +130,13 @@ export const EVENT_VARS: Record<string, readonly string[]> = {
   work_acknowledged: ['work_kind', 'work_title', 'agent_name', 'from_name', 'due_date', 'tag', 'status', 'link'],
   leave_requested:   ['requester_name', 'leave_type', 'leave_date', 'approver_name', 'link'],
   leave_decision:    ['requester_name', 'leave_type', 'leave_date', 'leave_status', 'approver_name', 'link'],
+  // สี่ตัวนี้เคยมีแต่ template ไม่มีโค้ดส่ง — ต่อสายแล้ว
+  ticket_status_changed:   ['ticket_number', 'ticket_title', 'ticket_status', 'customer_name', 'assigned_name', 'link'],
+  task_assigned:           ['task_title', 'assigned_name', 'due_date', 'task_note', 'link',
+                            'work_kind', 'work_title', 'agent_name', 'from_name', 'tag', 'status'],
+  comment_mention:         ['ticket_number', 'ticket_title', 'comment_text', 'mentioned_by', 'link'],
+  incident_status_changed: ['incident_title', 'severity', 'status', 'incident_status', 'description', 'resolution',
+                            'incident_date', 'sla_hours', 'project_name', 'assigned_name', 'link'],
 }
 
 export const KNOWN_EVENTS = Object.keys(EVENT_VARS)

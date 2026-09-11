@@ -3,6 +3,8 @@ import { Send, X, ThumbsUp, MessageSquare, ChevronDown, ImagePlus } from 'lucide
 import { spGet, spCreate, spUpdate, spUploadAttachment, spWaitForItem, spGetAttachments } from '../../services/sharepoint'
 import { AttachmentThumb } from './AttachmentThumb'
 import { createNotification } from '../../services/notificationService'
+import { sendTemplateEmail } from '../../services/emailService'
+import { html, textToHtml, appLink, mailFailText } from '../../utils/emailTemplate'
 import { useAppStore } from '../../store/useAppStore'
 import { QuotedText } from './QuotedText'
 import { Button } from './Button'
@@ -188,6 +190,16 @@ export function CommentSection({ listName, parentField, parentId, mentionCandida
           title: `📣 ${user.displayName} ถามถึงคุณใน ${titleLabel}`,
           message: snippet, linkPath, eventType: 'comment_mention',
         })
+        // ถูก @ = มีคนรอคำตอบจากคุณ — ส่งเมลด้วย ไม่ใช่แค่กระดิ่ง
+        const res = await sendTemplateEmail('comment_mention', {
+          ticket_number: '',
+          ticket_title: titleLabel,
+          comment_text: html(textToHtml(comment).__html + (richHtml ? `<div style="margin-top:8px">${richHtml}</div>` : '')),
+          mentioned_by: user.displayName,
+          link: appLink(linkPath),
+        }, mentioned.map(m => m.email))
+        const warn = mailFailText('บันทึกแล้ว', res, 'comment_mention', 'คนที่ถูก @ ยังไม่ได้เมล')
+        if (warn) addToast('error', warn)
       }
       const internal = [...new Set(notifyEmails.filter(Boolean))]
         .filter(em => em.toLowerCase() !== user.email.toLowerCase() && !mentionedSet.has(em.toLowerCase()))

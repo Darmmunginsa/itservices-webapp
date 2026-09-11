@@ -11,14 +11,14 @@ export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
 
 // เมลที่เกี่ยวกับ Ticket — ใช้ชื่อเรื่องของลูกค้าเป็นหัวข้อ (ไม่ใช่เลข Ticket)
 // ทุก event ในเซ็ตนี้ใช้หัวข้อเดียวกัน = ไคลเอนต์อีเมลจัดเป็นเธรดเดียวฝั่งลูกค้า
-const TICKET_EVENTS = new Set(['ticket_created', 'comment_added'])
+const TICKET_EVENTS = new Set(['ticket_created', 'comment_added', 'ticket_status_changed'])
 
 // event ที่ต้อง CC ทีมวิศวกรเสมอ — เปิดเคสใหม่ และตอบกลับลูกค้า (ทีมต้องเห็นทั้งเธรด)
 const ALWAYS_CC_EVENTS = new Set(['ticket_created', 'comment_added'])
 
 // เมลของ Incident — เปิด / มอบหมาย / ปิด ใช้ชื่อเคสเป็นหัวข้อเหมือนกันทั้งสามฉบับ
 // ทุกฉบับจึงอยู่ในเธรดเดียว คนรับเห็นเรื่องเดียวต่อกันแทนที่จะเป็นเมลกระจัดกระจาย
-const INCIDENT_EVENTS = new Set(['incident_created', 'incident_assigned', 'incident_resolved'])
+const INCIDENT_EVENTS = new Set(['incident_created', 'incident_assigned', 'incident_resolved', 'incident_status_changed'])
 
 /** ผลการส่ง — ok=false พร้อมเหตุผล เพื่อให้หน้าจอบอกผู้ใช้ได้ ไม่ใช่เงียบ */
 export type SendResult = { ok: true } | { ok: false; reason: 'no-template' | 'no-recipient' | 'failed'; detail?: string }

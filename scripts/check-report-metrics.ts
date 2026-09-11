@@ -1748,9 +1748,10 @@ eq(mailFailText('ปิดงานแล้ว', { ok: false, reason: 'failed',
   'ปิดงานแล้ว แต่ส่งเมลไม่สำเร็จ — ลูกค้ายังไม่เห็น (403)', 'a send failure says who missed out and why')
 
 // รายการตัวแปรต่อ event คือความจริงจากโค้ด — ทุก event ต้องมี link
-eq(KNOWN_EVENTS.length, 9, 'nine events are actually sent by the code')
+eq(KNOWN_EVENTS.length, 13, 'thirteen events are actually sent by the code')
 eq(KNOWN_EVENTS.every(k => EVENT_VARS[k].includes('link')), true, 'every mail can link back into the app')
-eq(KNOWN_EVENTS.includes('ticket_status_changed'), false, 'a template the code never sends is not listed as real')
+eq(['ticket_status_changed','task_assigned','comment_mention','incident_status_changed'].every(k => KNOWN_EVENTS.includes(k)), true,
+  'the four templates that used to have no sender are wired up now')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

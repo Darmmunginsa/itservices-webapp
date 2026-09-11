@@ -20,6 +20,8 @@ export interface AckNotifyInput {
   status?: string
   agentName: string
   agentEmail: string
+  /** รายละเอียดงาน (Task) — ใส่ในเมล task_assigned */
+  note?: string
 }
 
 export type AckNotifyResult = {
@@ -89,11 +91,22 @@ export async function notifyAssigned(i: AckNotifyInput): Promise<AckNotifyResult
     from: i.fromName ?? '', fromEmail: i.fromEmail ?? '', due: i.due, tag: i.tag, status: i.status,
     listName: '',
   }
-  const res = await sendTemplateEmail(
-    'work_assigned',
-    ackVars(row, i.agentName, window.location.origin + window.location.pathname),
-    [to],
-  )
+  const vars = {
+    ...ackVars(row, i.agentName, window.location.origin + window.location.pathname),
+    // ชื่อตัวแปรของ template task_assigned เดิม — ให้ใช้ได้ทั้งสองแบบ
+    task_title: i.title,
+    assigned_name: i.agentName,
+    task_note: i.note ?? '',
+  }
+  // Task มี template เฉพาะของตัวเอง (task_assigned) — ถ้าตั้งไว้ใช้ตัวนั้น ไม่มีค่อยใช้ตัวรวม
+  // ส่งฉบับเดียวเสมอ ไม่ใช่สองฉบับเรื่องเดียวกัน
+  if (i.kind === 'Task') {
+    const specific = await sendTemplateEmail('task_assigned', vars, [to])
+    if (specific.ok || specific.reason !== 'no-template') {
+      return specific.ok ? { sent: true } : { sent: false, reason: specific.reason, detail: specific.detail }
+    }
+  }
+  const res = await sendTemplateEmail('work_assigned', vars, [to])
   return res.ok ? { sent: true } : { sent: false, reason: res.reason, detail: res.detail }
 }
 

@@ -165,6 +165,11 @@ export default function IncidentDetail() {
       }
       if (justResolved(newStatus, inc.Status)) {
         await mail('incident_resolved', 'แจ้งปิดเคส')
+      } else if (newStatus !== inc.Status) {
+        // เปลี่ยนสถานะที่ไม่ใช่ปิด (เช่น Open → In Progress) — ผู้แจ้งควรรู้ว่าเคสเดินอยู่
+        await mail('incident_status_changed', 'แจ้งสถานะ')
+      }
+      if (justResolved(newStatus, inc.Status)) {
         celebrate()
         // ปิดเคสแล้วไม่มีอะไรให้ทำต่อ — พากลับที่มา (ปลายทางเดียวกับปุ่มย้อนกลับ)
         exitTimer.current = window.setTimeout(

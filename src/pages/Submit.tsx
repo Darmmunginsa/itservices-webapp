@@ -277,7 +277,7 @@ export default function Submit() {
             kind: 'Task', id: 0, title: form.title,
             link: form.projectId ? `/projects/${form.projectId}` : '/my-work',
             fromEmail: user.email, fromName: user.displayName,
-            due: dueDate ?? undefined, status: 'Open',
+            due: dueDate ?? undefined, status: 'Open', note: form.taskNote,
             agentName: form.assignedName || form.assignedEmail, agentEmail: form.assignedEmail,
           })
           const warn = mail.sent ? null : assignFailMessage(mail.reason, mail.detail)

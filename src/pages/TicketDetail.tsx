@@ -305,6 +305,16 @@ export default function TicketDetail() {
             linkPath: link,
             eventType: 'comment_mention',
           })
+          // ถูก @ = มีคนรอคำตอบจากคุณ — กระดิ่งในแอปเห็นก็ต่อเมื่อเปิดแอปอยู่
+          const res = await sendTemplateEmail('comment_mention', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title: ticket.Title,
+            comment_text: textToHtml(text),
+            mentioned_by: user.displayName,
+            link: appLink(link),
+          }, mentioned.map(m => m.email))
+          const warn = mailFailText('บันทึกแล้ว', res, 'comment_mention', 'คนที่ถูก @ ยังไม่ได้เมล')
+          if (warn) addToast('error', warn)
         }
         // คนภายในอื่นๆ → แจ้ง comment ปกติ (ตัดคนที่ถูก @ และคนกดเองออก)
         const internal = [...new Set([ticket.AssignedEmail, submitter, ...memberEmails].filter(Boolean) as string[])]
@@ -464,6 +474,27 @@ export default function TicketDetail() {
             linkPath: `/tickets/${id}`,
             eventType: 'ticket_status_changed',
           })
+        }
+      }
+      // เมลถึงลูกค้าเมื่อสถานะเปลี่ยน — ถ้าปิดงานพร้อมตอบลูกค้า เมล comment_added ออกไปแล้ว ไม่ส่งซ้ำ
+      const mailedViaReply = isClosing && replyOnClose && isAgent && !!resolutionNote.trim()
+      if (newStatus !== ticket.Status && !mailedViaReply) {
+        const me = user?.email?.toLowerCase() ?? ''
+        const submitterEmail = ticket.Author?.EMail || ticket.CreatedByEmail
+        const customer = [ticket.CustomerEmail, submitterEmail].find(e => e && e.toLowerCase() !== me)
+        if (customer) {
+          const cc = [ticket.AssignedEmail, submitterEmail, ...members.map(m => m.AgentEmail)]
+            .filter((e): e is string => !!e && e.toLowerCase() !== me && e.toLowerCase() !== customer.toLowerCase())
+          const res = await sendTemplateEmail('ticket_status_changed', {
+            ticket_number: ticket.TicketNumber,
+            ticket_title: ticket.Title,
+            ticket_status: newStatus,
+            customer_name: ticket.CustomerName || '',
+            assigned_name: ticket.AssignedToName || '-',
+            link: appLink(`/tickets/${ticket.id}`),
+          }, [customer], cc)
+          const warn = mailFailText('อัปเดตสถานะแล้ว', res, 'ticket_status_changed', 'ลูกค้ายังไม่รู้สถานะใหม่')
+          if (warn) addToast('error', warn)
         }
       }
       addToast('success', 'อัปเดตสถานะแล้ว')
