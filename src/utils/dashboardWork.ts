@@ -23,6 +23,8 @@ export interface WorkRow {
   assignedEmail: string
   /** ผู้แจ้ง/ผู้สั่งงาน */
   requester: string
+  /** อีเมลผู้แจ้ง — ใช้หา "งานที่ฉันแจ้งไป" */
+  requesterEmail: string
   due: string
   modified: string
   projectId?: number
@@ -48,6 +50,8 @@ interface TicketLike {
   AssignedToName?: string; AssignedEmail?: string; CustomerName?: string; CustomerEmail?: string
   DueDate?: string; Modified?: string; ProjectID?: number
   IsAcknowledged?: boolean
+  Author?: { Title?: string; EMail?: string }
+  CreatedByEmail?: string
 }
 
 export function ticketRows(tickets: TicketLike[], projects: ProjectName[] = []): WorkRow[] {
@@ -61,6 +65,8 @@ export function ticketRows(tickets: TicketLike[], projects: ProjectName[] = []):
     assignedName: s(t.AssignedToName),
     assignedEmail: s(t.AssignedEmail),
     requester: s(t.CustomerName) || s(t.CustomerEmail),
+    // คนที่ "แจ้ง" คือคนสร้างแถว ไม่ใช่ลูกค้า — หัวหน้าแจ้งแทนลูกค้าก็ยังเป็นงานที่หัวหน้าแจ้ง
+    requesterEmail: s(t.Author?.EMail) || s(t.CreatedByEmail) || s(t.CustomerEmail),
     due: s(t.DueDate),
     modified: s(t.Modified),
     projectId: t.ProjectID,
@@ -73,7 +79,8 @@ interface IncidentLike {
   id: number; Title: string; Status?: string; Severity?: string
   AssignedTo?: string; AssignedEmail?: string
   IncidentDate?: string; SLADue?: string; Modified?: string; ProjectID?: number
-  Author?: { Title?: string }
+  Author?: { Title?: string; EMail?: string }
+  CreatedByEmail?: string
   IsAcknowledged?: boolean
 }
 
@@ -89,6 +96,7 @@ export function incidentRows(incidents: IncidentLike[], projects: ProjectName[] 
     assignedName: s(i.AssignedTo),
     assignedEmail: s(i.AssignedEmail),
     requester: s(i.Author?.Title),
+    requesterEmail: s(i.Author?.EMail) || s(i.CreatedByEmail),
     // เส้นตายของ Incident คือ SLA ไม่ใช่วันที่เกิดเหตุ
     due: s(i.SLADue),
     modified: s(i.Modified),
@@ -102,7 +110,8 @@ interface TaskLike {
   id: number; Title: string; IsCompleted?: boolean
   AssignedTo?: string; AssignedEmail?: string
   DueDate?: string; Modified?: string; ProjectID?: number
-  Author?: { Title?: string }
+  Author?: { Title?: string; EMail?: string }
+  CreatedByEmail?: string
   IsAcknowledged?: boolean
 }
 
@@ -118,6 +127,7 @@ export function taskRows(tasks: TaskLike[], projects: ProjectName[] = []): WorkR
     assignedName: s(t.AssignedTo),
     assignedEmail: s(t.AssignedEmail),
     requester: s(t.Author?.Title),
+    requesterEmail: s(t.Author?.EMail) || s(t.CreatedByEmail),
     due: s(t.DueDate),
     modified: s(t.Modified),
     projectId: t.ProjectID,
@@ -204,4 +214,66 @@ export function workLink(r: WorkRow): string {
   if (r.kind === 'ticket') return `/tickets/${r.id}`
   if (r.kind === 'incident') return `/incidents/${r.id}`
   return r.projectId ? `/projects/${r.projectId}` : '/projects'
+}
+
+// ── งานที่ฉันแจ้ง / มอบหมายไป ────────────────────────────────────────────────
+// ปัญหา: มอบหมายงานให้ทีมแล้ว ถ้าไม่ได้กด Track ไว้ก็ไม่เห็นความคืบหน้าเลย
+// ต้องไปเปิดทีละใบ — คนสั่งงานจึงไม่รู้ว่าปลายทางรับแล้วหรือยัง เดินถึงไหน
+// รายการนี้สร้างจากข้อมูลจริง (ใครเป็นคนสร้างแถว) ไม่ต้องกด Track ก่อน
+
+export interface SubmittedFilter {
+  hideDone?: boolean
+  kind?: WorkKind | ''
+}
+
+/**
+ * งานที่ฉันเป็นคนแจ้ง และมอบหมายให้คนอื่น
+ *
+ * งานที่มอบหมายให้ตัวเองไม่นับ — มันอยู่ในหน้างานของฉันอยู่แล้ว ซ้ำสองที่จะนับผิด
+ * งานที่ยังไม่มีผู้รับผิดชอบ *นับ* — นั่นคือสิ่งที่ต้องตามมากที่สุด
+ */
+export function submittedByMe(rows: WorkRow[], me: string, f: SubmittedFilter = {}): WorkRow[] {
+  const mine = norm(me)
+  if (!mine) return []
+  return rows
+    .filter(r => norm(r.requesterEmail) === mine)
+    .filter(r => norm(r.assignedEmail) !== mine)
+    .filter(r => !f.kind || r.kind === f.kind)
+    .filter(r => !f.hideDone || !isDone(r.status))
+    // ที่ยังไม่มีใครรับขึ้นก่อน แล้วค่อยเรียงตามที่เพิ่งขยับ — คนสั่งงานอยากรู้ว่า "ค้างที่ใคร" ก่อน
+    .sort((a, b) => {
+      const aStuck = (a.waitingAck || !a.assignedEmail) && !isDone(a.status) ? 0 : 1
+      const bStuck = (b.waitingAck || !b.assignedEmail) && !isDone(b.status) ? 0 : 1
+      return aStuck - bStuck || (b.modified || '').localeCompare(a.modified || '')
+    })
+}
+
+export interface SubmittedSummary {
+  total: number
+  /** ยังไม่มีคนรับผิดชอบเลย */
+  unassigned: number
+  /** มอบหมายแล้วแต่ยังไม่กดรับ */
+  waitingAck: number
+  inProgress: number
+  done: number
+}
+
+/** ตัวเลขสรุปให้เห็นในแวบเดียวว่างานที่สั่งไป ค้างตรงไหนกี่ชิ้น */
+export function submittedSummary(rows: WorkRow[]): SubmittedSummary {
+  const live = rows.filter(r => !isDone(r.status))
+  return {
+    total: rows.length,
+    unassigned: live.filter(r => !r.assignedEmail).length,
+    waitingAck: live.filter(r => !!r.assignedEmail && r.waitingAck).length,
+    inProgress: live.filter(r => !!r.assignedEmail && !r.waitingAck).length,
+    done: rows.length - live.length,
+  }
+}
+
+/** ป้ายความคืบหน้าหนึ่งคำ — อ่านทีเดียวรู้ว่างานชิ้นนี้ค้างที่ขั้นไหน */
+export function progressLabel(r: WorkRow): { text: string; tone: 'gray' | 'orange' | 'amber' | 'blue' | 'green' } {
+  if (isDone(r.status)) return { text: 'เสร็จแล้ว', tone: 'green' }
+  if (!r.assignedEmail) return { text: 'ยังไม่มีผู้รับผิดชอบ', tone: 'orange' }
+  if (r.waitingAck) return { text: 'รอรับงาน', tone: 'amber' }
+  return { text: 'กำลังทำ', tone: 'blue' }
 }

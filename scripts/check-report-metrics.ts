@@ -21,7 +21,7 @@ import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WAR
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
 import { ownerMissingFromTeam, OWNER_DEFAULT_ROLE } from '../src/utils/projectRoles'
 import { buildRoleGrid } from '../src/utils/projectRoles'
-import { ticketRows, incidentRows, taskRows, workStats, filterWork, statusOptions, priorityOptions, workLink, isDone } from '../src/utils/dashboardWork'
+import { ticketRows, incidentRows, taskRows, workStats, filterWork, statusOptions, priorityOptions, workLink, isDone, submittedByMe, submittedSummary, progressLabel } from '../src/utils/dashboardWork'
 import { splitRich, joinRich, isRich, RICH_MARK, isAllowedTag, isDropWhole, isAllowedAttr, safeHref, safeImgSrc, htmlToPlain, commentPlain, plainSnippet, hasBlockMarkup, MAX_INLINE_IMAGE } from '../src/utils/richComment'
 import { latestActivity, hasUpdate, readSeen, markSeen, baselineUnseen, countUpdated, activityLabel } from '../src/utils/projectActivity'
 import { buildOrgTree, subtreeSize, branchOptions, pathToRoot, visibleRoots, departmentOptions, departmentView, departmentTree } from '../src/utils/orgBranch'
@@ -1752,6 +1752,53 @@ eq(KNOWN_EVENTS.length, 13, 'thirteen events are actually sent by the code')
 eq(KNOWN_EVENTS.every(k => EVENT_VARS[k].includes('link')), true, 'every mail can link back into the app')
 eq(['ticket_status_changed','task_assigned','comment_mention','incident_status_changed'].every(k => KNOWN_EVENTS.includes(k)), true,
   'the four templates that used to have no sender are wired up now')
+
+
+// -- งานที่ฉันแจ้ง/มอบหมายไป (dashboardWork: submittedByMe) --
+// ปัญหา: ไม่กด Track ก็ไม่เห็นความคืบหน้าของงานที่สั่งทีมไป ต้องไปเปิดทีละใบ
+const BOSS = 'boss@its.co.th'
+const SUB = [
+  ...ticketRows([
+    { id: 1, Title: 'สั่งให้สมชาย', Status: 'Open', AssignedEmail: 'somchai@its.co.th', IsAcknowledged: false,
+      Author: { Title: 'บอส', EMail: BOSS }, Modified: '2026-09-08T00:00:00Z' },
+    { id: 2, Title: 'ทำเอง', Status: 'Open', AssignedEmail: BOSS, Author: { EMail: BOSS } },
+    { id: 3, Title: 'คนอื่นสั่ง', Status: 'Open', AssignedEmail: 'somchai@its.co.th', Author: { EMail: 'x@its.co.th' } },
+    { id: 4, Title: 'ยังไม่มีคนรับ', Status: 'Open', Author: { EMail: 'BOSS@its.co.th' }, Modified: '2026-09-01T00:00:00Z' },
+    { id: 5, Title: 'จบแล้ว', Status: 'Closed', AssignedEmail: 'somchai@its.co.th', Author: { EMail: BOSS }, Modified: '2026-09-09T00:00:00Z' },
+    { id: 6, Title: 'รับแล้วกำลังทำ', Status: 'In Progress', AssignedEmail: 'aree@its.co.th', IsAcknowledged: true, Author: { EMail: BOSS }, Modified: '2026-09-10T00:00:00Z' },
+  ]),
+  ...taskRows([
+    { id: 9, Title: 'งานที่สั่ง', IsCompleted: false, AssignedEmail: 'aree@its.co.th', IsAcknowledged: false, CreatedByEmail: BOSS },
+  ]),
+]
+
+const mineAll = submittedByMe(SUB, BOSS)
+eq(mineAll.map(r => r.id).join(','), '1,4,9,6,5',
+  'stuck work (not accepted / nobody on it) comes first, newest movement first within each group, done last')
+eq(mineAll.some(r => r.id === 2), false, 'work I gave myself is not listed — it is already in My Work')
+eq(mineAll.some(r => r.id === 3), false, 'work someone else raised is not mine to chase')
+eq(submittedByMe(SUB, BOSS, { hideDone: true }).some(r => r.id === 5), false, 'finished work can be hidden')
+eq(submittedByMe(SUB, BOSS, { kind: 'task' }).map(r => r.id).join(','), '9', 'the kind filter works across the mix')
+eq(submittedByMe(SUB, '').length, 0, 'not knowing who I am lists nothing rather than everything')
+eq(submittedByMe(SUB, 'nobody@its.co.th').length, 0, 'someone who raised nothing sees nothing')
+
+const sm = submittedSummary(mineAll)
+eq(sm.total, 5, 'the summary counts everything I raised for others')
+eq(sm.unassigned, 1, 'work with nobody on it is the first number to chase')
+eq(sm.waitingAck, 2, 'work handed over but not yet accepted is the second')
+eq(sm.inProgress, 1, 'accepted and moving')
+eq(sm.done, 1, 'finished')
+
+eq(progressLabel(mineAll.find(r => r.id === 4)!).text, 'ยังไม่มีผู้รับผิดชอบ', 'no assignee reads as such')
+eq(progressLabel(mineAll.find(r => r.id === 1)!).text, 'รอรับงาน', 'assigned but not accepted reads as waiting')
+eq(progressLabel(mineAll.find(r => r.id === 6)!).text, 'กำลังทำ', 'accepted work reads as in progress')
+eq(progressLabel(mineAll.find(r => r.id === 5)!).tone, 'green', 'finished work is green')
+// requesterEmail มาจากคนสร้างแถว ไม่ใช่ลูกค้า — หัวหน้าแจ้งแทนลูกค้าก็ยังเป็นงานที่หัวหน้าแจ้ง
+eq(ticketRows([{ id: 7, Title: 'x', CustomerEmail: 'cust@acme.co', Author: { EMail: BOSS } }])[0].requesterEmail, BOSS,
+  'the person who raised the row is the requester, even when a customer is named')
+eq(ticketRows([{ id: 8, Title: 'x', CustomerEmail: 'cust@acme.co' }])[0].requesterEmail, 'cust@acme.co',
+  'with no author on the row the customer is the best guess')
+
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
