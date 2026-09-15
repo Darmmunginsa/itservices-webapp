@@ -2,6 +2,7 @@ import { sniffFile } from '../utils/fileSniff'
 import { resolveMime } from '../utils/filePreview'
 import { SHAREPOINT_API, SHAREPOINT_URL } from '../config/msal'
 import { logActivity } from './activityLog'
+import { uploadErrorText } from '../utils/uploadError'
 
 const SP_HOST = SHAREPOINT_URL.replace(/\/sites\/.*/, '')
 
@@ -234,7 +235,23 @@ export async function spUploadAttachment(listName: string, itemId: number, file:
     await sleep(attempt * 700)   // 0.7, 1.4, 2.1, 2.8s
   }
   console.error(`[SP] UPLOAD attachment ${listName}(${itemId}) → ${lastStatus}`, lastBody)
-  throw new Error(`SharePoint attachment upload failed: ${lastStatus === -1 ? 'network/CORS' : lastStatus}`)
+  // ข้อความต้องบอกว่าไปแก้ที่ไหน — "ไม่มีสิทธิ์" กับ "ลิสต์ปิดแนบไฟล์" เป็นคนละที่
+  throw new Error(uploadErrorText(lastStatus, lastBody, listName))
+}
+
+export interface ListInfo {
+  Title: string
+  EnableAttachments?: boolean
+  EffectiveBasePermissions?: { High: string | number; Low: string | number }
+}
+
+/** ข้อมูลลิสต์ + สิทธิ์ของคนที่ล็อกอิน — ใช้ตรวจว่าทำไมแนบไฟล์ไม่ได้ */
+export async function spListInfo(listName: string): Promise<ListInfo> {
+  const headers = await getHeaders()
+  const url = `${SHAREPOINT_API}('${listName}')?$select=Title,EnableAttachments,EffectiveBasePermissions`
+  const res = await spFetch(url, { headers })
+  if (!res.ok) throw new Error(`SharePoint GET list failed: ${res.status} ${listName}`)
+  return res.json() as Promise<ListInfo>
 }
 
 export async function spDeleteAttachment(listName: string, itemId: number, fileName: string): Promise<void> {

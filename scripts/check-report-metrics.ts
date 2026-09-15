@@ -20,6 +20,7 @@ import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from 
 import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pagePerms'
 import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { meetingBody } from '../src/utils/meetingBody'
+import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1897,6 +1898,35 @@ eq(inc.includes('เปิดดูในระบบ'), false, 'no link means n
 const plain = meetingBody({ kind: 'Meeting', title: 'คุยงาน' })
 eq(plain.includes('นัดหมาย'), true, 'a personal meeting is labelled as one')
 eq(plain.includes('undefined'), false, 'missing fields never print as undefined')
+
+
+// -- แนบไฟล์ไม่ผ่านต้องบอกเหตุ (utils/uploadError) --
+// บั๊กจริง: "อัปโหลดไม่สำเร็จ" คำเดียวสำหรับทุกกรณี คนไม่มีสิทธิ์เลยคิดว่าระบบพัง
+eq(uploadErrorText(403, '', 'PM_Tasks').includes('ไม่มีสิทธิ์') && uploadErrorText(403, '', 'PM_Tasks').includes('PM_Tasks'), true,
+  'a 403 says it is a permission problem and names the list')
+eq(uploadErrorText(400, 'Attachments are not enabled on this list', 'PM_Tasks').includes('ปิดการแนบไฟล์'), true,
+  'a list with attachments disabled says so, and where to turn it on')
+eq(uploadErrorText(413, '', 'X').includes('ใหญ่เกิน'), true, 'too large says too large')
+eq(uploadErrorText(-1, 'Failed to fetch', 'X').includes('เครือข่าย'), true, 'a network failure is called a network failure')
+eq(uploadErrorText(503, '', 'X').includes('ชั่วคราว'), true, 'a server hiccup suggests retrying')
+eq(uploadErrorText(418, '', 'X').includes('418'), true, 'anything else still shows the status code')
+
+// สิทธิ์เป็น bitmask — แนบไฟล์ต้องมี EditListItems ไม่ใช่แค่ AddListItems
+eq(canEditItems({ High: '0', Low: '4' }), true, 'bit 0x4 is edit')
+eq(canAddItems({ High: '0', Low: '2' }), true, 'bit 0x2 is add')
+eq(canEditItems({ High: '0', Low: '2' }), false, 'add alone is not edit')
+eq(canEditItems({ High: '2147483647', Low: '4294967295' }), true, 'full control has everything')
+eq(canEditItems(null), false, 'no permission object means no rights, not a crash')
+
+eq(listHealth({ EnableAttachments: true, EffectiveBasePermissions: { High: '0', Low: '7' } }).canAttach, true,
+  'attachments on and edit rights means you can attach')
+eq(listHealthText(listHealth({ EnableAttachments: false, EffectiveBasePermissions: { High: '0', Low: '7' } })).includes('ปิดการแนบไฟล์'), true,
+  'attachments off is reported as the list setting, not as your fault')
+eq(listHealthText(listHealth({ EnableAttachments: true, EffectiveBasePermissions: { High: '0', Low: '1' } })).includes('ไม่มีสิทธิ์'), true,
+  'read-only rights are reported as a permission gap')
+eq(listHealth({}).canAttach, false, 'unknown permissions are treated as none')
+eq(listHealth({ EnableAttachments: undefined, EffectiveBasePermissions: { High: '0', Low: '4' } }).attachmentsEnabled, true,
+  'a list that does not report the flag is assumed to allow attachments')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

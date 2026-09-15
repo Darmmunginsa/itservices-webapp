@@ -35,8 +35,9 @@ export function AttachmentSection({ listName, itemId, readOnly = false }: Props)
     try {
       await spUploadAttachment(listName, itemId, file)
       load()
-    } catch {
-      setError('อัปโหลดไม่สำเร็จ')
+    } catch (e) {
+      // บอกเหตุจริง (สิทธิ์ / ลิสต์ปิดแนบ / ไฟล์ใหญ่) ไม่ใช่ "ไม่สำเร็จ" ลอย ๆ
+      setError(e instanceof Error ? e.message : 'อัปโหลดไม่สำเร็จ')
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''

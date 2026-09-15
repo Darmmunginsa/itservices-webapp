@@ -486,7 +486,8 @@ export default function IncidentDetail() {
 
           {/* ── ไฟล์แนบ ── */}
           <Card>
-            <AttachmentSection listName="PM_Incidents" itemId={inc.id} readOnly={!isAgent} />
+            {/* แนบได้ทุกคนที่เห็นเคส — ผู้แจ้งมักเป็นคนมีหลักฐาน (screenshot/log) ที่ต้องแนบ */}
+            <AttachmentSection listName="PM_Incidents" itemId={inc.id} />
           </Card>
         </div>
 

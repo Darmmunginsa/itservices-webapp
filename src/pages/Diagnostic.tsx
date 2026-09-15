@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { CheckCircle, XCircle, Loader } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
-import { spGet } from '../services/sharepoint'
+import { spGet, spListInfo } from '../services/sharepoint'
+import { listHealth, listHealthText } from '../utils/uploadError'
 import { findTemplate, templateProblem, placeholdersOf, EVENT_VARS, KNOWN_EVENTS, type TemplateRow } from '../utils/emailTemplate'
 
 const ALL_LISTS = [
@@ -45,12 +46,20 @@ interface Result {
   status: Status
   count?: number
   error?: string
+  /** แนบไฟล์ได้ไหม (สิทธิ์ของคนที่ล็อกอิน + ลิสต์เปิดแนบไฟล์) */
+  attach?: { ok: boolean; note: string }
 }
 
 async function testList(name: string): Promise<Result> {
   try {
     const items = await spGet<Record<string, unknown>>(name, undefined, 'Id', undefined, 1)
-    return { list: name, status: 'ok', count: items.length }
+    // ถามลิสต์ตรง ๆ ว่าคนนี้แนบไฟล์ได้ไหม — คำตอบของ "ทำไมบางคนแนบไม่ได้" อยู่ตรงนี้
+    let attach: Result['attach']
+    try {
+      const h = listHealth(await spListInfo(name))
+      attach = { ok: h.canAttach, note: listHealthText(h) }
+    } catch { /* อ่านข้อมูลลิสต์ไม่ได้ — ไม่ใช่เรื่องใหญ่ */ }
+    return { list: name, status: 'ok', count: items.length, attach }
   } catch (e) {
     return { list: name, status: 'error', error: (e as Error).message }
   }
@@ -161,6 +170,11 @@ export default function Diagnostic() {
               <span className="font-mono font-medium w-52 flex-shrink-0">{r.list}</span>
               {r.status === 'ok' && (
                 <span className="text-green-600 text-xs">เข้าถึงได้ (ดึง {r.count} item ทดสอบ)</span>
+              )}
+              {r.status === 'ok' && r.attach && (
+                <span className={`text-xs ${r.attach.ok ? 'text-gray-400' : 'text-red-500 font-medium'}`}>
+                  · {r.attach.ok ? '📎 แนบไฟล์ได้' : `📎 ${r.attach.note}`}
+                </span>
               )}
               {r.status === 'error' && (
                 <span className="text-red-500 text-xs truncate">{r.error}</span>

@@ -891,11 +891,13 @@ export default function ProjectDetail() {
                 className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${pinnedSet.has(`Task|${task.Title}`) ? 'text-primary-600' : 'text-gray-400 hover:text-primary-600'}`}>
                 <Pin size={14} />
               </button>
+              {/* แนบไฟล์ได้ทุกคนที่เห็นงาน — เดิมซ่อนอยู่ใน isAgent ทำให้ผู้ใช้บางกลุ่มไม่มีปุ่มเลย
+                  ทั้งที่ Note ข้าง ๆ ให้แนบได้ · สิทธิ์จริงคุมที่ SharePoint ไม่ใช่ที่การซ่อนปุ่ม */}
+              <button onClick={() => toggleAttach('task', task.id)} title={tr('pd.attach')}
+                className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
+                <Paperclip size={14} />
+              </button>
               {isAgent && (<>
-                <button onClick={() => toggleAttach('task', task.id)} title={tr('pd.attach')}
-                  className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${attachKey === ak ? 'text-primary-600' : 'text-gray-400'}`}>
-                  <Paperclip size={14} />
-                </button>
                 <button onClick={() => { setExpandedKey(null); openEditTask(task) }} title={tr('common.edit')}
                   className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-primary-600 transition-colors">
                   <Edit2 size={14} />
