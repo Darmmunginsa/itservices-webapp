@@ -15,6 +15,7 @@ import { RichHtml } from '../components/common/RichHtml'
 import { useRichPaste } from '../hooks/useRichPaste'
 import { RichPasteChip } from '../components/common/RichPaste'
 import { joinRich, splitRich, plainSnippet } from '../utils/richComment'
+import { isTicketRequester, requesterActions } from '../utils/ticketOwner'
 import { html, textToHtml, appLink, mailFailText } from '../utils/emailTemplate'
 import { pickFiles, pastedName, dedupeName, previewKind, prettySize } from '../utils/filePreview'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spWaitForItem } from '../services/sharepoint'
@@ -88,6 +89,9 @@ export default function TicketDetail() {
   const [newStatus, setNewStatus] = useState<TicketStatus>('Open')
   const [resolutionNote, setResolutionNote] = useState('')
   const [replyOnClose, setReplyOnClose] = useState(true)
+  // เหตุผลที่ผู้แจ้งพิมพ์ตอนเปิดกลับ/ปิดเอง — คนละช่องกับบันทึกปิดงานของ agent
+  const [requesterNote, setRequesterNote] = useState('')
+  const [requesterBusy, setRequesterBusy] = useState(false)
   const [newAssignedEmail, setNewAssignedEmail] = useState('')
   const [reassigning, setReassigning] = useState(false)
   const [commentsOpen, setCommentsOpen] = useState(true)
@@ -403,30 +407,36 @@ export default function TicketDetail() {
     } catch { addToast('error', 'บันทึกไม่สำเร็จ') } finally { setLinkingProject(false) }
   }
 
-  async function updateStatus() {
+  /**
+   * เปลี่ยนสถานะ — agent ใช้ค่าจาก dropdown/ช่องบันทึก
+   * ผู้แจ้งส่ง override มาตรง ๆ (ปุ่ม "ปิดงาน" / "เปิดกลับ") โดยไม่แตะ state ของฝั่ง agent
+   */
+  async function updateStatus(override?: { status: TicketStatus; note?: string }) {
     if (!ticket) return
-    const isClosing = ['Resolved', 'Closed'].includes(newStatus)
+    const status: TicketStatus = override?.status ?? newStatus
+    const note = override ? (override.note ?? '') : resolutionNote
+    const isClosing = ['Resolved', 'Closed'].includes(status)
     try {
       await spUpdate('HD_Tickets', ticket.id, {
-        Status: newStatus,
+        Status: status,
         ...(isClosing && {
           ResolvedDate: new Date().toISOString(),
-          ResolutionNote: resolutionNote,
+          ResolutionNote: note,
         }),
       })
       setTicket(prev => prev ? {
         ...prev,
-        Status: newStatus,
-        ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: resolutionNote }),
+        Status: status,
+        ...(isClosing && { ResolvedDate: new Date().toISOString(), ResolutionNote: note }),
       } : prev)
       // ปิดงานพร้อมตอบลูกค้า — บันทึกเป็นคอมเมนต์ "ถึงลูกค้า" แล้วส่งเข้าเธรดเมลเดิม
       // (เส้นทางเดียวกับ sendComment ฝั่ง External เพื่อให้ลูกค้าเห็นในเมลฉบับเดิม)
-      if (isClosing && replyOnClose && isAgent && resolutionNote.trim()) {
+      if (isClosing && replyOnClose && isAgent && note.trim()) {
         try {
           await spCreate('HD_TicketComments', {
-            Title: resolutionNote.slice(0, 100),
+            Title: note.slice(0, 100),
             TicketID: ticket.id,
-            CommentText: resolutionNote,
+            CommentText: note,
             CommentType: 'External',
             CommentDate: new Date().toISOString(),
             ParentID: 0,
@@ -445,7 +455,7 @@ export default function TicketDetail() {
               assigned_name: ticket.AssignedToName || '-',
               // ข้อความปิดงานเป็นข้อความล้วน (ลิงก์ KB เป็น URL เปล่า) — หนีอักขระเหมือนคอมเมนต์ปกติ
               // เดิมทางนี้ไม่ได้หนี ทั้งที่ทางคอมเมนต์ปกติหนีแล้ว
-              comment_text: textToHtml(resolutionNote),
+              comment_text: textToHtml(note),
               link: appLink(`/tickets/${ticket.id}`),
             }, [customer], cc)
             const warn = mailFailText('ปิดงานแล้ว', res, 'comment_added', 'ลูกค้ายังไม่เห็นข้อความนี้')
@@ -469,7 +479,7 @@ export default function TicketDetail() {
         if (internal.length) {
           createNotification({
             recipients: internal,
-            title: `🔄 ${ticket.TicketNumber} เปลี่ยนสถานะเป็น ${newStatus}`,
+            title: `🔄 ${ticket.TicketNumber} เปลี่ยนสถานะเป็น ${status}`,
             message: ticket.Title,
             linkPath: `/tickets/${id}`,
             eventType: 'ticket_status_changed',
@@ -477,8 +487,8 @@ export default function TicketDetail() {
         }
       }
       // เมลถึงลูกค้าเมื่อสถานะเปลี่ยน — ถ้าปิดงานพร้อมตอบลูกค้า เมล comment_added ออกไปแล้ว ไม่ส่งซ้ำ
-      const mailedViaReply = isClosing && replyOnClose && isAgent && !!resolutionNote.trim()
-      if (newStatus !== ticket.Status && !mailedViaReply) {
+      const mailedViaReply = isClosing && replyOnClose && isAgent && !!note.trim()
+      if (status !== ticket.Status && !mailedViaReply) {
         const me = user?.email?.toLowerCase() ?? ''
         const submitterEmail = ticket.Author?.EMail || ticket.CreatedByEmail
         const customer = [ticket.CustomerEmail, submitterEmail].find(e => e && e.toLowerCase() !== me)
@@ -488,7 +498,7 @@ export default function TicketDetail() {
           const res = await sendTemplateEmail('ticket_status_changed', {
             ticket_number: ticket.TicketNumber,
             ticket_title: ticket.Title,
-            ticket_status: newStatus,
+            ticket_status: status,
             customer_name: ticket.CustomerName || '',
             assigned_name: ticket.AssignedToName || '-',
             link: appLink(`/tickets/${ticket.id}`),
@@ -579,6 +589,8 @@ export default function TicketDetail() {
   }
 
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  // ผู้แจ้งจัดการ Ticket ของตัวเองได้ — จบ/ยังไม่จบ เป็นเรื่องที่เจ้าของปัญหาตัดสินได้ดีที่สุด
+  const isRequester = !!ticket && isTicketRequester(ticket, user?.email)
   const isClosingStatus = ['Resolved', 'Closed'].includes(newStatus)
 
   const agentOptions = agents.map(a => ({
@@ -788,7 +800,7 @@ export default function TicketDetail() {
                     </div>
                   )}
                 </div>
-                <Button size="sm" onClick={updateStatus} disabled={newStatus === ticket.Status}>{tr('ticket.updateStatus')}</Button>
+                <Button size="sm" onClick={() => updateStatus()} disabled={newStatus === ticket.Status}>{tr('ticket.updateStatus')}</Button>
                 {!ticket.IsAcknowledged && (
                   <Button size="sm" variant="outline" onClick={acknowledge}>
                     <CheckCircle2 size={14} /> {tr('tracking.ack')}
@@ -856,6 +868,49 @@ export default function TicketDetail() {
                 </Button>
               </div>
             </div>
+          </Card>
+        )}
+
+        {/* ผู้แจ้ง (ไม่ใช่ agent) จัดการงานของตัวเอง — เดิมไม่มีปุ่มอะไรเลย ต้องรอทีมมาปิดให้ */}
+        {!isAgent && isRequester && (
+          <Card>
+            <h3 className="text-sm font-semibold mb-1">งานของคุณ</h3>
+            <p className="text-xs text-gray-400 mb-3">
+              สถานะตอนนี้: <span className="font-medium text-gray-600 dark:text-gray-300">{ticket.Status}</span>
+              {ticket.Status === 'Resolved' && ' — ทีมแจ้งว่าแก้ไขแล้ว รอคุณยืนยัน'}
+            </p>
+            <div className="space-y-2">
+              {requesterActions(ticket.Status).map(act => (
+                <div key={act.status + act.label} className="space-y-1.5">
+                  {act.askNote && (
+                    <textarea value={requesterNote} onChange={e => setRequesterNote(e.target.value)} rows={2}
+                      placeholder="บอกทีมหน่อยว่ายังติดอะไร / เกิดอะไรขึ้นอีก"
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  )}
+                  <Button size="sm" variant={act.tone === 'green' ? 'primary' : 'outline'} disabled={requesterBusy}
+                    onClick={async () => {
+                      setRequesterBusy(true)
+                      try {
+                        // เหตุผลที่พิมพ์ไปเป็นคอมเมนต์ด้วย ทีมจะได้เห็นในเธรด ไม่ใช่แค่สถานะเปลี่ยน
+                        if (act.askNote && requesterNote.trim()) {
+                          await spCreate('HD_TicketComments', {
+                            Title: requesterNote.slice(0, 100), TicketID: ticket.id, CommentText: requesterNote,
+                            CommentType: 'External', CommentDate: new Date().toISOString(), ParentID: 0,
+                          })
+                          loadComments()
+                        }
+                        await updateStatus({ status: act.status, note: act.status === 'Closed' ? 'ผู้แจ้งปิดงานเอง' : requesterNote })
+                        setRequesterNote('')
+                      } finally { setRequesterBusy(false) }
+                    }}>
+                    {act.label}
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              ปิดงานแล้วเปิดกลับได้ถ้าปัญหากลับมา — ไม่ต้องเปิด Ticket ใหม่ ประวัติจะอยู่ที่เดียว
+            </p>
           </Card>
         )}
 

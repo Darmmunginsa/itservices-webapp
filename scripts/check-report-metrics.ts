@@ -21,6 +21,7 @@ import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pageP
 import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { meetingBody } from '../src/utils/meetingBody'
 import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
+import { isTicketRequester, requesterActions } from '../src/utils/ticketOwner'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1927,6 +1928,25 @@ eq(listHealthText(listHealth({ EnableAttachments: true, EffectiveBasePermissions
 eq(listHealth({}).canAttach, false, 'unknown permissions are treated as none')
 eq(listHealth({ EnableAttachments: undefined, EffectiveBasePermissions: { High: '0', Low: '4' } }).attachmentsEnabled, true,
   'a list that does not report the flag is assumed to allow attachments')
+
+
+// -- ผู้แจ้งปิด Ticket ของตัวเอง (utils/ticketOwner) --
+// บั๊กจริง: EndUser ที่เปิด Ticket เอง ไม่มีปุ่มอะไรให้ปิดเลย ต้องรอทีม
+const OWN = { CustomerEmail: 'cust@acme.co', CreatedByEmail: 'boss@its.co.th', Author: { EMail: 'boss@its.co.th' } }
+eq(isTicketRequester(OWN, 'cust@acme.co'), true, 'the customer on the ticket is a requester')
+eq(isTicketRequester(OWN, 'BOSS@its.co.th'), true, 'the person who raised it is too, case-insensitively')
+eq(isTicketRequester(OWN, 'somchai@its.co.th'), false, 'anyone else is not')
+eq(isTicketRequester(OWN, ''), false, 'not knowing who you are grants nothing')
+eq(isTicketRequester({}, 'x@y.co'), false, 'a ticket with no owner fields grants nothing')
+
+eq(requesterActions('Open').map(a => a.status).join(','), 'Closed', 'live work can be closed by its owner')
+eq(requesterActions('In Progress')[0].askNote, false, 'closing does not demand a reason')
+eq(requesterActions('Resolved').map(a => a.status).join(','), 'Closed,Open',
+  'when the team says fixed, the owner can confirm or push back')
+eq(requesterActions('Resolved')[1].askNote, true, 'pushing back asks what is still wrong')
+eq(requesterActions('Closed').map(a => a.status).join(','), 'Open', 'a closed ticket can be reopened instead of raising a new one')
+eq(requesterActions('Closed')[0].askNote, true, 'reopening asks what came back')
+eq(requesterActions('Pending').length, 1, 'an unknown or pending status still offers close')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
