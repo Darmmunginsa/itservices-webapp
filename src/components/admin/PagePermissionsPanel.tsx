@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldCheck, Search, Save, RotateCcw, Plus, Copy, CheckCheck } from 'lucide-react'
+import { ShieldCheck, Search, Save, RotateCcw, Plus, Copy, CheckCheck, Pencil } from 'lucide-react'
 import { Card } from '../common/Card'
 import { Button } from '../common/Button'
 import { spGet } from '../../services/sharepoint'
@@ -7,29 +7,33 @@ import { getAllPagePerms, savePagePerms, clearPagePerms, type PagePermRow } from
 import { PAGES } from '../../config/pages'
 import { useAppStore } from '../../store/useAppStore'
 import { useT } from '../../i18n/useT'
-import { parseKeys, dirtyEmails, GROUP_LABEL, groupPages } from '../../utils/pagePerms'
+import { parseGrants, emptyGrants, dirtyEmails, GROUP_LABEL, groupPages, type Grants } from '../../utils/pagePerms'
 import type { AgentProfile } from '../../types/common'
 
 // ── Admin: กำหนดสิทธิ์เข้าถึงหน้า "รายคน" (HD_PagePermissions) ──
 //
-// เดิมเป็นตารางคน × หน้า (21 คอลัมน์) ต้องเลื่อนแนวนอนจนสุดถึงจะเห็นครบ
-// และบันทึกได้ทีละคน แก้ 10 คนต้องกด 10 ครั้ง
-//
-// ตอนนี้: ซ้ายเลือกคน ขวาเห็นหน้าทั้งหมดจัดกลุ่มในจอเดียว ไม่มีแนวนอน
+// ซ้ายเลือกคน ขวาเห็นหน้าทั้งหมดจัดกลุ่มในจอเดียว ไม่มีแนวนอน
 // แก้กี่คนก็ได้แล้วกด "บันทึกที่แก้ทั้งหมด" ครั้งเดียว · คัดลอกสิทธิ์จากคนอื่นได้
+//
+// แต่ละหน้ามี 2 ช่อง:  ☑ เข้าดูได้  ·  ✏️ แก้ไขได้ (เฉพาะหน้าที่มีอะไรให้ปลดล็อก — ดู `edit` ใน config/pages.ts)
+// "แก้ไขได้" = ทำได้เท่า role ระดับ agent/supervisor ในหน้านั้น โดยไม่ต้องยก role ทั้งคน
+// เก็บเป็น 'assets:edit' ในคอลัมน์เดิม — ไม่ต้องแก้ SharePoint
 //
 // ผู้ที่ยังไม่ถูกกำหนด = เข้าได้เฉพาะหน้าหลัก ; role Admin = เข้าได้ทุกหน้าเสมอ (กันล็อกตัวเอง)
 const MANAGED = PAGES.filter(p => !p.always)
 const GROUPED = groupPages(MANAGED)
+const EDITABLE = MANAGED.filter(p => p.edit).length
 
 interface UserRow { email: string; name: string; role?: string }
+
+const clone = (g: Grants): Grants => ({ view: new Set(g.view), edit: new Set(g.edit) })
 
 export function PagePermissionsPanel() {
   const { user, addToast } = useAppStore()
   const tr = useT()
   const [users, setUsers] = useState<UserRow[]>([])
   const [perms, setPerms] = useState<Map<string, PagePermRow>>(new Map())
-  const [draft, setDraft] = useState<Map<string, Set<string>>>(new Map())
+  const [draft, setDraft] = useState<Map<string, Grants>>(new Map())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -55,8 +59,8 @@ export function PagePermissionsPanel() {
       for (const [em, r] of permMap) if (!byEmail.has(em)) byEmail.set(em, { email: r.UserEmail, name: r.UserEmail })
 
       const list = [...byEmail.values()].sort((a, b) => a.name.localeCompare(b.name, 'th'))
-      const d = new Map<string, Set<string>>()
-      for (const u of list) d.set(u.email.toLowerCase(), new Set(parseKeys(permMap.get(u.email.toLowerCase())?.AllowedPages)))
+      const d = new Map<string, Grants>()
+      for (const u of list) d.set(u.email.toLowerCase(), parseGrants(permMap.get(u.email.toLowerCase())?.AllowedPages))
       setUsers(list); setPerms(permMap); setDraft(d); setLoading(false)
       // เลือกคนแรกให้ ไม่ปล่อยฝั่งขวาว่าง
       setSelected(prev => (prev && list.some(u => u.email.toLowerCase() === prev) ? prev : (list[0]?.email.toLowerCase() ?? '')))
@@ -65,8 +69,8 @@ export function PagePermissionsPanel() {
   useEffect(() => { load() }, [])
 
   const saved = useMemo(() => {
-    const m = new Map<string, Set<string>>()
-    for (const [em, r] of perms) m.set(em, new Set(parseKeys(r.AllowedPages)))
+    const m = new Map<string, Grants>()
+    for (const [em, r] of perms) m.set(em, parseGrants(r.AllowedPages))
     return m
   }, [perms])
   // คนที่แก้แล้วยังไม่บันทึก — โชว์จุดที่ชื่อ และเป็นชุดที่ "บันทึกทั้งหมด" จะเขียน
@@ -77,21 +81,33 @@ export function PagePermissionsPanel() {
     [users, search])
 
   const cur = users.find(u => u.email.toLowerCase() === selected)
-  const curSel = draft.get(selected) ?? new Set<string>()
+  const curG = draft.get(selected) ?? emptyGrants()
   const curIsAdmin = cur?.role === 'Admin'
 
-  function setKeys(email: string, keys: Set<string>) {
-    setDraft(prev => new Map(prev).set(email.toLowerCase(), keys))
+  function setGrants(email: string, g: Grants) {
+    setDraft(prev => new Map(prev).set(email.toLowerCase(), g))
   }
-  function toggle(key: string) {
-    const s = new Set(curSel)
-    if (s.has(key)) s.delete(key); else s.add(key)
-    setKeys(selected, s)
+  // เลิกดู = เลิกแก้ด้วย (แก้โดยไม่เห็นหน้า ไม่มีความหมาย)
+  function toggleView(key: string) {
+    const g = clone(curG)
+    if (g.view.has(key)) { g.view.delete(key); g.edit.delete(key) } else g.view.add(key)
+    setGrants(selected, g)
+  }
+  // ติ๊กแก้ = ติ๊กดูให้ด้วย
+  function toggleEdit(key: string) {
+    const g = clone(curG)
+    if (g.edit.has(key)) g.edit.delete(key); else { g.edit.add(key); g.view.add(key) }
+    setGrants(selected, g)
   }
   function toggleGroup(keys: string[], on: boolean) {
-    const s = new Set(curSel)
-    for (const k of keys) { if (on) s.add(k); else s.delete(k) }
-    setKeys(selected, s)
+    const g = clone(curG)
+    for (const k of keys) { if (on) g.view.add(k); else { g.view.delete(k); g.edit.delete(k) } }
+    setGrants(selected, g)
+  }
+  function toggleGroupEdit(keys: string[], on: boolean) {
+    const g = clone(curG)
+    for (const k of keys) { if (on) { g.edit.add(k); g.view.add(k) } else g.edit.delete(k) }
+    setGrants(selected, g)
   }
 
   async function saveMany(emails: string[]) {
@@ -103,7 +119,7 @@ export function PagePermissionsPanel() {
       const u = users.find(x => x.email.toLowerCase() === em)
       if (!u) continue
       try {
-        await savePagePerms(u.email, [...(draft.get(em) ?? [])], perms.get(em)?.id)
+        await savePagePerms(u.email, draft.get(em) ?? emptyGrants(), perms.get(em)?.id)
         ok++
       } catch { fail++ }
     }
@@ -126,20 +142,22 @@ export function PagePermissionsPanel() {
     if (!em || !em.includes('@')) { addToast('error', 'กรุณาใส่อีเมลให้ถูกต้อง'); return }
     if (users.some(u => u.email.toLowerCase() === em)) { addToast('info', 'มีผู้ใช้นี้อยู่แล้ว'); setSelected(em); return }
     setUsers(prev => [...prev, { email: em, name: em }].sort((a, b) => a.name.localeCompare(b.name, 'th')))
-    setDraft(prev => new Map(prev).set(em, new Set()))
+    setDraft(prev => new Map(prev).set(em, emptyGrants()))
     setSelected(em)
     setNewEmail('')
   }
 
-  // คัดลอกสิทธิ์จากคนอื่นมาเป็นร่าง — ตั้งคนใหม่ให้เหมือนคนในทีมเดียวกันได้ทันที ไม่ต้องติ๊ก 21 ช่อง
+  // คัดลอกสิทธิ์ (ทั้งดูและแก้) จากคนอื่นมาเป็นร่าง — ตั้งคนใหม่ให้เหมือนคนในทีมเดียวกันได้ทันที
   function copyPerms() {
     if (!copyFrom || copyFrom === selected) return
-    setKeys(selected, new Set(draft.get(copyFrom) ?? []))
+    setGrants(selected, clone(draft.get(copyFrom) ?? emptyGrants()))
     setCopyFrom('')
   }
 
   // เฉพาะ Admin เท่านั้นที่แก้สิทธิ์คนอื่นได้
   if (user?.role !== 'Admin') return null
+
+  const smallBtn = 'text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400'
 
   return (
     <Card>
@@ -156,9 +174,14 @@ export function PagePermissionsPanel() {
           </Button>
         </div>
       </div>
-      <p className="text-xs text-gray-400 mb-4">
+      <p className="text-xs text-gray-400 mb-1">
         เลือกคนทางซ้าย แล้วติ๊กหน้าที่ให้เข้าทางขวา · คนที่ยังไม่ถูกกำหนดเข้าได้เฉพาะหน้าหลัก ·
         role <b>Admin</b> เข้าได้ทุกหน้าเสมอ (ป้องกันล็อกตัวเองออกจากระบบ)
+      </p>
+      <p className="text-xs text-gray-400 mb-4 flex items-center gap-1.5 flex-wrap">
+        <span>☑ = เข้าดูได้</span>
+        <span className="text-gray-300 dark:text-gray-600">·</span>
+        <span className="inline-flex items-center gap-1"><Pencil size={11} className="text-amber-600" /> = <b>แก้ไขได้</b> ในหน้านั้น (เพิ่ม / แก้ / จัดการ เท่าทีม) โดยไม่ต้องเปลี่ยน role — ชี้ที่ดินสอเพื่อดูว่าปลดล็อกอะไร</span>
       </p>
 
       {loading ? (
@@ -177,7 +200,7 @@ export function PagePermissionsPanel() {
                 const em = u.email.toLowerCase()
                 const isDirty = dirty.includes(em)
                 const isAdminUser = u.role === 'Admin'
-                const count = (draft.get(em) ?? new Set()).size
+                const g = draft.get(em) ?? emptyGrants()
                 return (
                   <button key={em} onClick={() => setSelected(em)}
                     className={`w-full text-left px-3 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors ${
@@ -192,7 +215,10 @@ export function PagePermissionsPanel() {
                         ? <span className="text-violet-600 dark:text-violet-300">Admin — ทุกหน้า</span>
                         : !perms.has(em)
                           ? <span className="text-amber-600 dark:text-amber-400">ยังไม่กำหนด</span>
-                          : <span className="text-gray-400">เข้าได้ {count}/{MANAGED.length} หน้า</span>}
+                          : <span className="text-gray-400">
+                              เข้าได้ {g.view.size}/{MANAGED.length} หน้า
+                              {g.edit.size > 0 && <span className="text-amber-600 dark:text-amber-400"> · แก้ได้ {g.edit.size}</span>}
+                            </span>}
                     </p>
                   </button>
                 )
@@ -220,10 +246,12 @@ export function PagePermissionsPanel() {
                 </div>
                 {!curIsAdmin && (
                   <div className="ml-auto flex flex-wrap items-center gap-1.5">
-                    <button onClick={() => setKeys(selected, new Set(MANAGED.map(p => p.key)))}
-                      className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400">ทั้งหมด</button>
-                    <button onClick={() => setKeys(selected, new Set())}
-                      className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400">ล้าง</button>
+                    <button onClick={() => toggleGroup(MANAGED.map(p => p.key), true)} className={smallBtn}>ดูได้ทั้งหมด</button>
+                    <button onClick={() => toggleGroupEdit(MANAGED.filter(p => p.edit).map(p => p.key), true)} className={smallBtn}
+                      title={`ติ๊กแก้ไขให้ทุกหน้าที่มีช่องนี้ (${EDITABLE} หน้า)`}>
+                      <span className="inline-flex items-center gap-1"><Pencil size={10} /> แก้ได้ทั้งหมด</span>
+                    </button>
+                    <button onClick={() => setGrants(selected, emptyGrants())} className={smallBtn}>ล้าง</button>
                     <select value={copyFrom} onChange={e => setCopyFrom(e.target.value)}
                       className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 max-w-44">
                       <option value="">คัดลอกสิทธิ์จาก…</option>
@@ -246,33 +274,64 @@ export function PagePermissionsPanel() {
 
               {curIsAdmin ? (
                 <p className="text-sm text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/20 rounded-lg px-3 py-2">
-                  role Admin เข้าได้ทุกหน้าเสมอ — ไม่ต้องกำหนด และกำหนดไม่ได้ (กันล็อกตัวเองออก)
+                  role Admin เข้าได้และแก้ได้ทุกหน้าเสมอ — ไม่ต้องกำหนด และกำหนดไม่ได้ (กันล็อกตัวเองออก)
                 </p>
               ) : (
                 GROUPED.map(g => {
                   const keys = g.pages.map(p => p.key)
-                  const on = keys.filter(k => curSel.has(k)).length
+                  const editKeys = g.pages.filter(p => p.edit).map(p => p.key)
+                  const on = keys.filter(k => curG.view.has(k)).length
+                  const onEdit = editKeys.filter(k => curG.edit.has(k)).length
                   return (
                     <div key={g.group} className="border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">{GROUP_LABEL[g.group]}</p>
-                        <span className="text-[10px] text-gray-400">{on}/{keys.length}</span>
-                        <button onClick={() => toggleGroup(keys, on < keys.length)}
-                          className="ml-auto text-[10px] text-primary-600 hover:underline">
-                          {on < keys.length ? 'เลือกทั้งกลุ่ม' : 'ล้างกลุ่ม'}
-                        </button>
+                        <span className="text-[10px] text-gray-400">
+                          {on}/{keys.length}
+                          {editKeys.length > 0 && onEdit > 0 && <span className="text-amber-600 dark:text-amber-400"> · แก้ {onEdit}</span>}
+                        </span>
+                        <div className="ml-auto flex items-center gap-2">
+                          {editKeys.length > 0 && (
+                            <button onClick={() => toggleGroupEdit(editKeys, onEdit < editKeys.length)}
+                              className="text-[10px] text-amber-600 hover:underline inline-flex items-center gap-0.5">
+                              <Pencil size={9} /> {onEdit < editKeys.length ? 'แก้ได้ทั้งกลุ่ม' : 'เลิกแก้ทั้งกลุ่ม'}
+                            </button>
+                          )}
+                          <button onClick={() => toggleGroup(keys, on < keys.length)}
+                            className="text-[10px] text-primary-600 hover:underline">
+                            {on < keys.length ? 'เลือกทั้งกลุ่ม' : 'ล้างกลุ่ม'}
+                          </button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        {g.pages.map(p => (
-                          <label key={p.key} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border cursor-pointer text-xs select-none ${
-                            curSel.has(p.key)
-                              ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-800 text-gray-800 dark:text-gray-100'
-                              : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:border-gray-300'}`}>
-                            <input type="checkbox" checked={curSel.has(p.key)} onChange={() => toggle(p.key)}
-                              className="w-3.5 h-3.5 accent-primary-600" />
-                            <span className="truncate">{tr(p.labelKey)}</span>
-                          </label>
-                        ))}
+                        {g.pages.map(p => {
+                          const view = curG.view.has(p.key)
+                          const edit = curG.edit.has(p.key)
+                          return (
+                            <div key={p.key} className={`flex items-center gap-1.5 pl-2 pr-1.5 py-1.5 rounded-lg border text-xs select-none ${
+                              view
+                                ? edit
+                                  ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/15 dark:border-amber-800 text-gray-800 dark:text-gray-100'
+                                  : 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-800 text-gray-800 dark:text-gray-100'
+                                : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:border-gray-300'}`}>
+                              <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                                <input type="checkbox" checked={view} onChange={() => toggleView(p.key)}
+                                  className="w-3.5 h-3.5 accent-primary-600 flex-shrink-0" />
+                                <span className="truncate">{tr(p.labelKey)}</span>
+                              </label>
+                              {/* ช่อง "แก้ไขได้" — เฉพาะหน้าที่มีอะไรให้ปลดล็อก · จางเมื่อยังไม่ให้ดู (ติ๊กแล้วจะติ๊กดูให้เอง) */}
+                              {p.edit && (
+                                <label title={`แก้ไขได้: ${p.edit}`}
+                                  className={`flex items-center gap-1 px-1 py-0.5 rounded cursor-pointer flex-shrink-0 ${
+                                    edit ? 'text-amber-700 dark:text-amber-300' : view ? 'text-gray-400 hover:text-amber-600' : 'text-gray-300 dark:text-gray-600 hover:text-amber-600'}`}>
+                                  <input type="checkbox" checked={edit} onChange={() => toggleEdit(p.key)}
+                                    className="w-3.5 h-3.5 accent-amber-600" />
+                                  <Pencil size={11} />
+                                </label>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )

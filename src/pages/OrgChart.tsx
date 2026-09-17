@@ -7,6 +7,7 @@ import { PersonPhoto, PHOTO_PREFIX, isPhotoFile, clearPhotoCache } from '../comp
 import { makeSquareImageFile } from '../utils/imageFile'
 import { spGet, spUpdate, spUploadAttachment, spDeleteAttachment, spGetAttachments } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { useT } from '../i18n/useT'
 import { SELF_APPROVE } from '../components/calendar/CompanyCalendar'
 import { RoleMatrixView } from '../components/common/RoleMatrixView'
@@ -80,9 +81,10 @@ export default function OrgChart() {
 
   const photoOf = (a?: AgentRow) => a?.AttachmentFiles?.find(f => isPhotoFile(f.FileName))?.FileName
 
-  /** อัปโหลดรูปได้: ของตัวเอง หรือ Admin/Boss (แก้ให้คนอื่นได้) */
+  /** อัปโหลดรูปได้: ของตัวเอง หรือ Admin/Boss / คนที่ถูกติ๊ก "แก้ไข" หน้านี้ (แก้ให้คนอื่นได้) */
+  const canEditOthers = useCanEdit('orgchart', ['Admin', 'Boss'])
   const canEditPhoto = (a: AgentRow) =>
-    norm(a.EmailText) === norm(user?.email) || ['Admin', 'Boss'].includes(user?.role ?? '')
+    norm(a.EmailText) === norm(user?.email) || canEditOthers
 
   const [uploadingId, setUploadingId] = useState<number | null>(null)
   async function uploadPhoto(a: AgentRow, file: File) {

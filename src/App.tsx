@@ -200,7 +200,7 @@ function AppContent() {
   useEffect(() => {
     if (!user?.email) return
     resolvePages(user.email, user.role)
-      .then(r => setPermissions(r.pages, r.source))
+      .then(r => setPermissions(r.pages, r.source, r.edit))
       .catch(() => setPermissions(new Set(ALWAYS_KEYS), 'none'))
   }, [user?.email, user?.role, setPermissions])
 

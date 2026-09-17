@@ -11,6 +11,7 @@ import { spGet, spCreate } from '../services/sharepoint'
 import { OWNER_DEFAULT_ROLE } from '../utils/projectRoles'
 import { countProjectChildren, deleteProjectCascade } from '../services/projectService'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import type { Project, ProjectStatus } from '../types/project'
 import { formatDate } from '../utils/dateUtils'
 import { ProjectIcon } from '../components/common/ProjectIcon'
@@ -186,7 +187,7 @@ export default function Projects() {
 
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
-  const canCreate = ['Admin', 'Boss', 'Supervisor'].includes(user?.role ?? '')
+  const canCreate = useCanEdit('projects', ['Admin', 'Boss', 'Supervisor'])
 
   const totalActive = baseFiltered.filter(p => ACTIVE_STATUSES.includes(p.Status)).length
   const totalDone = baseFiltered.filter(p => !ACTIVE_STATUSES.includes(p.Status)).length

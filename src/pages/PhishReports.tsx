@@ -9,6 +9,7 @@ import { DataTable, type Column } from '../components/common/DataTable'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { useT } from '../i18n/useT'
 import { formatDate } from '../utils/dateUtils'
 
@@ -52,10 +53,10 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 export default function PhishReports() {
-  const { user, addToast } = useAppStore()
+  const { addToast } = useAppStore()
   const tr = useT()
   // ยืนยันโดเมน/เปลี่ยนสถานะเป็น security control → Agent ขึ้นไป (ตรงกับแอดอิน)
-  const canManage = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const canManage = useCanEdit('phish', ['Agent', 'Supervisor', 'Boss', 'Admin'])
 
   const [rows, setRows] = useState<PhishReport[]>([])
   const [safe, setSafe] = useState<SafeDomainRow[]>([])

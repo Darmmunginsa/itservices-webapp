@@ -13,6 +13,7 @@ import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spGetFromSite } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import type { Asset } from '../types/asset'
 import { getStatusColor } from '../utils/colorUtils'
 import { formatDate, isWarrantyExpiringSoon, daysUntil } from '../utils/dateUtils'
@@ -234,7 +235,7 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function Assets() {
-  const { user, addToast } = useAppStore()
+  const { addToast } = useAppStore()
   const tr = useT()
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
@@ -457,7 +458,7 @@ export default function Assets() {
     (!statusFilter || a.Status === statusFilter)
   )
 
-  const canAdmin = ['Admin', 'Boss'].includes(user?.role ?? '')
+  const canAdmin = useCanEdit('assets', ['Admin', 'Boss'])
   const [view, setView] = useViewMode('assets')
 
   // export asset ที่ผ่าน filter ปัจจุบัน → .xlsx (โหลด lib แบบ dynamic ไม่ถ่วง bundle หลัก)

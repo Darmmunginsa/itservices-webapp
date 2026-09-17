@@ -10,6 +10,7 @@ import { DataTable, type Column } from '../components/common/DataTable'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { formatCitation, formatBibliography } from '../utils/citation'
 import { ReferenceContent } from '../components/project/ReferenceContent'
 import { parseMediaLinks } from '../utils/youtube'
@@ -36,7 +37,7 @@ type Form = typeof EMPTY
 export default function References() {
   const { user, addToast } = useAppStore()
   const tr = useT()
-  const canEdit = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const canEdit = useCanEdit('references', ['Agent', 'Supervisor', 'Boss', 'Admin'])
   const canDelete = ['Boss', 'Admin'].includes(user?.role ?? '')
 
   const [rows, setRows] = useState<ProjectReference[]>([])

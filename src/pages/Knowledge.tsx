@@ -11,6 +11,7 @@ import { RichNote } from '../components/common/RichNote'
 import { DataTable, type Column } from '../components/common/DataTable'
 import { spGet, spCreate, spUpdate, spDelete, spAttachmentBlobUrl } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { referencedFiles } from '../utils/richNote'
 import { formatDate } from '../utils/dateUtils'
 import {
@@ -39,7 +40,7 @@ const DEFAULT_SITE: SiteMeta = {
 
 export default function Knowledge() {
   const { user, addToast } = useAppStore()
-  const canEdit = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const canEdit = useCanEdit('knowledge', ['Agent', 'Supervisor', 'Boss', 'Admin'])
   const canPublish = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
 
   const [rows, setRows] = useState<KbArticle[]>([])

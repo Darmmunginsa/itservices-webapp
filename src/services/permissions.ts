@@ -1,9 +1,11 @@
 import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 import { PAGES, ALWAYS_KEYS } from '../config/pages'
 import type { Role } from '../types/common'
+import { parseGrants, serializeGrants, type Grants } from '../utils/pagePerms'
 
 // ── สิทธิ์การเข้าถึงหน้า กำหนดรายคน (SharePoint list 'HD_PagePermissions') ──
-// 1 แถว = 1 ผู้ใช้ ; AllowedPages = รหัสหน้าคั่นด้วย comma เช่น "assets,contracts,projects"
+// 1 แถว = 1 ผู้ใช้ ; AllowedPages = รหัสหน้าคั่นด้วย comma เช่น "assets:edit,contracts,projects"
+//   ต่อท้าย :edit = แก้ไขในหน้านั้นได้ด้วย (ดู utils/pagePerms.ts)
 //
 // ลำดับการตัดสิน (resolvePages):
 //   1. role = Admin            → เข้าได้ทุกหน้าเสมอ (escape hatch — กัน Admin ล็อกตัวเองออกจากระบบ)
@@ -22,16 +24,12 @@ export interface PagePermRow {
 
 export interface ResolvedPerms {
   pages: Set<string>
+  /** หน้าที่ติ๊ก "แก้ไข" ให้ — ใช้ร่วมกับ role เดิม (useCanEdit) */
+  edit: Set<string>
   /** 'admin' = Admin เข้าทุกหน้า, 'user' = ตามที่ Admin กำหนดรายคน,
    *  'none' = ยังไม่ถูกกำหนดสิทธิ์, 'fallback' = ลิสต์ใช้ไม่ได้ จึงถอยไปใช้ role เดิม */
   source: 'admin' | 'user' | 'none' | 'fallback'
 }
-
-const parsePages = (raw?: string): string[] =>
-  (raw ?? '').split(',').map(s => s.trim()).filter(Boolean)
-
-export const serializePages = (keys: string[]): string =>
-  [...new Set(keys)].filter(k => k).join(',')
 
 /** สิทธิ์ตาม role เดิม — ใช้เฉพาะตอน fallback */
 function rolePages(role: Role): string[] {
@@ -41,19 +39,20 @@ function rolePages(role: Role): string[] {
 /** โหลดสิทธิ์ของผู้ใช้ปัจจุบัน */
 export async function resolvePages(email: string, role: Role): Promise<ResolvedPerms> {
   const everything = new Set(PAGES.map(p => p.key))
-  if (role === 'Admin') return { pages: everything, source: 'admin' }
+  if (role === 'Admin') return { pages: everything, edit: new Set(everything), source: 'admin' }
 
   let rows: PagePermRow[]
   try {
     rows = await spGet<PagePermRow>(PERM_LIST, `UserEmail eq '${email}'`, 'Id,UserEmail,AllowedPages', undefined, 5)
   } catch {
     // ลิสต์ยังไม่ถูกสร้าง หรือโหลดพลาด → ถอยไปใช้ role เดิม ไม่ล็อกใครออกจากระบบ
-    return { pages: new Set(rolePages(role)), source: 'fallback' }
+    return { pages: new Set(rolePages(role)), edit: new Set(), source: 'fallback' }
   }
 
   const row = rows[0]
-  if (!row) return { pages: new Set(ALWAYS_KEYS), source: 'none' }
-  return { pages: new Set([...ALWAYS_KEYS, ...parsePages(row.AllowedPages)]), source: 'user' }
+  if (!row) return { pages: new Set(ALWAYS_KEYS), edit: new Set(), source: 'none' }
+  const g = parseGrants(row.AllowedPages)
+  return { pages: new Set([...ALWAYS_KEYS, ...g.view]), edit: g.edit, source: 'user' }
 }
 
 /** ── ใช้ในหน้า Admin ── */
@@ -61,11 +60,11 @@ export async function getAllPagePerms(): Promise<PagePermRow[]> {
   return spGet<PagePermRow>(PERM_LIST, undefined, 'Id,Title,UserEmail,AllowedPages,Note', 'UserEmail asc', 2000)
 }
 
-export async function savePagePerms(email: string, keys: string[], existingId?: number, note?: string): Promise<void> {
+export async function savePagePerms(email: string, grants: Grants, existingId?: number, note?: string): Promise<void> {
   const payload = {
     Title: email,
     UserEmail: email,
-    AllowedPages: serializePages(keys),
+    AllowedPages: serializeGrants(grants),
     ...(note !== undefined ? { Note: note } : {}),
   }
   if (existingId) await spUpdate(PERM_LIST, existingId, payload)

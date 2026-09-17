@@ -7,14 +7,15 @@ import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import type { Contract } from '../types/ticket'
 import { getStatusColor } from '../utils/colorUtils'
 import { useT } from '../i18n/useT'
 
 export default function Contracts() {
-  const { user, addToast } = useAppStore()
+  const { addToast } = useAppStore()
   // ทุก role เปิดดูรายชื่อผู้ติดต่อได้ แต่เพิ่ม/แก้/ลบ สงวนไว้ให้ Supervisor ขึ้นไป
-  const canEdit = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const canEdit = useCanEdit('contracts', ['Supervisor', 'Boss', 'Admin'])
   const tr = useT()
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)

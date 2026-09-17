@@ -15,8 +15,10 @@ interface AppState {
   user: UserProfile | null
   /** หน้าที่ผู้ใช้ปัจจุบันเข้าได้ (null = ยังโหลดไม่เสร็จ) */
   allowedPages: Set<string> | null
+  /** หน้าที่ Admin ติ๊ก "แก้ไข" ให้รายคน (ใช้ผ่าน hooks/useCanEdit) */
+  editPages: Set<string> | null
   permSource: 'admin' | 'user' | 'none' | 'fallback' | null
-  setPermissions: (pages: Set<string>, source: 'admin' | 'user' | 'none' | 'fallback') => void
+  setPermissions: (pages: Set<string>, source: 'admin' | 'user' | 'none' | 'fallback', edit?: Set<string>) => void
   lang: 'th' | 'en'
   setLang: (l: 'th' | 'en') => void
   isDarkMode: boolean
@@ -146,8 +148,9 @@ function syncTheme(get: () => AppState) {
 export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   allowedPages: null,
+  editPages: null,
   permSource: null,
-  setPermissions: (pages, source) => set({ allowedPages: pages, permSource: source }),
+  setPermissions: (pages, source, edit) => set({ allowedPages: pages, permSource: source, editPages: edit ?? new Set() }),
   lang: (localStorage.getItem('lang') as 'th' | 'en') || 'th',
   setLang: (l) => { localStorage.setItem('lang', l); set({ lang: l }) },
   isDarkMode: localStorage.getItem('darkMode') === 'true',

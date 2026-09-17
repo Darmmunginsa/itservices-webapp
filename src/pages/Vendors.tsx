@@ -6,6 +6,7 @@ import { Modal } from '../components/common/Modal'
 import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { formatDate, isWarrantyExpiringSoon, daysUntil } from '../utils/dateUtils'
 import type { Vendor } from '../types/vendor'
 import { useT } from '../i18n/useT'
@@ -27,9 +28,9 @@ function toForm(v: Vendor): Form {
 }
 
 export default function Vendors() {
-  const { user, addToast } = useAppStore()
+  const { addToast } = useAppStore()
   const tr = useT()
-  const isAdmin = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const isAdmin = useCanEdit('vendors', ['Supervisor', 'Boss', 'Admin'])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')

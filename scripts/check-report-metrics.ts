@@ -17,7 +17,7 @@ import { incidentRecipients, incidentVars, justResolved, justAssigned } from '..
 import { needsAck, buildAckInbox, ackVars } from '../src/utils/ackInbox'
 import { assignFields, ackResetFields, ackOnCreate } from '../src/utils/ackInbox'
 import { reporterFields, reporterLine, reporterWatchers, isBlankReporter } from '../src/utils/reporter'
-import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pagePerms'
+import { parseKeys, sameKeys, dirtyEmails, groupPages, parseGrants, serializeGrants, canEditPage, type Grants } from '../src/utils/pagePerms'
 import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { meetingBody } from '../src/utils/meetingBody'
 import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
@@ -1841,15 +1841,32 @@ eq(sameKeys(new Set(['a','b']), new Set(['b','a'])), true, 'order does not matte
 eq(sameKeys(new Set(['a']), new Set(['a','b'])), false, 'a missing key is a difference')
 
 // ตัว "แก้แล้วยังไม่บันทึก" — บันทึกคนที่ไม่ได้แก้ = เสียเวลา, ข้ามคนที่แก้ = หายเงียบ
-const savedP = new Map([['a@x.co', new Set(['projects'])], ['b@x.co', new Set(['tools'])]])
+const G = (view: string[], edit: string[] = []): Grants => ({ view: new Set(view), edit: new Set(edit) })
+const savedP = new Map([['a@x.co', G(['projects'])], ['b@x.co', G(['tools'])], ['e@x.co', G(['assets'])]])
 const draftP = new Map([
-  ['a@x.co', new Set(['projects'])],            // เท่าเดิม
-  ['b@x.co', new Set(['tools', 'dashboard'])],  // แก้
-  ['c@x.co', new Set<string>()],                // คนใหม่ ยังไม่ติ๊ก
-  ['d@x.co', new Set(['tools'])],               // คนใหม่ ติ๊กแล้ว
+  ['a@x.co', G(['projects'])],            // เท่าเดิม
+  ['b@x.co', G(['tools', 'dashboard'])],  // แก้
+  ['c@x.co', G([])],                      // คนใหม่ ยังไม่ติ๊ก
+  ['d@x.co', G(['tools'])],               // คนใหม่ ติ๊กแล้ว
+  ['e@x.co', G(['assets'], ['assets'])],  // ดูเท่าเดิม แต่ติ๊กแก้ไขเพิ่ม
 ])
-eq(dirtyEmails(draftP, savedP).join(','), 'b@x.co,d@x.co', 'only people whose draft differs from what is saved')
+eq(dirtyEmails(draftP, savedP).join(','), 'b@x.co,d@x.co,e@x.co', 'only people whose draft differs from what is saved — edit counts too')
 eq(dirtyEmails(new Map(), savedP).length, 0, 'nothing drafted means nothing to save')
+
+// -- ช่อง "แก้ไขได้" ต่อหน้า — เก็บในคอลัมน์เดิมด้วยท้าย :edit --
+// เหตุ: บางคนควรแก้ทะเบียนได้เท่า Admin ในบางหน้า โดยไม่ต้องยก role ทั้งคน (ซึ่งปลดล็อกหน้าอื่นตาม)
+const gr = parseGrants('projects, assets:edit ,, tools, :edit')
+eq([...gr.view].join('|'), 'projects|assets|tools', 'an :edit token still grants view of that page; a bare :edit is ignored')
+eq([...gr.edit].join('|'), 'assets', 'only the :edit token grants edit')
+eq(parseKeys('assets:edit,tools').join('|'), 'assets|tools', 'old callers that only care about view see the plain key')
+eq(parseGrants(undefined).edit.size, 0, 'no row means no edit anywhere')
+eq(serializeGrants(G(['a', 'b'], ['b'])), 'a,b:edit', 'edit pages get the suffix')
+eq(serializeGrants(G(['a'], ['z'])), 'a,z:edit', 'edit implies view — an edit-only key is still written (and read back as view+edit)')
+eq(serializeGrants(parseGrants('x:edit,y')), 'x:edit,y', 'round-trips')
+eq(canEditPage(true, new Set(), 'assets'), true, 'the role that could edit before still can')
+eq(canEditPage(false, new Set(['assets']), 'assets'), true, 'a per-person edit tick unlocks it')
+eq(canEditPage(false, new Set(['assets']), 'vendors'), false, 'only for the ticked page')
+eq(canEditPage(false, null, 'assets'), false, 'before permissions load nothing is unlocked')
 
 const gp = groupPages([
   { key: 'x', group: 'system' as const }, { key: 'y', group: 'main' as const }, { key: 'z', group: 'main' as const },

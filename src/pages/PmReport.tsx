@@ -9,6 +9,7 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spDeleteAttachment, spAttachmentBlobUrl, spWaitForItem } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { resizeImageFile } from '../utils/imageFile'
 import { formatDate } from '../utils/dateUtils'
 import {
@@ -90,8 +91,8 @@ function PrintShot({ url, f }: { url: string; f: FiguredShot }) {
 }
 
 export default function PmReport() {
-  const { user, addToast } = useAppStore()
-  const canManageTpl = ['Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const { addToast } = useAppStore()
+  const canManageTpl = useCanEdit('pm-report', ['Supervisor', 'Boss', 'Admin'])
 
   const [templates, setTemplates] = useState<TplRow[]>([])
   const [jobs, setJobs] = useState<JobRow[]>([])

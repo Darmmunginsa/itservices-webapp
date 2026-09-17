@@ -15,6 +15,7 @@ import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { notifyAssigned, assignFailMessage } from '../services/ackNotify'
 import { mailFailText } from '../utils/emailTemplate'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import type { Ticket } from '../types/ticket'
 import type { AgentProfile } from '../types/common'
 import type { Project, ProjectIncident, Task } from '../types/project'
@@ -101,7 +102,7 @@ export default function AgentDashboard() {
     { label: 'เสร็จแล้ว',           value: stats.done,       color: 'text-green-600' },
   ]
 
-  const canAssign = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const canAssign = useCanEdit('dashboard', ['Agent', 'Supervisor', 'Boss', 'Admin'])
 
   /**
    * Assign ได้ทั้งสามชนิดจากที่นี่

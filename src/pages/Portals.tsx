@@ -9,6 +9,7 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { AttachmentSection } from '../components/common/AttachmentSection'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
+import { useCanEdit } from '../hooks/useCanEdit'
 import type { Portal } from '../types/portal'
 import type { Asset } from '../types/asset'
 import { useT } from '../i18n/useT'
@@ -27,9 +28,9 @@ function toForm(p: Portal): Form {
 }
 
 export default function Portals() {
-  const { user, addToast } = useAppStore()
+  const { addToast } = useAppStore()
   const tr = useT()
-  const isAdmin = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  const isAdmin = useCanEdit('portals', ['Agent', 'Supervisor', 'Boss', 'Admin'])
   const [portals, setPortals] = useState<Portal[]>([])
   const [assets, setAssets] = useState<LinkedAsset[]>([])
   const [loading, setLoading] = useState(true)
