@@ -50,3 +50,34 @@ export function requesterActions(status: TicketStatusLike): RequesterAction[] {
   }
   return [{ label: 'ปัญหาแก้ไขแล้ว / ไม่ต้องดำเนินการต่อ — ปิดงาน', status: 'Closed', tone: 'green', askNote: false }]
 }
+
+// ── Incident ──────────────────────────────────────────────────────────────────
+// Incident มีสถานะแค่ Open / In Progress / Resolved (ไม่มี Closed แยก)
+// ผู้แจ้ง = คนกดสร้าง หรือคนแจ้งสำรอง (ReporterEmail) — เจ้าของปัญหาจริง
+
+export interface IncidentOwnerLike {
+  CreatedByEmail?: string
+  ReporterEmail?: string
+  Author?: { EMail?: string }
+}
+
+export function isIncidentRequester(i: IncidentOwnerLike, email?: string): boolean {
+  const me = norm(email)
+  if (!me) return false
+  return [i.CreatedByEmail, i.ReporterEmail, i.Author?.EMail].some(e => norm(e) === me)
+}
+
+export interface IncidentRequesterAction {
+  label: string
+  status: 'Resolved' | 'Open'
+  tone: 'green' | 'amber'
+  askNote: boolean
+}
+
+/** ยังไม่จบ → ปิดเคสได้ · จบแล้ว → บอกว่ายังไม่หายได้ (เปิดกลับ ไม่ต้องเปิดเคสใหม่) */
+export function incidentRequesterActions(status: string): IncidentRequesterAction[] {
+  if (['Resolved', 'Closed', 'Done', 'Completed'].includes(status)) {
+    return [{ label: 'ยังไม่หาย — เปิดเคสนี้กลับ', status: 'Open', tone: 'amber', askNote: true }]
+  }
+  return [{ label: 'ปัญหาแก้ไขแล้ว — ปิดเคส', status: 'Resolved', tone: 'green', askNote: false }]
+}

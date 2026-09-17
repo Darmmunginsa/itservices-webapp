@@ -25,6 +25,7 @@ import { incidentMailPlan, justResolved, justAssigned } from '../utils/incidentM
 import { assignWork, ackColumnWarning } from '../services/assignWork'
 import { mailFailText } from '../utils/emailTemplate'
 import { reporterLine, reporterWatchers } from '../utils/reporter'
+import { isIncidentRequester, incidentRequesterActions } from '../utils/ticketOwner'
 import { useT } from '../i18n/useT'
 
 const STATUSES: ProjectIncident['Status'][] = ['Open', 'In Progress', 'Resolved']
@@ -68,6 +69,9 @@ export default function IncidentDetail() {
   const [savingEdit, setSavingEdit] = useState(false)
 
   const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  // ผู้แจ้ง (รวมคนแจ้งสำรอง) ปิด/เปิดเคสของตัวเองได้ — เจ้าของปัญหารู้ดีที่สุดว่าหายแล้วหรือยัง
+  const isRequester = !!inc && isIncidentRequester(inc, user?.email)
+  const [requesterNote, setRequesterNote] = useState('')
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
 
   // ตัวจับเวลาเด้งออกหลังปิดงาน — ต้องยกเลิกถ้าผู้ใช้เปลี่ยนหน้าเองก่อน
@@ -140,38 +144,41 @@ export default function IncidentDetail() {
     if (warn) addToast('error', warn)
   }
 
-  async function updateStatus() {
+  /** เปลี่ยนสถานะ — agent ใช้ dropdown · ผู้แจ้งส่ง override จากปุ่ม "ปิดเคส/เปิดกลับ" */
+  async function updateStatus(override?: { status: ProjectIncident['Status']; note?: string }) {
     if (!inc) return
     setSaving(true)
-    const closing = CLOSED.includes(newStatus)
+    const status = override?.status ?? newStatus
+    const note = override ? (override.note ?? '') : resolution
+    const closing = CLOSED.includes(status)
     try {
       const payload: Record<string, unknown> = {
-        Status: newStatus,
-        Resolution: resolution || undefined,
+        Status: status,
+        Resolution: note || undefined,
       }
       // ปิดเคสต้องมีเวลาปิด ไม่งั้นวัด SLA ไม่ได้ — ประทับให้ถ้ายังไม่มี
       if (closing && !inc.ResolvedDate) payload.ResolvedDate = new Date().toISOString()
       await spUpdate('PM_Incidents', inc.id, payload)
-      setInc(prev => prev ? { ...prev, ...payload, Status: newStatus, Resolution: resolution } as ProjectIncident : prev)
+      setInc(prev => prev ? { ...prev, ...payload, Status: status, Resolution: note } as ProjectIncident : prev)
       addToast('success', 'อัปเดตสถานะแล้ว')
 
       const requester = inc.Author?.EMail || inc.CreatedByEmail
       if (requester && requester.toLowerCase() !== (user?.email?.toLowerCase() ?? '')) {
         createNotification({
           recipients: [requester],
-          title: `🚨 Incident เปลี่ยนสถานะเป็น ${newStatus}`,
+          title: `🚨 Incident เปลี่ยนสถานะเป็น ${status}`,
           message: inc.Title,
           linkPath: `/incidents/${inc.id}`,
           eventType: 'incident_status_changed',
         })
       }
-      if (justResolved(newStatus, inc.Status)) {
-        await mail('incident_resolved', 'แจ้งปิดเคส')
-      } else if (newStatus !== inc.Status) {
+      if (justResolved(status, inc.Status)) {
+        await mail('incident_resolved', 'แจ้งปิดเคส', { status, resolution: note })
+      } else if (status !== inc.Status) {
         // เปลี่ยนสถานะที่ไม่ใช่ปิด (เช่น Open → In Progress) — ผู้แจ้งควรรู้ว่าเคสเดินอยู่
-        await mail('incident_status_changed', 'แจ้งสถานะ')
+        await mail('incident_status_changed', 'แจ้งสถานะ', { status, resolution: note })
       }
-      if (justResolved(newStatus, inc.Status)) {
+      if (justResolved(status, inc.Status)) {
         celebrate()
         // ปิดเคสแล้วไม่มีอะไรให้ทำต่อ — พากลับที่มา (ปลายทางเดียวกับปุ่มย้อนกลับ)
         exitTimer.current = window.setTimeout(
@@ -407,6 +414,44 @@ export default function IncidentDetail() {
             )}
           </Card>
 
+          {/* ผู้แจ้งที่ไม่ใช่ agent — เดิมไม่มีปุ่มอะไรเลย ต้องรอทีมมาปิดให้ */}
+          {!isAgent && isRequester && (
+            <Card>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">เคสของคุณ</p>
+              <p className="text-xs text-gray-400 mb-3">
+                สถานะตอนนี้: <span className="font-medium text-gray-600 dark:text-gray-300">{inc.Status}</span>
+                {CLOSED.includes(inc.Status) && ' — ทีมแจ้งว่าแก้ไขแล้ว'}
+              </p>
+              <div className="space-y-2">
+                {incidentRequesterActions(inc.Status).map(act => (
+                  <div key={act.status} className="space-y-1.5">
+                    {act.askNote && (
+                      <textarea value={requesterNote} onChange={e => setRequesterNote(e.target.value)} rows={2}
+                        placeholder="บอกทีมหน่อยว่ายังติดอะไร / เกิดอะไรขึ้นอีก"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                    )}
+                    <Button size="sm" variant={act.tone === 'green' ? 'primary' : 'outline'} disabled={saving}
+                      onClick={async () => {
+                        // เหตุผลลงเป็นคอมเมนต์ด้วย — ทีมเห็นในเธรด ไม่ใช่แค่สถานะเด้งกลับ
+                        // ลิสต์คอมเมนต์อาจยังไม่ได้สร้าง จึงไม่ให้ล้มทั้งการเปิดกลับ
+                        if (act.askNote && requesterNote.trim()) {
+                          await spCreate('PM_IncidentComments', {
+                            Title: requesterNote.slice(0, 100), IncidentID: inc.id, CommentText: requesterNote,
+                            CommentType: 'External', CommentDate: new Date().toISOString(), ParentID: 0,
+                          }).catch(() => {})
+                        }
+                        await updateStatus({ status: act.status, note: act.status === 'Resolved' ? 'ผู้แจ้งปิดเคสเอง' : requesterNote })
+                        setRequesterNote('')
+                      }}>
+                      {act.label}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-3">ปิดเคสแล้วเปิดกลับได้ถ้าปัญหากลับมา — ประวัติอยู่ที่เดียว</p>
+            </Card>
+          )}
+
           {/* ── จัดการเคส ── */}
           {isAgent && (
             <Card>
@@ -417,7 +462,7 @@ export default function IncidentDetail() {
                   className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
                   {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <Button size="sm" onClick={updateStatus} disabled={saving || (newStatus === inc.Status && resolution === (inc.Resolution ?? ''))}>
+                <Button size="sm" onClick={() => updateStatus()} disabled={saving || (newStatus === inc.Status && resolution === (inc.Resolution ?? ''))}>
                   {saving ? 'กำลังบันทึก...' : tr('ticket.updateStatus')}
                 </Button>
               </div>

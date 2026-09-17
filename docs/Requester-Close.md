@@ -39,3 +39,17 @@ EndUser ที่เปิด Ticket เอง พอปัญหาหายแ
 ## ไม่ต้องแก้อะไรใน SharePoint
 
 > ผู้แจ้งต้องมีสิทธิ์ **Contribute** บน `HD_Tickets` อยู่แล้ว (เขาสร้าง Ticket ได้ = มี) — ถ้ากดแล้วขึ้น error สิทธิ์ ดูที่หน้า Diagnostic
+
+---
+
+## Incident ด้วย
+
+การ์ด **"เคสของคุณ"** ในหน้า Incident สำหรับผู้แจ้งที่ไม่ใช่ agent — ผู้แจ้ง = คนกดสร้าง **หรือคนแจ้งสำรอง** (`ReporterEmail`)
+
+| สถานะ | ปุ่ม |
+|---|---|
+| Open / In Progress | **ปัญหาแก้ไขแล้ว — ปิดเคส** (→ Resolved) |
+| Resolved | **ยังไม่หาย — เปิดเคสนี้กลับ** (→ Open, ต้องบอกเหตุ → ลงคอมเมนต์) |
+
+ใช้ทางเดิมของ `updateStatus` → เมล `incident_resolved` / `incident_status_changed` และกระดิ่งเหมือน agent กด
+`isIncidentRequester` `incidentRequesterActions` — 7 เทสต์

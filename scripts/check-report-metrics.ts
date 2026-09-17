@@ -21,7 +21,7 @@ import { parseKeys, sameKeys, dirtyEmails, groupPages } from '../src/utils/pageP
 import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { meetingBody } from '../src/utils/meetingBody'
 import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
-import { isTicketRequester, requesterActions } from '../src/utils/ticketOwner'
+import { isTicketRequester, requesterActions, isIncidentRequester, incidentRequesterActions } from '../src/utils/ticketOwner'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1947,6 +1947,16 @@ eq(requesterActions('Resolved')[1].askNote, true, 'pushing back asks what is sti
 eq(requesterActions('Closed').map(a => a.status).join(','), 'Open', 'a closed ticket can be reopened instead of raising a new one')
 eq(requesterActions('Closed')[0].askNote, true, 'reopening asks what came back')
 eq(requesterActions('Pending').length, 1, 'an unknown or pending status still offers close')
+
+
+// -- ผู้แจ้งปิด Incident ของตัวเอง --
+eq(isIncidentRequester({ CreatedByEmail: 'boss@its.co.th' }, 'boss@its.co.th'), true, 'the creator owns the incident')
+eq(isIncidentRequester({ ReporterEmail: 'cust@acme.co' }, 'CUST@acme.co'), true, 'the backup reporter owns it too')
+eq(isIncidentRequester({ Author: { EMail: 'x@y.co' } }, 'z@y.co'), false, 'others do not')
+eq(incidentRequesterActions('Open')[0].status, 'Resolved', 'a live incident can be resolved by its owner')
+eq(incidentRequesterActions('In Progress')[0].askNote, false, 'resolving needs no reason')
+eq(incidentRequesterActions('Resolved')[0].status, 'Open', 'a resolved incident can be reopened')
+eq(incidentRequesterActions('Resolved')[0].askNote, true, 'reopening asks what is still wrong')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
