@@ -22,6 +22,7 @@ import { presetCustomerEmails } from '../src/utils/customerGroups'
 import { meetingBody } from '../src/utils/meetingBody'
 import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
 import { isTicketRequester, requesterActions, isIncidentRequester, incidentRequesterActions } from '../src/utils/ticketOwner'
+import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1974,6 +1975,26 @@ eq(incidentRequesterActions('Open')[0].status, 'Resolved', 'a live incident can 
 eq(incidentRequesterActions('In Progress')[0].askNote, false, 'resolving needs no reason')
 eq(incidentRequesterActions('Resolved')[0].status, 'Open', 'a resolved incident can be reopened')
 eq(incidentRequesterActions('Resolved')[0].askNote, true, 'reopening asks what is still wrong')
+
+
+// -- ส่งเมลในนามบัญชีกลาง / ถอยไปส่งจากตัวเอง (utils/mailSender) --
+// บั๊กจริง: สร้าง Ticket แล้ว Graph 403 ErrorSendAsDenied → ลูกค้าไม่ได้เมลเลย
+const gm = buildGraphMessage({ to: ['c@acme.co'], cc: ['e@its.co.th'], subject: 'S', html: '<p>x</p>', from: 'support@its.co.th', sendAs: 'shared' })
+eq(JSON.stringify(gm.from), '{"emailAddress":{"address":"support@its.co.th"}}', 'shared mode sends as the central mailbox')
+eq('replyTo' in gm, false, 'shared mode needs no reply-to')
+const gs = buildGraphMessage({ to: ['c@acme.co'], subject: 'S', html: 'x', from: 'support@its.co.th', sendAs: 'self' })
+eq('from' in gs, false, 'self mode sends from the signed-in mailbox')
+eq(JSON.stringify(gs.replyTo), '[{"emailAddress":{"address":"support@its.co.th"}}]', 'self mode routes replies back to the central mailbox so the inbound flow still catches them')
+eq('ccRecipients' in gs, false, 'no cc means no ccRecipients key')
+const gn = buildGraphMessage({ to: ['c@acme.co'], subject: 'S', html: 'x', sendAs: 'self' })
+eq('replyTo' in gn || 'from' in gn, false, 'no central mailbox configured → plain send')
+eq(isSendAsDenied(403, '{"error":{"code":"ErrorSendAsDenied","message":"..."}}'), true, 'the Send As refusal is recognised')
+eq(isSendAsDenied(403, '{"error":{"code":"ErrorAccessDenied"}}'), false, 'other 403s are not retried as self')
+eq(isSendAsDenied(500, 'ErrorSendAsDenied'), false, 'only a 403 counts')
+eq(sendAsFallbackText('support@its.co.th', 'me@its.co.th').includes('Send As'), true, 'the fallback note tells the admin what to grant')
+eq(mailDetailText('sendMail 403: {"error":{"code":"ErrorSendAsDenied"}}', 'support@its.co.th')?.includes('Send As ของ support@its.co.th'), true, 'the raw Graph JSON becomes a human sentence')
+eq(mailDetailText('sendMail 500: boom'), 'sendMail 500: boom', 'unknown errors pass through unchanged')
+eq(mailDetailText(undefined), undefined, 'no detail stays no detail')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

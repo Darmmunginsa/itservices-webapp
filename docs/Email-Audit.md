@@ -86,3 +86,34 @@ Subject แยกตัว render (`renderSubject`) — เป็นข้อค
 
 790 เทสต์ผ่าน (+34 สำหรับ render/escape/appLink/mailFailText/EVENT_VARS) · `check:addin` ตรวจ `emailTemplate.ts` เพิ่มด้วย
 · lint ไม่เพิ่ม error · **ไม่ต้องแก้ SharePoint**
+
+---
+
+## ส่งในนามบัญชีกลางไม่ได้ (403 ErrorSendAsDenied)
+
+**อาการ:** สร้าง Ticket แล้ว toast แดง `sendMail 403 ... ErrorSendAsDenied` — ลูกค้าไม่ได้เมลเลย
+**เหตุ:** ระบบส่งเมล `from` = บัญชีกลาง (HD_Options › EmailConfig, ค่าเริ่มต้น `support@`)
+แต่บัญชีที่ล็อกอิน**ไม่มีสิทธิ์ Send As** บนกล่องนั้น — เป็นสิทธิ์ของ Exchange ไม่ใช่ของแอป
+
+### ตอนนี้ระบบถอยให้เอง
+
+```
+ส่งในนาม support@  → 403 Send As
+   → ส่งใหม่จากบัญชีตัวเอง + reply-to = support@
+   → ลูกค้าได้เมล · ตอบกลับยังเข้ากล่องกลาง → flow เมลขาเข้าจับลง comment ได้เหมือนเดิม
+   → toast ฟ้า (ครั้งเดียวต่อ session) บอกว่าส่งจากชื่อคุณ และให้ Admin เพิ่ม Send As
+```
+
+reply-to สำคัญ: ถ้าไม่ตั้ง คำตอบลูกค้าจะไหลเข้ากล่องส่วนตัวของคนกด แล้วหายจากระบบเงียบ ๆ
+ถอยเฉพาะ 403 ที่เป็น `ErrorSendAsDenied` เท่านั้น — 403 อื่น / 5xx ยังรายงานเป็นส่งไม่สำเร็จ
+
+### แก้ให้ถาวร (Admin)
+
+Exchange admin center → **Mailboxes** → `support@…` → **Delegation** → **Send as** → เพิ่มคน หรือกลุ่มทีม
+(มีผลใน ~30–60 นาที) · ตรวจได้ที่หน้า **Diagnostic → บัญชีส่งเมล → ส่งเมลทดสอบหาตัวเอง** — บอกเลยว่าส่งในนามกล่องกลางได้หรือถอย
+
+ข้อความ error ดิบของ Graph ถูกแปลเป็นภาษาคนก่อนขึ้น toast (`mailDetailText`)
+
+Add-in ใช้ทางเดียวกัน (`mailSender.ts` เป็นไฟล์สำเนา อยู่ในตัวเทียบ `check:addin`)
+
+โค้ด: [`src/utils/mailSender.ts`](../src/utils/mailSender.ts) — 13 เทสต์ · `services/graph.ts` `sendMail` คืน `{ sentAs }`

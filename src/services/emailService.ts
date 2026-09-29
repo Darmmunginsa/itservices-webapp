@@ -5,6 +5,8 @@
 import { spGet } from './sharepoint'
 import { sendMail } from './graph'
 import { findTemplate, templateProblem, renderTemplate, renderSubject, type MailVars } from '../utils/emailTemplate'
+import { sendAsFallbackText, mailDetailText } from '../utils/mailSender'
+import { useAppStore } from '../store/useAppStore'
 
 // CC ทุกครั้งที่เปิด Ticket ใหม่ (ทีมวิศวกรต้องรับรู้ทุกเคส)
 export const ALWAYS_CC_TICKET = 'engineer@itservices.co.th'
@@ -21,7 +23,12 @@ const ALWAYS_CC_EVENTS = new Set(['ticket_created', 'comment_added'])
 const INCIDENT_EVENTS = new Set(['incident_created', 'incident_assigned', 'incident_resolved', 'incident_status_changed'])
 
 /** ผลการส่ง — ok=false พร้อมเหตุผล เพื่อให้หน้าจอบอกผู้ใช้ได้ ไม่ใช่เงียบ */
-export type SendResult = { ok: true } | { ok: false; reason: 'no-template' | 'no-recipient' | 'failed'; detail?: string }
+export type SendResult =
+  | { ok: true; /** 'self' = ส่งจากบัญชีคนกดแทนบัญชีกลาง (ไม่มีสิทธิ์ Send As) */ sentAs?: 'shared' | 'self' }
+  | { ok: false; reason: 'no-template' | 'no-recipient' | 'failed'; detail?: string }
+
+// เตือนเรื่อง Send As ครั้งเดียวต่อ session — ทุกเมลจะถอยเหมือนกันหมด เด้งทุกครั้งคือรำคาญ ไม่ใช่ข้อมูล
+let _warnedSendAs = false
 
 /**
  * แถบหัวเมลของ Incident — บอกเรื่องและความรุนแรงตั้งแต่บรรทัดแรก
@@ -165,10 +172,15 @@ export async function sendTemplateEmail(
       .filter(e => !toSet.has(norm(e)))
 
     const from = await getSender()
-    await sendMail(to, subject, body, { from: from || undefined, cc: ccFinal })
-    return { ok: true }
+    const sent = await sendMail(to, subject, body, { from: from || undefined, cc: ccFinal })
+    if (sent.sentAs === 'self' && from && !_warnedSendAs) {
+      _warnedSendAs = true
+      useAppStore.getState().addToast('info', sendAsFallbackText(from, useAppStore.getState().user?.email))
+    }
+    return { ok: true, sentAs: sent.sentAs }
   } catch (e) {
-    // email fail = non-critical, ไม่ throw — แต่คืนผลให้ผู้เรียกแจ้งผู้ใช้ได้
-    return { ok: false, reason: 'failed', detail: e instanceof Error ? e.message : String(e) }
+    // email fail = non-critical, ไม่ throw — แต่คืนผลให้ผู้เรียกแจ้งผู้ใช้ได้ (แปลเป็นภาษาคนก่อน)
+    const raw = e instanceof Error ? e.message : String(e)
+    return { ok: false, reason: 'failed', detail: mailDetailText(raw, _sender ?? undefined) }
   }
 }

@@ -3,6 +3,9 @@ import { CheckCircle, XCircle, Loader } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Card } from '../components/common/Card'
 import { spGet, spListInfo } from '../services/sharepoint'
+import { sendMail } from '../services/graph'
+import { useAppStore } from '../store/useAppStore'
+import { sendAsFallbackText, mailDetailText } from '../utils/mailSender'
 import { listHealth, listHealthText } from '../utils/uploadError'
 import { findTemplate, templateProblem, placeholdersOf, EVENT_VARS, KNOWN_EVENTS, type TemplateRow } from '../utils/emailTemplate'
 
@@ -70,6 +73,25 @@ export default function Diagnostic() {
   const [done, setDone] = useState(false)
   const [tpl, setTpl] = useState<TplResult[] | null>(null)
   const [tplError, setTplError] = useState('')
+  const { user } = useAppStore()
+  // บัญชีกลางที่ตั้งไว้ + ผลทดสอบส่งจริงหาตัวเอง — คำตอบของ "ทำไมลูกค้าไม่ได้เมล" ทั้งที่ template ผ่านหมด
+  const [sender, setSender] = useState<string | null>(null)
+  const [sendTest, setSendTest] = useState<{ busy: boolean; note?: string; ok?: boolean }>({ busy: false })
+  useEffect(() => {
+    spGet<{ Title: string }>('HD_Options', "Category eq 'EmailConfig'", 'Id,Title,Category', undefined, 1)
+      .then(r => setSender(r[0]?.Title?.trim() || 'support@itservices.co.th (ค่าเริ่มต้น — ยังไม่ตั้งใน Admin)'))
+      .catch(() => setSender('อ่าน HD_Options ไม่ได้'))
+  }, [])
+  function testSendAs() {
+    if (!user?.email || !sender) return
+    const from = sender.split(' ')[0]
+    setSendTest({ busy: true })
+    sendMail(user.email, '[Helpdesk] ทดสอบสิทธิ์ส่งเมลในนามบัญชีกลาง', `<p>ทดสอบจากหน้า Diagnostic โดย ${user.email}</p>`, { from })
+      .then(r => setSendTest(r.sentAs === 'shared'
+        ? { busy: false, ok: true, note: `ส่งในนาม ${from} ได้ — เช็กกล่องขาเข้าของคุณ` }
+        : { busy: false, ok: false, note: sendAsFallbackText(from, user.email) }))
+      .catch(e => setSendTest({ busy: false, ok: false, note: mailDetailText((e as Error).message, from) }))
+  }
 
   // ตรวจ template อีเมลด้วยกฎเดียวกับตอนส่งจริง — ไม่ใช่กฎที่เขียนใหม่ให้หน้านี้
   // ถ้าเขียนใหม่ หน้านี้จะบอกว่าผ่านทั้งที่ส่งจริงแล้วไม่ออก
@@ -138,6 +160,24 @@ export default function Diagnostic() {
           {pending > 0 && <span className="text-gray-400">{pending} กำลังทดสอบ...</span>}
           {done && <span className="text-gray-500 font-normal">เสร็จสิ้น</span>}
         </div>
+
+        {/* บัญชีส่งเมล — template ผ่านหมดแต่ลูกค้าไม่ได้เมล มักติดตรงนี้ (สิทธิ์ Send As เป็นของ Exchange ไม่ใช่ของแอป) */}
+        <Card>
+          <p className="text-sm font-semibold mb-1">บัญชีส่งเมล (HD_Options › EmailConfig)</p>
+          <p className="text-xs text-gray-500 mb-2">
+            ส่งในนาม: <span className="font-mono">{sender ?? '…'}</span> — ทุกคนที่กดสร้าง/ตอบงานต้องมีสิทธิ์ <b>Send As</b> บนกล่องนี้
+            ไม่งั้นระบบจะส่งจากชื่อคนกดแทน (reply-to ยังกลับกล่องกลาง)
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={testSendAs} disabled={sendTest.busy || !sender}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-400 disabled:opacity-50">
+              {sendTest.busy ? 'กำลังส่ง…' : 'ส่งเมลทดสอบหาตัวเอง'}
+            </button>
+            {sendTest.note && (
+              <span className={`text-xs ${sendTest.ok ? 'text-green-600' : 'text-amber-600'}`}>{sendTest.note}</span>
+            )}
+          </div>
+        </Card>
 
         {/* Template อีเมล — เช็คด้วยกฎเดียวกับตอนส่งจริง */}
         <Card>

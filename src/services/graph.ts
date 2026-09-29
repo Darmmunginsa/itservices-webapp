@@ -1,4 +1,5 @@
 import { graphConfig } from '../config/msal'
+import { buildGraphMessage, isSendAsDenied, type SendAs } from '../utils/mailSender'
 
 let _getToken: (() => Promise<string>) | null = null
 
@@ -66,31 +67,40 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
   })
 }
 
+export interface SentInfo { sentAs: SendAs; from?: string }
+
+/**
+ * ส่งเมลผ่าน Graph — ในนามบัญชีกลาง (opts.from) ถ้ามีสิทธิ์ Send As
+ * ไม่มีสิทธิ์ → ส่งจากตัวเองพร้อม reply-to กลับบัญชีกลาง ดีกว่าลูกค้าไม่ได้เมลเลย (ดู utils/mailSender.ts)
+ */
 export async function sendMail(
   to: string | string[],
   subject: string,
   body: string,
   opts?: { from?: string; cc?: string[] },
-): Promise<void> {
+): Promise<SentInfo> {
   const headers = await graphHeaders()
   const toArr = (Array.isArray(to) ? to : [to]).filter(Boolean)
-  const message: Record<string, unknown> = {
-    subject,
-    body: { contentType: 'HTML', content: body },
-    toRecipients: toArr.map(a => ({ emailAddress: { address: a } })),
-  }
-  // CC — ใส่ผู้ที่ต้องการให้อยู่ใน loop เดียวกัน (reply ได้ทั้ง thread)
-  const cc = (opts?.cc ?? []).filter(Boolean)
-  if (cc.length) message.ccRecipients = cc.map(a => ({ emailAddress: { address: a } }))
-  // ส่งในนามบัญชีกลาง (ต้องมีสิทธิ์ Send As บน mailbox นั้นใน M365)
-  if (opts?.from) message.from = { emailAddress: { address: opts.from } }
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+  const post = (sendAs: SendAs) => fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, saveToSentItems: true }),
+    body: JSON.stringify({
+      message: buildGraphMessage({ to: toArr, cc: opts?.cc, subject, html: body, from: opts?.from, sendAs }),
+      saveToSentItems: true,
+    }),
   })
+  const first: SendAs = opts?.from ? 'shared' : 'self'
+  let res = await post(first)
+  let sentAs = first
+  if (!res.ok && first === 'shared') {
+    const text = await res.text().catch(() => '')
+    if (!isSendAsDenied(res.status, text)) throw new Error(`sendMail ${res.status}: ${text.slice(0, 200)}`)
+    res = await post('self')
+    sentAs = 'self'
+  }
   // เดิมไม่เช็คผล → ส่งไม่ออกก็เงียบ ตอบลูกค้าแล้วคิดว่าถึงแล้ว
   if (!res.ok) throw new Error(`sendMail ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`)
+  return { sentAs, from: opts?.from }
 }
 
 export async function createCalendarEvent(event: {
