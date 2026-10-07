@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive, Paperclip, Download } from 'lucide-react'
+import { Search, Plus, AlertTriangle, Monitor, Edit2, Trash2, ShieldCheck, ShieldAlert, ShieldOff, RefreshCw, Archive, Paperclip, Download, ShoppingBasket } from 'lucide-react'
 import { OptionSelect } from '../components/common/OptionSelect'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
@@ -11,6 +11,8 @@ import { DataTable } from '../components/common/DataTable'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { AssetPartsSection } from '../components/common/AssetPartsSection'
 import { AttachmentSection } from '../components/common/AttachmentSection'
+import { AssetLotPanel, AssetLotFields } from '../components/common/AssetLotPanel'
+import { lotSummary, lotLabel, nextLotNo, EMPTY_LOT, lotPayload, LOT_LIST, type AssetLot, type LotForm } from '../utils/assetLots'
 import { spGet, spCreate, spUpdate, spDelete, spUploadAttachment, spGetFromSite } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { useCanEdit } from '../hooks/useCanEdit'
@@ -58,7 +60,7 @@ const EMPTY_FORM = {
   AppName: '', AccessMethod: '', ExpiryDate: '', LicenseType: '',
   PortalURL: '', MonitorUrl: '', VendorID: '', PortalID: '',
   AlertEnabled: '', AlertDays: '60', AlertEmail: '',
-  Note: '', QuotationRef: '',
+  Note: '', QuotationRef: '', LotID: '',
 }
 
 
@@ -86,10 +88,12 @@ function assetToForm(a: Asset): AssetForm {
     AlertEmail: a.AlertEmail || '',
     Note: a.Note || '',
     QuotationRef: a.QuotationRef || '',
+    LotID: a.LotID != null ? String(a.LotID) : '',
   }
 }
 
-function formToPayload(form: AssetForm) {
+/** lotsOn = ลิสต์ตะกร้ามีอยู่ → ส่ง LotID เสมอ (null = เอาออกจากตะกร้า) · ไม่มีลิสต์ → ไม่ส่งคอลัมน์นี้เลย กันบันทึกพัง */
+function formToPayload(form: AssetForm, lotsOn = false) {
   return {
     Title: form.Title, AssetCode: form.AssetCode || undefined,
     Category: form.Category, Status: form.Status,
@@ -114,11 +118,12 @@ function formToPayload(form: AssetForm) {
     } : {}),
     Note: form.Note || undefined,
     QuotationRef: form.QuotationRef || undefined,
+    ...(lotsOn ? { LotID: form.LotID ? Number(form.LotID) : null } : {}),
   }
 }
 
 // ─── AssetFormFields — OUTSIDE Assets component to prevent focus-loss bug ─────
-function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors, portals }: {
+function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors, portals, lots }: {
   f: AssetForm
   upd: (k: keyof AssetForm, v: string) => void
   isSoftware: boolean
@@ -126,6 +131,8 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
   sslChecking: number | 'new' | null
   vendors: { id: number; Title: string }[]
   portals: { id: number; Title: string }[]
+  /** ตะกร้าที่เลือกได้ — undefined = ลิสต์ตะกร้ายังไม่ได้สร้าง ไม่โชว์ช่อง */
+  lots?: AssetLot[]
 }) {
   const tr = useT()
   const isCert = f.Category === 'Certificate'
@@ -151,6 +158,13 @@ function AssetFormFields({ f, upd, isSoftware, onCheckSSL, sslChecking, vendors,
           <option value="">{tr('portals.none')}</option>
           {portals.map(p => <option key={p.id} value={p.id}>{p.Title}</option>)}
         </select></div>
+      {lots && (
+        <div className="col-span-2"><label className={labelClass}>🧺 ตะกร้า (Lot) <span className="text-gray-400 font-normal">ของที่ซื้อมาด้วยกัน — เอกสารแนบอยู่ที่ตะกร้า</span></label>
+          <select value={f.LotID} onChange={e => upd('LotID', e.target.value)} className={inputClass}>
+            <option value="">— ไม่อยู่ในตะกร้า —</option>
+            {lots.map(l => <option key={l.id} value={l.id}>{lotLabel(l)}</option>)}
+          </select></div>
+      )}
 
       {!isSoftware && (<>
         <div><label className={labelClass}>IP Address</label>
@@ -264,6 +278,49 @@ export default function Assets() {
   const [importing, setImporting] = useState(false)
   const SALEPRO_SITE = '/sites/SalesQuotation'
 
+  // ── ตะกร้า (Lot) — ของที่ซื้อมาด้วยกัน ใบรับสินค้าแนบที่ตะกร้าแถวเดียว ──
+  // ลิสต์ IT_AssetLots ยังไม่สร้าง → lotsOn=false ซ่อนทุกอย่างเกี่ยวกับตะกร้า หน้า Assets ใช้ได้ตามปกติ
+  const [lots, setLots] = useState<AssetLot[]>([])
+  const [lotsOn, setLotsOn] = useState(false)
+  const [showLots, setShowLots] = useState(true)
+  const [viewLot, setViewLot] = useState<AssetLot | null>(null)
+  const [showCreateLot, setShowCreateLot] = useState(false)
+  const [lotForm, setLotForm] = useState<LotForm>({ ...EMPTY_LOT })
+  const [lotFiles, setLotFiles] = useState<File[]>([])
+  const [creatingLot, setCreatingLot] = useState(false)
+  function loadLots() {
+    spGet<AssetLot>(LOT_LIST, undefined, '*,AttachmentFiles', 'Created desc', 500, 'AttachmentFiles')
+      .then(rows => {
+        setLots(rows); setLotsOn(true)
+        // ตะกร้าที่เปิดอยู่ให้เป็นข้อมูลชุดใหม่ ไม่ค้างค่าก่อนแก้
+        setViewLot(prev => (prev ? rows.find(r => r.id === prev.id) ?? null : prev))
+      })
+      .catch(() => setLotsOn(false))
+  }
+  const setLot = (k: keyof LotForm, v: string) => setLotForm(f => ({ ...f, [k]: v }))
+  async function createLot(e: React.FormEvent) {
+    e.preventDefault()
+    setCreatingLot(true)
+    try {
+      const created = await spCreate(LOT_LIST, lotPayload(lotForm))
+      for (const f of lotFiles) {
+        try { await spUploadAttachment(LOT_LIST, created.id, f) } catch (err) { addToast('error', (err as Error).message) }
+      }
+      addToast('success', 'สร้างตะกร้าแล้ว — ย้ายของเข้า หรือสร้างหลายชิ้นได้จากหน้าต่างตะกร้า')
+      setShowCreateLot(false); setLotForm({ ...EMPTY_LOT }); setLotFiles([])
+      loadLots()
+      // เปิดตะกร้าที่เพิ่งสร้างต่อเลย — ขั้นถัดไปคือเอาของใส่
+      setViewLot({ id: created.id, ...lotPayload(lotForm) } as AssetLot)
+    } catch (err) { addToast('error', `สร้างตะกร้าไม่สำเร็จ: ${(err as Error).message}`) }
+    finally { setCreatingLot(false) }
+  }
+  /** รหัส Asset สำหรับชิ้นที่ i ตอนสร้างหลายชิ้นจากตะกร้า — รันต่อจากเลขล่าสุด */
+  function makeCodeAt(i: number): string {
+    const base = generateAssetCode()
+    const m = base.match(/^(.*-)(\d+)$/)
+    return m ? `${m[1]}${String(Number(m[2]) + i).padStart(m[2].length, '0')}` : base
+  }
+
   // โหลดรายการใบเสนอราคา (ข้ามไซต์) ไว้ช่วยกรอกอ้างอิง
   useEffect(() => {
     spGetFromSite<{ Title: string; ClientName?: string }>(SALEPRO_SITE, 'Quotations', 'Title,ClientName')
@@ -337,6 +394,7 @@ export default function Assets() {
     const filter = showRetired ? undefined : "Status ne 'Retired'"
     spGet<Asset>('IT_Assets', filter, undefined, 'Title asc')
       .then(setAssets).catch(() => {}).finally(() => setLoading(false))
+    loadLots()
   }
 
   // Build map: AssetID → [project names] (for "ใช้ในโครงการ")
@@ -403,7 +461,7 @@ export default function Assets() {
     e.preventDefault()
     setCreating(true)
     try {
-      const created = await spCreate('IT_Assets', formToPayload(form))
+      const created = await spCreate('IT_Assets', formToPayload(form, lotsOn))
       // อัปโหลดไฟล์แนบที่เลือกไว้ตอนสร้าง (หลังได้ item id)
       if (createFiles.length && created?.id) {
         for (const f of createFiles) {
@@ -422,7 +480,7 @@ export default function Assets() {
     if (!editingAsset) return
     setUpdating(true)
     try {
-      await spUpdate('IT_Assets', editingAsset.id, formToPayload(editForm))
+      await spUpdate('IT_Assets', editingAsset.id, formToPayload(editForm, lotsOn))
       addToast('success', 'อัปเดต Asset เรียบร้อย'); setEditingAsset(null); load()
     } catch { addToast('error', 'เกิดข้อผิดพลาด') } finally { setUpdating(false) }
   }
@@ -488,6 +546,7 @@ export default function Assets() {
         'Application': a.AppName ?? '',
         'License Type': a.LicenseType ?? '',
         'อ้างอิงใบเสนอราคา': a.QuotationRef ?? '',
+        'ตะกร้า': a.LotID != null ? (lots.find(l => l.id === a.LotID)?.LotNo || lots.find(l => l.id === a.LotID)?.Title || String(a.LotID)) : '',
         'หมายเหตุ': a.Note ?? '',
       }))
       const ws = XLSX.utils.json_to_sheet(rows)
@@ -544,6 +603,12 @@ export default function Assets() {
           </select>
           {canAdmin && <Button size="sm" onClick={() => { setForm({ ...EMPTY_FORM, AssetCode: generateAssetCode() }); setShowCreate(true) }}><Plus size={14} /> {tr('assets.addAsset')}</Button>}
           {canAdmin && <Button size="sm" variant="secondary" onClick={openImportFromPurchase}>📥 นำเข้าจากงานจัดซื้อ</Button>}
+          {lotsOn && (
+            <button onClick={() => setShowLots(v => !v)} title="ตะกร้า = ของที่ซื้อมาด้วยกัน ใบรับสินค้าแนบที่ตะกร้า"
+              className={`inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border ${showLots ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+              <ShoppingBasket size={13} /> ตะกร้า ({lots.length})
+            </button>
+          )}
           <datalist id="quote-ref-list">{quoteList.map(q => <option key={q.Title} value={q.Title}>{q.ClientName || ''}</option>)}</datalist>
           <ViewToggle mode={view} onChange={setView} />
           <Button size="sm" variant="secondary" onClick={exportExcel} disabled={exporting}>
@@ -554,6 +619,49 @@ export default function Assets() {
             {showRetired ? tr('assets.hideRetired') : tr('assets.showRetired')}
           </button>
         </div>
+
+        {/* แถบตะกร้า — ของที่ซื้อมาด้วยกัน กดเปิดดูของในตะกร้า + เอกสาร */}
+        {lotsOn && showLots && (
+          <div className="border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <ShoppingBasket size={14} className="text-primary-600" />
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">ตะกร้า (Lot)</p>
+              <span className="text-[11px] text-gray-400 hidden sm:inline">ของที่ซื้อมาใน lot เดียวกัน · ใบรับสินค้า / ใบกำกับ แนบที่ตะกร้าแถวเดียว</span>
+              {canAdmin && (
+                <Button size="sm" variant="secondary" className="ml-auto" onClick={() => { setLotForm({ ...EMPTY_LOT, LotNo: nextLotNo(lots) }); setLotFiles([]); setShowCreateLot(true) }}>
+                  <Plus size={12} /> ตะกร้าใหม่
+                </Button>
+              )}
+            </div>
+            {lots.length === 0 ? (
+              <p className="text-xs text-gray-400 py-2">ยังไม่มีตะกร้า — สร้างตอนรับของเข้ามาเป็นชุด แล้วแนบใบส่งของไว้ที่ตะกร้า</p>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+                {lots.map(l => {
+                  const sm = lotSummary(assets, l.id)
+                  const nFiles = l.AttachmentFiles?.length ?? 0
+                  return (
+                    <button key={l.id} onClick={() => setViewLot(l)}
+                      className="flex-shrink-0 w-56 text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-md transition-all">
+                      <div className="flex items-center gap-2">
+                        {l.LotNo && <span className="text-[10px] font-mono text-gray-400">{l.LotNo}</span>}
+                        {l.PurchaseDate && <span className="text-[10px] text-gray-400 ml-auto">{formatDate(l.PurchaseDate)}</span>}
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 mt-0.5">{l.Title}</p>
+                      <div className="flex items-center gap-2 mt-2 text-[11px] text-gray-500">
+                        <span>{sm.count} ชิ้น</span>
+                        {(l.TotalCost ?? sm.assetTotal) > 0 && <span>· {(l.TotalCost ?? sm.assetTotal).toLocaleString()}</span>}
+                        <span className={`ml-auto inline-flex items-center gap-0.5 ${nFiles ? 'text-primary-600' : 'text-gray-300'}`} title={nFiles ? `เอกสาร ${nFiles} ไฟล์` : 'ยังไม่มีเอกสารแนบ'}>
+                          <Paperclip size={10} /> {nFiles}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex gap-4">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-72 flex-shrink-0 space-y-3"><SkeletonRow /><SkeletonRow /></div>)}</div>
@@ -673,6 +781,14 @@ export default function Assets() {
                 {a.AssignedEmail && <div><p className="text-gray-400">{tr('assets.userEmailShort')}</p><p className="truncate">{a.AssignedEmail}</p></div>}
                 {a.PurchaseDate && <div><p className="text-gray-400">{tr('assets.purchaseDate')}</p><p>{formatDate(a.PurchaseDate)}</p></div>}
                 {a.Price != null && <div><p className="text-gray-400">{tr('assets.priceShort')}</p><p>{a.Price.toLocaleString()}</p></div>}
+                {a.LotID != null && (() => {
+                  const l = lots.find(x => x.id === a.LotID)
+                  if (!l) return null
+                  return <div><p className="text-gray-400">🧺 ตะกร้า</p>
+                    <button onClick={() => { setViewAsset(null); setViewLot(l) }} className="text-primary-600 hover:underline text-left truncate block max-w-full">{lotLabel(l)}</button>
+                    {(l.AttachmentFiles?.length ?? 0) > 0 && <p className="text-gray-400 text-[11px]">📎 เอกสาร {l.AttachmentFiles!.length} ไฟล์ที่ตะกร้า</p>}
+                  </div>
+                })()}
                 {(a.WarrantyDate || a.ExpiryDate) && (() => {
                   const wd = a.WarrantyDate || a.ExpiryDate!
                   const d = daysUntil(wd)
@@ -815,7 +931,7 @@ export default function Assets() {
       <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreateFiles([]) }} title={tr('assets.addItAsset')} size="lg">
         <form onSubmit={createAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={form} upd={set} isSoftware={SOFTWARE_LIKE.has(form.Category as never)}
-            sslChecking={sslChecking} vendors={vendors} portals={portals}
+            sslChecking={sslChecking} vendors={vendors} portals={portals} lots={lotsOn ? lots : undefined}
             onCheckSSL={url => checkSSL(url, 'new', iso => set('ExpiryDate', iso), note => set('Note', note))} />
           <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3">
             <label className={labelClass}>{tr('ticket.attachments')}</label>
@@ -841,11 +957,49 @@ export default function Assets() {
         </form>
       </Modal>
 
+      {/* ตะกร้า: รายละเอียด */}
+      <Modal open={!!viewLot} onClose={() => setViewLot(null)} title={viewLot ? `🧺 ${lotLabel(viewLot)}` : ''} size="lg">
+        {viewLot && (
+          <AssetLotPanel lot={viewLot} assets={assets} vendors={vendors} canEdit={canAdmin} makeCode={makeCodeAt}
+            onChanged={() => { load(); loadLots() }}
+            onOpenAsset={a => { setViewLot(null); setViewAsset(a) }}
+            onDeleted={() => { setViewLot(null); load(); loadLots() }} />
+        )}
+      </Modal>
+
+      {/* ตะกร้า: สร้างใหม่ — แนบใบส่งของได้ตั้งแต่ตอนสร้าง */}
+      <Modal open={showCreateLot} onClose={() => setShowCreateLot(false)} title="ตะกร้าใหม่ (Lot)" size="lg">
+        <form onSubmit={createLot} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
+          <AssetLotFields f={lotForm} upd={setLot} vendors={vendors} />
+          <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+            <label className={labelClass}>📄 เอกสาร (ใบรับสินค้า · ใบกำกับภาษี · PO)</label>
+            <label className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline cursor-pointer w-fit">
+              <Paperclip size={13} /> {tr('attach.upload')}
+              <input type="file" multiple className="hidden"
+                onChange={e => { if (e.target.files) setLotFiles(prev => [...prev, ...Array.from(e.target.files!)]); e.target.value = '' }} />
+            </label>
+            {lotFiles.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {lotFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs bg-gray-50 dark:bg-gray-800 rounded px-2 py-1">
+                    <span className="flex-1 truncate">{f.name}</span>
+                    <button type="button" onClick={() => setLotFiles(prev => prev.filter((_, x) => x !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="col-span-2">
+            <Button type="submit" disabled={creatingLot} className="w-full justify-center">{creatingLot ? tr('common.saving') : 'สร้างตะกร้า'}</Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Edit Modal */}
       <Modal open={!!editingAsset} onClose={() => setEditingAsset(null)} title={`${tr('common.edit')}: ${editingAsset?.Title ?? ''}`} size="lg">
         <form onSubmit={updateAsset} className="grid grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-1">
           <AssetFormFields f={editForm} upd={setEdit} isSoftware={SOFTWARE_LIKE.has(editForm.Category as never)}
-            sslChecking={sslChecking} vendors={vendors} portals={portals}
+            sslChecking={sslChecking} vendors={vendors} portals={portals} lots={lotsOn ? lots : undefined}
             onCheckSSL={url => checkSSL(url, editingAsset?.id ?? 'new', iso => setEdit('ExpiryDate', iso), note => setEdit('Note', note))} />
           {editingAsset && (
             <div className="col-span-2 border-t border-gray-100 dark:border-gray-800 pt-3">

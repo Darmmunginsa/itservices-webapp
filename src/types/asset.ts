@@ -39,6 +39,7 @@ export interface Asset {
   // General
   Note?: string
   QuotationRef?: string   // อ้างอิงใบเสนอราคาจาก SalePro (เลขที่ QT)
+  LotID?: number | null   // ตะกร้า (IT_AssetLots) — ของที่ซื้อมาด้วยกัน เอกสารแนบอยู่ที่ตะกร้า
   Created: string
   Modified: string
 }

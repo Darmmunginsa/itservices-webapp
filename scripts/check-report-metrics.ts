@@ -23,6 +23,7 @@ import { meetingBody } from '../src/utils/meetingBody'
 import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText } from '../src/utils/uploadError'
 import { isTicketRequester, requesterActions, isIncidentRequester, incidentRequesterActions } from '../src/utils/ticketOwner'
 import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
+import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -1995,6 +1996,35 @@ eq(sendAsFallbackText('support@its.co.th', 'me@its.co.th').includes('Send As'), 
 eq(mailDetailText('sendMail 403: {"error":{"code":"ErrorSendAsDenied"}}', 'support@its.co.th')?.includes('Send As ของ support@its.co.th'), true, 'the raw Graph JSON becomes a human sentence')
 eq(mailDetailText('sendMail 500: boom'), 'sendMail 500: boom', 'unknown errors pass through unchanged')
 eq(mailDetailText(undefined), undefined, 'no detail stays no detail')
+
+
+// -- ตะกร้า (Lot) ของ IT Asset (utils/assetLots) --
+const LA = [
+  { id: 1, LotID: 7, Price: 30000, Category: 'Computer', Status: 'Active' },
+  { id: 2, LotID: 7, Price: 30000, Category: 'Computer', Status: 'Retired' },
+  { id: 3, LotID: 7, Category: 'Network', Status: 'Active' },       // ยังไม่ใส่ราคา
+  { id: 4, LotID: null, Price: 5, Category: 'Other', Status: 'Active' },
+  { id: 5, Price: 9, Category: 'Other', Status: 'Active' },         // ไม่มีคอลัมน์เลย (ของเก่า)
+]
+eq(assetsInLot(LA, 7).map(a => a.id).join(','), '1,2,3', 'members are the assets pointing at the lot')
+eq(unlottedAssets(LA).map(a => a.id).join(','), '4,5', 'null and missing LotID both count as "not in a lot"')
+const ls = lotSummary(LA, 7)
+eq(ls.count, 3, 'summary counts members')
+eq(ls.assetTotal, 60000, 'missing prices add nothing')
+eq(ls.categories.join(','), 'Computer,Network', 'categories ordered by how many')
+eq(ls.retired, 1, 'retired members are counted separately')
+eq(lotCostGap({ TotalCost: 90000 }, ls), 30000, 'invoice total minus asset prices — a positive gap means something is unpriced or missing')
+eq(lotCostGap({}, ls), null, 'no invoice total means nothing to compare')
+eq(lotCostGap({ TotalCost: 1 }, lotSummary(LA, 99)), null, 'an empty lot has no gap to report')
+eq(nextLotNo([{ LotNo: 'LOT-2026-003' }, { LotNo: 'LOT-2026-010' }, { LotNo: 'LOT-2025-999' }], '2026-09-01'), 'LOT-2026-011', 'next number continues from the highest of that year')
+eq(nextLotNo([{ LotNo: 'LOT-2026-003' }], '2027-01-05'), 'LOT-2027-001', 'a new year restarts at 001')
+eq(nextLotNo([{ LotNo: ' LOT-2026-002 ' }, { LotNo: 'junk' }], '2026-01-01'), 'LOT-2026-003', 'spaces are tolerated and junk ignored')
+eq(lotLabel({ Title: 'โน้ตบุ๊ก', LotNo: 'LOT-2026-001' }), 'LOT-2026-001 · โน้ตบุ๊ก', 'label shows number then title')
+eq(lotLabel({ Title: 'โน้ตบุ๊ก' }), 'โน้ตบุ๊ก', 'no number means title only')
+eq(bulkNames('Dell 5540', 3).join('|'), 'Dell 5540 #1|Dell 5540 #2|Dell 5540 #3', 'bulk names are numbered')
+eq(bulkNames(' Dell ', 10)[9], 'Dell #10', 'ten items pad to two digits so sorting keeps order')
+eq(bulkNames('x', 10)[0], 'x #01', '…including the first one')
+eq(bulkNames('x', 0).length, 0, 'zero makes nothing')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
