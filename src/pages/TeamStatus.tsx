@@ -80,9 +80,9 @@ export default function TeamStatus() {
       })
   }, [])
 
-  const loadSlots = useCallback(async () => {
-    try { setSlots(await getSlotsForDay(day)) } catch { /* list อาจยังไม่ถูกสร้าง */ }
-    finally { setLoading(false) }
+  // setState ใน .then เท่านั้น (ไม่ await แล้ว set ตรง ๆ) — กฎ lint ของโปรเจกต์
+  const loadSlots = useCallback(() => {
+    getSlotsForDay(day).then(setSlots).catch(() => { /* list อาจยังไม่ถูกสร้าง */ }).finally(() => setLoading(false))
   }, [day])
 
   // polling 30 วิ = realtime พอสำหรับการใช้งานจริง
