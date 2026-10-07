@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane, Mail, Eye } from 'lucide-react'
+import { Plus, Trash2, CalendarDays, Megaphone, Pencil, ToggleLeft, ToggleRight, Plane, Mail, Eye, Users } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Badge } from '../components/common/Badge'
 import { Button } from '../components/common/Button'
@@ -23,11 +23,12 @@ const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษั�
 
 const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
 
-type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates'
+type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates' | 'team-status'
 const ADMIN_TABS: { key: AdminTab; label: string; icon: string }[] = [
   { key: 'announcements', label: 'ข้อความวิ่ง',     icon: '📢' },
   { key: 'holidays',      label: 'วันหยุด',         icon: '📅' },
   { key: 'approvers',     label: 'ผู้อนุมัติการลา',  icon: '✅' },
+  { key: 'team-status',   label: 'สถานะทีม',        icon: '👥' },
   { key: 'quotas',        label: 'โควต้าวันลา',      icon: '🧮' },
   { key: 'templates',     label: 'Template อีเมล',  icon: '✉️' },
   { key: 'video',         label: 'วิดีโอหน้าหลัก',   icon: '▶️' },
@@ -69,6 +70,7 @@ export default function Admin() {
   // Leave quota state (per-employee)
   const [agentsList, setAgentsList] = useState<AgentProfile[]>([])
   const [savingApprover, setSavingApprover] = useState<number | null>(null)
+  const [savingTeamStatus, setSavingTeamStatus] = useState<number | null>(null)
   const [quotaEmail, setQuotaEmail] = useState('')      // พนักงานที่เลือก
   const [quotas, setQuotas] = useState<LeaveQuota[]>([]) // โควต้าของพนักงานที่เลือก
   const [quotaLoading, setQuotaLoading] = useState(false)
@@ -78,8 +80,25 @@ export default function Admin() {
   const LEAVE_TYPES = ['ลาพักร้อน', 'ลาป่วย', 'ลากิจ', 'ลาคลอด', 'ลาอื่นๆ']
 
   function loadAgentsList() {
-    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role,ApproverEmail', 'Title asc', 500)
-      .then(setAgentsList).catch(() => {})
+    // ShowInTeamStatus เป็นคอลัมน์ใหม่ — ถ้ายังไม่ได้สร้าง $select จะพัง จึง fallback เป็นชุดเดิม
+    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role,ApproverEmail,ShowInTeamStatus', 'Title asc', 500)
+      .then(setAgentsList)
+      .catch(() => {
+        spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,Role,ApproverEmail', 'Title asc', 500)
+          .then(setAgentsList).catch(() => {})
+      })
+  }
+
+  // เปิด/ปิดการแสดงรายคนในหน้า "สถานะทีม" (เช่น ซ่อนผู้บริหาร)
+  async function setShowInTeamStatus(agentId: number, show: boolean) {
+    setSavingTeamStatus(agentId)
+    try {
+      await spUpdate('HD_AgentProfiles', agentId, { ShowInTeamStatus: show })
+      setAgentsList(prev => prev.map(a => a.id === agentId ? { ...a, ShowInTeamStatus: show } : a))
+      addToast('success', show ? 'แสดงในสถานะทีมแล้ว' : 'ซ่อนจากสถานะทีมแล้ว')
+    } catch {
+      addToast('error', 'บันทึกไม่สำเร็จ — ตรวจว่ามีคอลัมน์ ShowInTeamStatus (Yes/No) ใน HD_AgentProfiles')
+    } finally { setSavingTeamStatus(null) }
   }
 
   function loadQuotas(email: string) {
@@ -686,6 +705,48 @@ export default function Admin() {
                 </select>
               </div>
             ))}
+          </div>
+        </Card>
+        )}
+
+        {/* ใครแสดงในหน้า "สถานะทีม" บ้าง */}
+        {tab === 'team-status' && (
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Users size={18} className="text-primary-600" />
+            <h2 className="text-sm font-semibold">แสดงในหน้า "สถานะทีม"</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-3">
+            ปิดสวิตช์เพื่อซ่อนคนนั้นจากรายชื่อและไทม์ไลน์ (เช่น ผู้บริหาร) — คนที่ถูกซ่อนยังเปิดดูสถานะทีมได้ตามปกติ
+            · ต้องมีคอลัมน์ <code>ShowInTeamStatus</code> (Yes/No) ใน HD_AgentProfiles
+          </p>
+          <div className="space-y-1.5 max-h-96 overflow-y-auto">
+            {agentsList.map(a => {
+              const shown = a.ShowInTeamStatus !== false
+              return (
+                <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                      {a.Title} <span className="text-xs font-normal text-gray-400">({a.Role})</span>
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">{a.EmailText}</p>
+                  </div>
+                  <span className={`text-xs ${shown ? 'text-green-600' : 'text-gray-400'}`}>
+                    {shown ? 'แสดง' : 'ซ่อน'}
+                  </span>
+                  <button
+                    onClick={() => setShowInTeamStatus(a.id, !shown)}
+                    disabled={savingTeamStatus === a.id}
+                    title={shown ? 'ซ่อนจากสถานะทีม' : 'แสดงในสถานะทีม'}
+                    className="disabled:opacity-50">
+                    {shown
+                      ? <ToggleRight size={26} className="text-green-600" />
+                      : <ToggleLeft size={26} className="text-gray-400" />}
+                  </button>
+                </div>
+              )
+            })}
+            {agentsList.length === 0 && <p className="text-xs text-gray-400 py-3">ยังไม่มีข้อมูลพนักงาน</p>}
           </div>
         </Card>
         )}

@@ -20,6 +20,8 @@ export interface AgentProfile {
   IsAvailable: boolean
   ThemeJSON?: string         // การตั้งค่าธีมส่วนตัว (JSON) — sync ข้ามเครื่อง
   ApproverEmail?: string     // ผู้อนุมัติการลา (Admin กำหนด)
+  /** แสดงในหน้า "สถานะทีม" หรือไม่ — undefined/ไม่มีคอลัมน์ = แสดง (ค่าเริ่มต้น) */
+  ShowInTeamStatus?: boolean
   Position?: string          // ตำแหน่งงาน เช่น 'IT Manager' — ต้องมีคอลัมน์ Position ใน HD_AgentProfiles
 }
 

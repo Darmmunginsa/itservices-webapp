@@ -6,7 +6,7 @@ import { EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
 import { msalInstance, sharepointRequest, REDIRECT_URI } from './config/msal'
 import { useAppStore } from './store/useAppStore'
 import { setTokenGetter } from './services/sharepoint'
-import { setGraphTokenGetter, setDirectoryTokenGetter, DIRECTORY_SCOPES } from './services/graph'
+import { setGraphTokenGetter, setDirectoryTokenGetter, DIRECTORY_SCOPES, setScheduleTokenGetter, SCHEDULE_SCOPES } from './services/graph'
 import { spGet, setAuthExpiredHandler } from './services/sharepoint'
 import { resolvePages } from './services/permissions'
 import { setActivityUser, logActivity } from './services/activityLog'
@@ -38,6 +38,7 @@ import Assets from './pages/Assets'
 import Vendors from './pages/Vendors'
 import Portals from './pages/Portals'
 import Tracking from './pages/Tracking'
+import TeamStatus from './pages/TeamStatus'
 import Skills from './pages/Skills'
 import Contracts from './pages/Contracts'
 import Diagnostic from './pages/Diagnostic'
@@ -56,6 +57,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   submit: <Submit />,
   'my-work': <MyWork />,
   tracking: <Tracking />,
+  'team-status': <TeamStatus />,
   projects: <Projects />,
   dashboard: <AgentDashboard />,
   reports: <Reports />,
@@ -154,10 +156,19 @@ function AppContent() {
       }
     }
 
+    // free/busy ของทีม (หน้า "สถานะทีม") — silent เท่านั้น ยังไม่ consent ก็แค่ไม่มี overlay
+    const getScheduleToken = async (): Promise<string> => {
+      const result = await instance.acquireTokenSilent({
+        scopes: SCHEDULE_SCOPES, account, redirectUri: REDIRECT_URI,
+      })
+      return result.accessToken
+    }
+
     // 401 จาก SharePoint = token ตาย → เด้งกล่องบอก แทนที่จะปล่อยหน้าจอว่าง
     setAuthExpiredHandler(() => useAppStore.getState().markSessionExpired())
     setTokenGetter(getSpToken)
     setGraphTokenGetter(getGraphToken)
+    setScheduleTokenGetter(getScheduleToken)
     setDirectoryTokenGetter(getDirectoryToken)
 
     // SP consent is already handled inside login() — here we only need

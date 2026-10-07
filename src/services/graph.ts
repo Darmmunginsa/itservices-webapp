@@ -16,6 +16,56 @@ async function graphHeaders(): Promise<HeadersInit> {
   }
 }
 
+/**
+ * Free/busy ของหลายคนในครั้งเดียว (Graph `getSchedule`) — ใช้กับหน้า "สถานะทีม"
+ * ต้องมี delegated scope **Calendars.Read.Shared** ; subject จะได้เฉพาะปฏิทินที่เรามีสิทธิ์เห็นรายละเอียด
+ * non-fatal: คืน {} เมื่อเรียกไม่ได้ (ยังไม่ consent / ไม่มีสิทธิ์)
+ */
+export async function getSchedule(
+  emails: string[],
+  start: Date,
+  end: Date,
+): Promise<Record<string, Array<{ start: string; end: string; status: string; subject?: string }>>> {
+  const list = [...new Set(emails.filter(Boolean))]
+  if (!list.length) return {}
+  if (!_getScheduleToken) return {}
+  try {
+    // token แยกใบ — ยังไม่ consent ก็แค่ไม่มี overlay ไม่กระทบเมล/ปฏิทินของตัวเอง
+    const token = await _getScheduleToken()
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/calendar/getSchedule', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Prefer: 'outlook.timezone="Asia/Bangkok"',
+      },
+      body: JSON.stringify({
+        schedules: list,
+        startTime: { dateTime: start.toISOString(), timeZone: 'UTC' },
+        endTime: { dateTime: end.toISOString(), timeZone: 'UTC' },
+        availabilityViewInterval: 30,
+      }),
+    })
+    if (!res.ok) { console.warn('[graph] getSchedule failed', res.status); return {} }
+    const data = await res.json() as {
+      value?: Array<{
+        scheduleId: string
+        scheduleItems?: Array<{ start: { dateTime: string }; end: { dateTime: string }; status: string; subject?: string }>
+      }>
+    }
+    const out: Record<string, Array<{ start: string; end: string; status: string; subject?: string }>> = {}
+    for (const row of data.value ?? []) {
+      out[row.scheduleId.toLowerCase()] = (row.scheduleItems ?? [])
+        .filter(i => i.status !== 'free')
+        .map(i => ({ start: i.start.dateTime, end: i.end.dateTime, status: i.status, subject: i.subject }))
+    }
+    return out
+  } catch (e) {
+    console.warn('[graph] getSchedule error', e)
+    return {}
+  }
+}
+
 export interface OutlookEvent {
   id: string
   subject: string
@@ -148,6 +198,14 @@ export async function createCalendarEvent(event: {
 // แล้วปฏิทินกับเมลจะใช้ไม่ได้ไปด้วย ทั้งที่ไม่เกี่ยวกัน
 
 export const DIRECTORY_SCOPES = ['User.ReadBasic.All']
+
+/** อ่าน free/busy ของเพื่อนร่วมทีม (หน้า "สถานะทีม") — ขอแยกใบด้วยเหตุผลเดียวกับ DIRECTORY_SCOPES */
+export const SCHEDULE_SCOPES = ['Calendars.Read.Shared']
+
+let _getScheduleToken: (() => Promise<string>) | null = null
+export function setScheduleTokenGetter(fn: () => Promise<string>) {
+  _getScheduleToken = fn
+}
 
 let _getDirToken: ((interactive: boolean) => Promise<string>) | null = null
 export function setDirectoryTokenGetter(fn: (interactive: boolean) => Promise<string>) {
