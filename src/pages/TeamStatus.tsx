@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { RefreshCw, Clock, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
+import { RefreshCw, Clock, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays, ExternalLink } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
+import { isPopout, openPopout } from '../utils/popout'
 import { Header } from '../components/layout/Header'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { VirtualOffice } from '../components/team/VirtualOffice'
@@ -61,6 +63,9 @@ export default function TeamStatus() {
   const [view, setView] = useViewMode('team-status')
   // office = ออฟฟิศ 2D เดินได้ (ค่าเริ่มต้น) · board = สถานะ/ไทม์ไลน์
   const [mode, setMode] = useState<'office' | 'board'>(() => (localStorage.getItem('ts-mode') === 'board' ? 'board' : 'office'))
+  // หน้าต่างที่ดึงออกไปอีกจอ — ชื่อแท็บเป็นของตัวเอง และไม่มีปุ่ม "เปิดอีกหน้าต่าง" ซ้อน
+  const popout = isPopout(useLocation().search)
+  useEffect(() => { if (popout) document.title = 'สถานะทีม — Helpdesk' }, [popout])
   const pickMode = (m: 'office' | 'board') => { localStorage.setItem('ts-mode', m); setMode(m) }
   const [mapRows, setMapRows] = useState<string[]>(DEFAULT_MAP)
   useEffect(() => { getOfficeMapRows().then(setMapRows).catch(() => {}) }, [])
@@ -248,12 +253,19 @@ export default function TeamStatus() {
         )}
       </div>
 
-      {/* สลับ ออฟฟิศ 2D / กระดานสถานะ */}
-      <div className="flex gap-1 text-xs">
+      {/* สลับ ออฟฟิศ 2D / กระดานสถานะ · ดึงออกไปอีกจอ */}
+      <div className="flex gap-1 text-xs items-center flex-wrap">
         {([['office', '🏢 ออฟฟิศ'], ['board', '📋 สถานะ & ไทม์ไลน์']] as const).map(([k, label]) => (
           <button key={k} onClick={() => pickMode(k)}
             className={`px-3 py-1.5 rounded-lg border ${mode === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}</button>
         ))}
+        {!popout && (
+          <button onClick={() => { if (!openPopout('/team-status')) addToast('error', 'เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต pop-up ให้เว็บนี้แล้วลองอีกครั้ง') }}
+            title="เปิดออฟฟิศ + แชทในหน้าต่างแยก ไว้วางอีกจอคู่กับงานอื่น (มีแจ้งเตือนเมื่อมีแชทใหม่)"
+            className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600">
+            <ExternalLink size={12} /> เปิดอีกหน้าต่าง
+          </button>
+        )}
       </div>
 
       {mode === 'office' && (

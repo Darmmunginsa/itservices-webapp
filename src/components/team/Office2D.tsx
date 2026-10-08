@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard } from 'lucide-react'
+import { Send, Users, Keyboard, Bell, BellOff } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
@@ -8,6 +8,7 @@ import {
 import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, type PresenceRow, type ChatRow } from '../../services/office'
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
 import { teamsChatLink } from '../../utils/virtualOffice'
+import { unreadTitle } from '../../utils/popout'
 import { TILE_STYLE } from './officeTiles'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
@@ -62,6 +63,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [sending, setSending] = useState(false)
   const [focused, setFocused] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  // แชทใหม่ตอนไม่ได้มองหน้าต่าง — นับขึ้นชื่อแท็บ "(3) …" และเด้ง Notification ถ้าอนุญาต
+  const [unread, setUnread] = useState(0)
+  const [notifyPerm, setNotifyPerm] = useState<NotificationPermission | 'unsupported'>(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission))
+  const seenMaxId = useRef<number | null>(null)
+  const baseTitle = useRef(document.title)
   const dirty = useRef(false)
   const posRef = useRef<Pos | null>(null)
   const zoneRef = useRef<Zone | null>(null)
@@ -108,7 +114,24 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         if (!alive) return
         setNow(new Date())
         if (p) setOthers(p.filter(r => (r.UserEmail ?? '').toLowerCase() !== me))
-        if (c) setChat(c.slice().reverse())
+        if (c) {
+          const list = c.slice().reverse()
+          setChat(list)
+          // รอบแรกแค่จำ id ล่าสุด — ไม่นับของเก่าเป็น "ใหม่"
+          const maxId = list.reduce((m, r) => Math.max(m, r.id), 0)
+          if (seenMaxId.current == null) seenMaxId.current = maxId
+          else if (maxId > seenMaxId.current) {
+            const fresh = list.filter(r => r.id > seenMaxId.current! && (r.UserEmail ?? '').toLowerCase() !== me)
+            seenMaxId.current = maxId
+            if (fresh.length && (document.hidden || !document.hasFocus())) {
+              setUnread(u => u + fresh.length)
+              if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+                const last = fresh[fresh.length - 1]
+                try { new Notification(`${last.UserName} · ${last.Room ? 'ห้อง' : 'ทั้งออฟฟิศ'}`, { body: (last.Message || last.Title).slice(0, 120), tag: 'hd-office-chat' }).onclick = () => window.focus() } catch { /* บางเบราว์เซอร์ไม่ให้สร้างจาก tab */ }
+              }
+            }
+          }
+        }
         if (!p) fail('อ่านตำแหน่งทีมไม่ได้ — ตรวจว่ามี list HD_OfficePresence')
         else if (!c) fail('อ่านแชทไม่ได้ — ตรวจว่ามี list HD_OfficeChat')
       })
@@ -205,6 +228,24 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     finally { setSending(false) }
   }
 
+  // กลับมามอง = อ่านแล้ว
+  useEffect(() => {
+    const clear = () => setUnread(0)
+    const vis = () => { if (!document.hidden) clear() }
+    window.addEventListener('focus', clear)
+    document.addEventListener('visibilitychange', vis)
+    return () => { window.removeEventListener('focus', clear); document.removeEventListener('visibilitychange', vis) }
+  }, [])
+  useEffect(() => {
+    const base = baseTitle.current
+    document.title = unreadTitle(base, unread)
+    return () => { document.title = base }
+  }, [unread])
+  function askNotify() {
+    if (typeof Notification === 'undefined') return
+    Notification.requestPermission().then(p => setNotifyPerm(p)).catch(() => {})
+  }
+
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
   const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y }))
@@ -297,11 +338,19 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
       {/* ── แชท ── */}
       <div className="lg:w-80 flex flex-col border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden" style={{ minHeight: 320, maxHeight: '70vh' }}>
-        <div className="flex text-xs border-b border-gray-200 dark:border-gray-800">
+        <div className="flex text-xs border-b border-gray-200 dark:border-gray-800 items-stretch">
           <button onClick={() => setTab('all')} className={`flex-1 py-2 ${tab === 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>ทั้งออฟฟิศ</button>
           <button onClick={() => setTab(myZone)} className={`flex-1 py-2 ${tab !== 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>
             {ZONE_LABEL[myZone]} ({inMyZone.length + 1})
           </button>
+          {/* แจ้งเตือนแชทใหม่ตอนหน้าต่างไม่ได้โฟกัส — มีความหมายที่สุดตอนดึงไปอีกจอ */}
+          {notifyPerm !== 'unsupported' && (
+            <button onClick={askNotify} disabled={notifyPerm !== 'default'}
+              title={notifyPerm === 'granted' ? 'แจ้งเตือนเปิดอยู่ — เด้งเมื่อมีแชทใหม่ตอนไม่ได้มองหน้าต่างนี้' : notifyPerm === 'denied' ? 'ถูกบล็อกในเบราว์เซอร์ — เปิดได้ที่ไอคอนกุญแจหน้า URL' : 'เปิดแจ้งเตือนเมื่อมีแชทใหม่'}
+              className={`px-2.5 border-l border-gray-200 dark:border-gray-800 ${notifyPerm === 'granted' ? 'text-green-600' : notifyPerm === 'denied' ? 'text-gray-300' : 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'}`}>
+              {notifyPerm === 'denied' ? <BellOff size={13} /> : <Bell size={13} />}
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-gray-50/60 dark:bg-gray-900/40">
           {visibleChat.length === 0 && <p className="text-[11px] text-gray-400 text-center py-6">{tab === 'all' ? 'ยังไม่มีข้อความ — ทักทายทีมได้เลย' : `ข้อความในนี้เห็นเฉพาะคนที่อยู่${ZONE_LABEL[myZone]}`}</p>}

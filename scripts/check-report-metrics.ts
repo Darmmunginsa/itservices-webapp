@@ -26,6 +26,7 @@ import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText }
 import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
+import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2121,6 +2122,22 @@ eq(validateMap(blankMap(10, 8).map(r => r.replace('.', 'x'))).some(i => i.text.i
 const sealed = blankMap(12, 8).map((r, y) => (y >= 1 && y <= 6 ? r.slice(0, 6) + '#' + r.slice(7) : r)).map((r, y) => (y >= 1 && y <= 6 ? r.slice(0, 8) + 'M' + r.slice(9) : r))
 eq(validateMap(sealed).some(i => i.level === 'warn' && i.text.includes('เดินไปไม่ถึง')), true, 'a room walled off from the spawn point is a warning')
 eq(validateMap(blankMap(10, 8)).some(i => i.text.includes('ห้องประชุม')), true, 'a map with no meeting room warns that walking cannot set Meeting')
+
+
+// -- ดึงออกไปอีกจอ (utils/popout) --
+eq(isPopout('?popout=1'), true, 'the popout flag is recognised')
+eq(isPopout('popout=1'), true, '…with or without the leading ?')
+eq(isPopout('?tab=office'), false, 'other params are not popout')
+eq(isPopout(''), false, 'no params is the normal window')
+const PLOC = { origin: 'https://itservices.co.th', pathname: '/helpdesk/' }
+eq(popoutUrl('/team-status', PLOC), 'https://itservices.co.th/helpdesk/#/team-status?popout=1', 'flag goes after the hash so MSAL never sees it')
+eq(popoutUrl('team-status?x=1', PLOC), 'https://itservices.co.th/helpdesk/#/team-status?x=1&popout=1', 'missing slash is added and existing query is extended')
+eq(popoutFeatures(1920, 1080).includes('width=1152'), true, '60% of a 1080p screen, capped at 1180')
+eq(popoutFeatures(1000, 700).includes('width=720'), true, 'never narrower than 720 so map + chat fit side by side')
+eq(popoutFeatures(3840, 1600).includes('width=1180'), true, 'never wider than 1180 — it is meant to sit beside other work')
+eq(unreadTitle('สถานะทีม', 0), 'สถานะทีม', 'no unread = plain title')
+eq(unreadTitle('สถานะทีม', 3), '(3) สถานะทีม', 'unread count leads the title')
+eq(unreadTitle('x', 250), '(99+) x', 'large counts are capped')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

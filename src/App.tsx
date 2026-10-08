@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Calendar } from 'lucide-react'
 import { MsalProvider, useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { EventType, InteractionRequiredAuthError } from '@azure/msal-browser'
@@ -51,6 +51,7 @@ import References from './pages/References'
 import PmReport from './pages/PmReport'
 import Knowledge from './pages/Knowledge'
 import './index.css'
+import { isPopout } from './utils/popout'
 
 // map รหัสหน้า → component (คู่กับ PAGES ใน config/pages.ts)
 const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
@@ -88,6 +89,7 @@ msalInstance.addEventCallback((event) => {
 })
 
 function AppContent() {
+  const location = useLocation()
   const isAuthenticated = useIsAuthenticated()
   const { instance, accounts } = useMsal()
   const { user, setUser, isDarkMode, allowedPages, setPermissions, sessionExpired } = useAppStore()
@@ -215,6 +217,9 @@ function AppContent() {
       .catch(() => setPermissions(new Set(ALWAYS_KEYS), 'none'))
   }, [user?.email, user?.role, setPermissions])
 
+  // หน้าต่างที่ "ดึงออกไปอีกจอ" (#/...?popout=1) — ไม่มีเมนูข้าง/ticker/ปุ่มลอย เหลือแต่เนื้อหา
+  const popout = isPopout(location.search)
+
   if (!isAuthenticated) return <Login />
 
   if (!user || !allowedPages) {
@@ -228,13 +233,8 @@ function AppContent() {
     )
   }
 
-  return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950" style={{ background: 'var(--app-bg)' }}>
-      <Sidebar />
-      <div className="flex-1 md:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
-        <Ticker />
-        <main className="flex-1 pb-16 md:pb-0">
-          <Routes>
+  const routes = (
+    <Routes>
             {/* หน้าหลัก — เข้าได้เสมอ (เป็นที่ลงจอดเมื่อไม่มีสิทธิ์หน้าอื่น) */}
             <Route path="/" element={<Home />} />
             {/* หน้ารายละเอียด — ไม่ผูกกับสิทธิ์หน้า (มีการคุมสิทธิ์ในตัวเอง) */}
@@ -248,7 +248,29 @@ function AppContent() {
                 element={allowedPages.has(p.key) ? PAGE_ELEMENTS[p.key] : <Navigate to="/" replace />} />
             ))}
             <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+    </Routes>
+  )
+
+  if (popout) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950" style={{ background: 'var(--app-bg)' }}>
+        <main className="min-h-screen">{routes}</main>
+        <div className="no-print">
+          <ToastContainer />
+          <SessionGuard active={!!user} expired={sessionExpired}
+            onExpire={() => { try { sessionStorage.setItem('hdLogoutReason', 'idle') } catch { /* ignore */ }; void instance.logoutRedirect({ postLogoutRedirectUri: REDIRECT_URI }) }} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950" style={{ background: 'var(--app-bg)' }}>
+      <Sidebar />
+      <div className="flex-1 md:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
+        <Ticker />
+        <main className="flex-1 pb-16 md:pb-0">
+          {routes}
         </main>
         <BottomNav />
         <div className="no-print">
