@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw, Clock, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { VirtualOffice } from '../components/team/VirtualOffice'
+import { Office2D } from '../components/team/Office2D'
+import { getOfficeMapRows } from '../services/office'
+import { DEFAULT_MAP, ZONE_STATUS, ZONE_LABEL, type Zone } from '../utils/officeMap'
 import { isPhotoFile } from '../components/common/PersonPhoto'
 import { Button } from '../components/common/Button'
 import { spGet } from '../services/sharepoint'
@@ -56,6 +59,13 @@ export default function TeamStatus() {
   const [agents, setAgents] = useState<AgentRow[]>([])
   // card = ออฟฟิศเสมือน · table = รายการ
   const [view, setView] = useViewMode('team-status')
+  // office = ออฟฟิศ 2D เดินได้ (ค่าเริ่มต้น) · board = สถานะ/ไทม์ไลน์
+  const [mode, setMode] = useState<'office' | 'board'>(() => (localStorage.getItem('ts-mode') === 'board' ? 'board' : 'office'))
+  const pickMode = (m: 'office' | 'board') => { localStorage.setItem('ts-mode', m); setMode(m) }
+  const [mapRows, setMapRows] = useState<string[]>(DEFAULT_MAP)
+  useEffect(() => { getOfficeMapRows().then(setMapRows).catch(() => {}) }, [])
+  // slot ที่เกิดจาก "การเดินเข้าโซน" — เดินออกจบเฉพาะอันนี้ สถานะที่ตั้งมือไว้ไม่โดนแตะ
+  const autoSlot = useRef<number | null>(null)
   const [slots, setSlots] = useState<TeamStatusSlot[]>([])
   const [calendar, setCalendar] = useState<CalendarBusySlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -178,6 +188,21 @@ export default function TeamStatus() {
     } finally { setSaving(false) }
   }
 
+  const onZoneChange = useCallback((zone: Zone) => {
+    const status = ZONE_STATUS[zone]
+    const prev = autoSlot.current
+    autoSlot.current = null
+    const endPrev = prev ? endSlotNow(prev).catch(() => {}) : Promise.resolve()
+    endPrev.then(() => {
+      if (!status || !user) { loadSlots(); return }
+      const start = new Date()
+      return createSlot({
+        userEmail: user.email, userName: user.displayName || user.email,
+        statusType: status, reason: ZONE_LABEL[zone], start, end: endOfWorkday(start), note: 'auto:office',
+      }).then(r => { autoSlot.current = r.id; loadSlots() }).catch(() => {})
+    })
+  }, [user, loadSlots])
+
   async function endNow(id: number) {
     try { await endSlotNow(id); addToast('success', 'กลับมาว่างแล้ว'); loadSlots() }
     catch { addToast('error', 'อัปเดตไม่สำเร็จ') }
@@ -223,6 +248,20 @@ export default function TeamStatus() {
         )}
       </div>
 
+      {/* สลับ ออฟฟิศ 2D / กระดานสถานะ */}
+      <div className="flex gap-1 text-xs">
+        {([['office', '🏢 ออฟฟิศ'], ['board', '📋 สถานะ & ไทม์ไลน์']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => pickMode(k)}
+            className={`px-3 py-1.5 rounded-lg border ${mode === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}</button>
+        ))}
+      </div>
+
+      {mode === 'office' && (
+        <Office2D mapRows={mapRows} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
+          onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} />
+      )}
+
+      {mode === 'board' && (<>
       {/* เลือกวัน + สรุป */}
       <div className="flex items-center gap-2">
         <button onClick={() => setDayOffset(d => d - 1)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronLeft size={16} /></button>
@@ -341,6 +380,8 @@ export default function TeamStatus() {
           </span>
         </div>
       </div>
+
+      </>)}
 
       {/* composer */}
       {open && (

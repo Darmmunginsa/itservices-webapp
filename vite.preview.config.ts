@@ -1,0 +1,16 @@
+// preview ชั่วคราวของ Office2D โดยไม่ต้อง login SharePoint — ไม่ใช้ใน build จริง
+import { defineConfig, mergeConfig } from 'vite'
+import { fileURLToPath } from 'node:url'
+import base from './vite.config'
+
+const abs = (p: string) => fileURLToPath(new URL(p, import.meta.url))
+
+export default mergeConfig(base, defineConfig({
+  resolve: {
+    alias: [
+      { find: /^(.*)\/services\/office$/, replacement: abs('./dev-preview/mockOffice.ts') },
+      { find: /^(.*)\/services\/sharepoint$/, replacement: abs('./dev-preview/mockSharepoint.ts') },
+    ],
+  },
+  server: { port: 5179 },
+}))

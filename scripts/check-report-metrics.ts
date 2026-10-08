@@ -25,6 +25,7 @@ import { isTicketRequester, requesterActions, isIncidentRequester, incidentReque
 import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
 import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
+import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2048,6 +2049,54 @@ eq(teamsCallLink('a@x.co'), 'https://teams.microsoft.com/l/call/0/0?users=a%40x.
 eq(initials('สมชาย ใจดี'), 'ส', 'Thai names use the first character only')
 eq(initials('John Smith'), 'JS', 'Latin names use two initials')
 eq(initials('  '), '?', 'no name → placeholder')
+
+
+// -- ออฟฟิศ 2D (utils/officeMap) — เดินทะลุกำแพง/โซนผิด = สถานะเพี้ยนทั้งทีม --
+const OM = parseMap(['#####', '#..M#', '#d.M', '#####'])
+eq(OM.width, 5, 'width is the longest row')
+eq(OM.rows[2], '#d.M#', 'short rows are padded with wall so nobody walks off the edge')
+eq(isWalkable(OM, 1, 1), true, 'floor is walkable')
+eq(isWalkable(OM, 1, 2), false, 'a desk is not')
+eq(isWalkable(OM, 0, 1), false, 'a wall is not')
+eq(isWalkable(OM, 9, 9), false, 'outside the map is not')
+eq(zoneAt(OM, 3, 1), 'meeting', 'M tiles are the meeting zone')
+eq(zoneAt(OM, 1, 1), 'desk', 'floor is the desk zone')
+const p0 = { x: 1, y: 1 }
+eq(step(OM, p0, 'right').x, 2, 'a step moves one tile')
+eq(step(OM, p0, 'left'), p0, 'walking into a wall returns the same object (no move)')
+eq(step(OM, p0, 'down'), p0, 'walking into a desk does not move either')
+eq(step(OM, { x: 2, y: 1 }, 'right').x, 3, 'from floor into the meeting room is fine')
+eq(ZONE_STATUS.meeting, 'Meeting', 'meeting zone sets Meeting')
+eq(ZONE_STATUS.desk, null, 'desk zone clears the auto status')
+const sp = spawnPoint(OM, 0)
+eq(`${sp.x},${sp.y}`, '1,1', 'first spawn is the first floor tile')
+eq(spawnPoint(OM, 1).x, 2, 'next person spawns on the next tile')
+eq(spawnPoint(OM, 7).x, spawnPoint(OM, 7 % 3).x, 'spawn index wraps around')
+eq(clampToMap(OM, { x: 0, y: 0 }).x, 1, 'a stored position that is now a wall snaps to a spawn point')
+eq(clampToMap(OM, { x: 3, y: 1 }).x, 3, 'a valid position is kept')
+const OT0 = new Date("2026-10-08T09:00:00Z")
+eq(isOnline('2026-10-08T08:59:00Z', OT0), true, 'seen a minute ago = online')
+eq(isOnline('2026-10-08T08:50:00Z', OT0), false, 'ten minutes ago = offline')
+eq(isOnline(undefined, OT0), false, 'never seen = offline')
+eq(chatVisible({ Room: '' }, 'all'), true, 'office-wide messages show in the all tab')
+eq(chatVisible({ Room: 'meeting' }, 'all'), false, 'room messages do not leak into the all tab')
+eq(chatVisible({ Room: 'meeting' }, 'meeting'), true, 'room messages show in that room')
+eq(chatVisible({}, 'meeting'), false, 'office-wide messages are not duplicated into room tabs')
+const DM = parseMap(DEFAULT_MAP)
+const near = sameZone(DM, { x: 13, y: 2, email: 'me@x' }, [{ x: 14, y: 2, email: 'a@x' }, { x: 2, y: 2, email: 'b@x' }, { x: 13, y: 2, email: 'ME@x' }])
+eq(near.map(p => p.email).join(','), 'a@x', 'same zone excludes other zones and myself (case-insensitive)')
+eq(DEFAULT_MAP.every(r => r.length === DEFAULT_MAP[0].length), true, 'the default map is rectangular')
+
+
+// -- เดินไปตามคลิก: BFS อ้อมกำแพง --
+const PM = parseMap(['#######', '#..#..#', '#..#..#', '#.....#', '#######'])
+const path = findPath(PM, { x: 1, y: 1 }, { x: 5, y: 1 })
+eq(path.length, 8, 'goes around the wall through the gap on row 3 (shortest = 8 steps)')
+eq(`${path[path.length - 1].x},${path[path.length - 1].y}`, '5,1', 'ends on the target')
+eq(path.every(p => isWalkable(PM, p.x, p.y)), true, 'never steps on a wall')
+eq(findPath(PM, { x: 1, y: 1 }, { x: 3, y: 1 }).length, 0, 'a wall target has no path')
+eq(findPath(PM, { x: 1, y: 1 }, { x: 1, y: 1 }).length, 0, 'already there = no steps')
+eq(findPath(parseMap(DEFAULT_MAP), { x: 10, y: 4 }, { x: 16, y: 4 }).length > 0, true, 'desk → meeting room is reachable around the plant/wall')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
