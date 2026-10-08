@@ -8,6 +8,7 @@ import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { PagePermissionsPanel } from '../components/admin/PagePermissionsPanel'
+import { OfficeMapEditor } from '../components/admin/OfficeMapEditor'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
 import { appLink, escapeHtml } from '../utils/emailTemplate'
@@ -23,12 +24,13 @@ const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษั�
 
 const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
 
-type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates' | 'team-status'
+type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates' | 'team-status' | 'office-map'
 const ADMIN_TABS: { key: AdminTab; label: string; icon: string }[] = [
   { key: 'announcements', label: 'ข้อความวิ่ง',     icon: '📢' },
   { key: 'holidays',      label: 'วันหยุด',         icon: '📅' },
   { key: 'approvers',     label: 'ผู้อนุมัติการลา',  icon: '✅' },
   { key: 'team-status',   label: 'สถานะทีม',        icon: '👥' },
+  { key: 'office-map',    label: 'ผังออฟฟิศ',       icon: '🗺️' },
   { key: 'quotas',        label: 'โควต้าวันลา',      icon: '🧮' },
   { key: 'templates',     label: 'Template อีเมล',  icon: '✉️' },
   { key: 'video',         label: 'วิดีโอหน้าหลัก',   icon: '▶️' },
@@ -750,6 +752,8 @@ export default function Admin() {
           </div>
         </Card>
         )}
+
+        {tab === 'office-map' && <OfficeMapEditor />}
 
         {/* Leave Quota Management (per-employee) */}
         {tab === 'quotas' && (

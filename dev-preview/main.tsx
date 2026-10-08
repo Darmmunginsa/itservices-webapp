@@ -2,6 +2,7 @@ import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../src/index.css'
 import { Office2D } from '../src/components/team/Office2D'
+import { OfficeMapEditor } from '../src/components/admin/OfficeMapEditor'
 import { ZONE_LABEL, DEFAULT_MAP, type Zone } from '../src/utils/officeMap'
 
 function Preview() {
@@ -19,6 +20,7 @@ function Preview() {
         onZoneChange={(z: Zone) => setLog(l => [...l, `zone → ${ZONE_LABEL[z]}`])}
         onError={m => setLog(l => [...l, `ERROR ${m}`])} />
       <pre id="log" className="text-xs text-gray-500">{log.join('\n')}</pre>
+      <OfficeMapEditor />
     </div>
   )
 }

@@ -49,4 +49,7 @@ export async function sendChat(input: { email: string; name: string; text: strin
   chat = [...chat, { id, Title: input.text, UserEmail: input.email, UserName: input.name, Room: input.room, Created: now() }]
   return { id }
 }
-export async function getOfficeMapRows(): Promise<string[]> { return DEFAULT_MAP }
+let mapRows: string[] = DEFAULT_MAP
+export async function getOfficeMapRows(): Promise<string[]> { return mapRows }
+export async function saveOfficeMap(lines: string[]): Promise<void> { mapRows = lines; console.log('[mock] saveOfficeMap', lines.length) }
+export async function resetOfficeMap(): Promise<void> { mapRows = DEFAULT_MAP }

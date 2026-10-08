@@ -3,7 +3,7 @@
 // เฟส A ใช้ poll — ตั้งใจให้ทุกฟังก์ชันที่นี่เป็น "ท่อ" ที่เปลี่ยนเป็น Web PubSub ได้ทีหลัง
 // โดยหน้าจอไม่ต้องรู้ว่าข้อมูลมาจากไหน
 
-import { spGet, spCreate, spUpdate } from './sharepoint'
+import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 import { DEFAULT_MAP } from '../utils/officeMap'
 
 export const PRESENCE_LIST = 'HD_OfficePresence'
@@ -71,12 +71,29 @@ export async function sendChat(input: { email: string; name: string; text: strin
   })
 }
 
-/** แผนที่ที่ Admin แก้ทับได้ใน HD_Options (Category='OfficeMap', Title=บรรทัดคั่นด้วย \n) — ไม่มี = ใช้ค่าในโค้ด */
+// ── ผังออฟฟิศที่ Admin แก้เอง ──
+// เก็บใน HD_Options: Category='OfficeMap', 1 แถว = 1 บรรทัดของแผนที่ (Title), SortOrder = ลำดับแถว
+// ใช้คอลัมน์ที่ลิสต์มีอยู่แล้ว (Title ≤255 พอสำหรับกว้างสูงสุด 60 ช่อง) — ไม่ต้องสร้างคอลัมน์ใหม่
+interface MapRow { id: number; Title: string; SortOrder?: number }
+const MAP_CAT = 'OfficeMap'
+
 export async function getOfficeMapRows(): Promise<string[]> {
   try {
-    const rows = await spGet<{ Title: string; Value?: string }>('HD_Options', "Category eq 'OfficeMap'", 'Id,Title,Value,Category', undefined, 1)
-    const raw = (rows[0]?.Value || rows[0]?.Title || '').replace(/\r/g, '')
-    const lines = raw.split('\n').map(l => l.trimEnd()).filter(Boolean)
+    const rows = await spGet<MapRow>('HD_Options', `Category eq '${MAP_CAT}'`, 'Id,Title,SortOrder', 'SortOrder asc', 200)
+    const lines = rows.map(r => (r.Title ?? '').replace(/\r/g, '')).filter(Boolean)
     return lines.length >= 3 ? lines : DEFAULT_MAP
   } catch { return DEFAULT_MAP }
+}
+
+/** บันทึกทั้งผัง — เขียนชุดใหม่ก่อน แล้วค่อยลบชุดเก่า (ล้มกลางทางยังมีผังใช้) */
+export async function saveOfficeMap(lines: string[]): Promise<void> {
+  const old = await spGet<MapRow>('HD_Options', `Category eq '${MAP_CAT}'`, 'Id', undefined, 200)
+  for (let i = 0; i < lines.length; i++) await spCreate('HD_Options', { Title: lines[i], Category: MAP_CAT, SortOrder: i })
+  for (const r of old) await spDelete('HD_Options', r.id).catch(() => {})
+}
+
+/** กลับไปใช้ผังในโค้ด */
+export async function resetOfficeMap(): Promise<void> {
+  const old = await spGet<MapRow>('HD_Options', `Category eq '${MAP_CAT}'`, 'Id', undefined, 200)
+  for (const r of old) await spDelete('HD_Options', r.id)
 }

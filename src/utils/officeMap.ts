@@ -24,7 +24,7 @@ export const DEFAULT_MAP = [
   '#..........####...####.....#',
   '#.dd.dd.dd.................#',
   '#..........P..........P....#',
-  '#######..#######....########',
+  '#######..#######....###..###',
   '#FFFFF..FFF#CCCCCCCCCC#SSSE#',
   '#FFdFF..FdF#CKCCCCCCCC#SSSS#',
   '#FFFFF..FFF#CCCTTCCCCC#SSSS#',
@@ -150,4 +150,98 @@ export function findPath(m: OfficeMap, from: Pos, to: Pos): Pos[] {
     }
   }
   return []
+}
+
+// ── ตัวแก้ผังออฟฟิศ (Admin) ──
+export interface TileDef { ch: string; label: string; walkable: boolean; hint: string }
+export const TILE_PALETTE: TileDef[] = [
+  { ch: '.', label: 'พื้นโต๊ะทำงาน', walkable: true,  hint: 'โซนว่าง — จุดเกิดของคนใหม่' },
+  { ch: '#', label: 'กำแพง',        walkable: false, hint: 'เดินไม่ได้ กั้นห้อง' },
+  { ch: 'M', label: 'ห้องประชุม',    walkable: true,  hint: 'เข้าแล้วสถานะ = ประชุม' },
+  { ch: 'F', label: 'ห้องโฟกัส',     walkable: true,  hint: 'เข้าแล้วสถานะ = ไม่ว่าง' },
+  { ch: 'C', label: 'มุมกาแฟ',       walkable: true,  hint: 'เข้าแล้วสถานะ = พัก' },
+  { ch: 'S', label: 'โซนไซต์',       walkable: true,  hint: 'เข้าแล้วสถานะ = ออกไซต์' },
+  { ch: 'E', label: 'ประตูออก',      walkable: true,  hint: 'เหมือนโซนไซต์ แต่มีรูปประตู' },
+  { ch: 'd', label: 'โต๊ะ + คอม',     walkable: false, hint: 'เฟอร์นิเจอร์ (เดินไม่ได้)' },
+  { ch: 'T', label: 'โต๊ะประชุม',    walkable: false, hint: 'เฟอร์นิเจอร์ (เดินไม่ได้)' },
+  { ch: 'P', label: 'ต้นไม้',        walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
+  { ch: 'K', label: 'เครื่องกาแฟ',   walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
+  { ch: 'W', label: 'ไวท์บอร์ด',     walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
+]
+const KNOWN_TILES = new Set(TILE_PALETTE.map(t => t.ch))
+
+export const MAP_MIN = 8
+export const MAP_MAX = 60
+
+/** วางช่อง — คืน rows ใหม่ (ไม่แก้ของเดิม) · นอกขอบ = ไม่ทำอะไร */
+export function setTile(rows: string[], x: number, y: number, ch: string): string[] {
+  if (y < 0 || y >= rows.length || x < 0 || x >= rows[y].length) return rows
+  if (rows[y][x] === ch) return rows
+  return rows.map((r, i) => (i === y ? r.slice(0, x) + ch + r.slice(x + 1) : r))
+}
+
+/** ย่อ/ขยาย — ช่องใหม่เป็นพื้น '.' และขอบนอกสุดเป็นกำแพงเสมอ (กันเดินตกขอบ) */
+export function resizeMap(rows: string[], width: number, height: number): string[] {
+  const w = Math.max(MAP_MIN, Math.min(MAP_MAX, Math.floor(width)))
+  const h = Math.max(MAP_MIN, Math.min(MAP_MAX, Math.floor(height)))
+  const out: string[] = []
+  for (let y = 0; y < h; y++) {
+    const src = rows[y] ?? ''
+    let line = ''
+    for (let x = 0; x < w; x++) line += src[x] ?? '.'
+    out.push(line)
+  }
+  return out.map((r, y) => (y === 0 || y === h - 1) ? '#'.repeat(w) : '#' + r.slice(1, w - 1) + '#')
+}
+
+/** ผังเปล่า: กำแพงรอบ พื้นข้างใน */
+export function blankMap(width: number, height: number): string[] {
+  return resizeMap([], width, height)
+}
+
+export interface MapIssue { level: 'error' | 'warn'; text: string }
+
+/** ตรวจก่อนบันทึก — error = บันทึกไม่ได้ · warn = บันทึกได้แต่ควรรู้ */
+export function validateMap(rows: string[]): MapIssue[] {
+  const out: MapIssue[] = []
+  if (rows.length < MAP_MIN) out.push({ level: 'error', text: `สูงอย่างน้อย ${MAP_MIN} แถว` })
+  const w = rows[0]?.length ?? 0
+  if (w < MAP_MIN) out.push({ level: 'error', text: `กว้างอย่างน้อย ${MAP_MIN} ช่อง` })
+  if (rows.some(r => r.length !== w)) out.push({ level: 'error', text: 'ทุกแถวต้องยาวเท่ากัน' })
+  const unknown = new Set<string>()
+  for (const r of rows) for (const ch of r) if (!KNOWN_TILES.has(ch)) unknown.add(ch)
+  if (unknown.size) out.push({ level: 'error', text: `มีตัวอักษรที่ไม่รู้จัก: ${[...unknown].join(' ')}` })
+  if (out.some(i => i.level === 'error')) return out
+
+  const m = parseMap(rows)
+  const border = [...Array(m.width).keys()].every(x => tileAt(m, x, 0) === '#' && tileAt(m, x, m.height - 1) === '#')
+    && [...Array(m.height).keys()].every(y => tileAt(m, 0, y) === '#' && tileAt(m, m.width - 1, y) === '#')
+  if (!border) out.push({ level: 'error', text: 'ขอบนอกสุดต้องเป็นกำแพงทั้งหมด' })
+  let spawns = 0, walkable = 0
+  for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
+    if (tileAt(m, x, y) === '.') spawns++
+    if (isWalkable(m, x, y)) walkable++
+  }
+  if (!spawns) out.push({ level: 'error', text: 'ต้องมีพื้นโต๊ะทำงาน (.) อย่างน้อย 1 ช่อง — เป็นจุดเกิด' })
+  if (out.some(i => i.level === 'error')) return out
+
+  // ช่องเดินได้ที่ไปไม่ถึงจากจุดเกิด = ห้องที่ถูกกำแพงล้อม คนจะเข้าไม่ได้ (หรือติดอยู่ข้างใน)
+  const start = spawnPoint(m, 0)
+  const seen = new Set<string>([`${start.x},${start.y}`])
+  const q = [start]
+  while (q.length) {
+    const c = q.shift()!
+    for (const d of ['up', 'down', 'left', 'right'] as Dir[]) {
+      const n = step(m, c, d)
+      const k = `${n.x},${n.y}`
+      if (n !== c && !seen.has(k)) { seen.add(k); q.push(n) }
+    }
+  }
+  const unreachable = walkable - seen.size
+  if (unreachable > 0) out.push({ level: 'warn', text: `มีพื้นที่เดินได้ ${unreachable} ช่องที่เดินไปไม่ถึง (ถูกกำแพง/เฟอร์นิเจอร์ล้อม)` })
+  for (const z of ['M', 'F', 'C'] as const) {
+    if (!rows.some(r => r.includes(z))) out.push({ level: 'warn', text: `ไม่มี${TILE_PALETTE.find(t => t.ch === z)!.label} — สถานะนั้นจะตั้งด้วยการเดินไม่ได้` })
+  }
+  if (!rows.some(r => r.includes('S') || r.includes('E'))) out.push({ level: 'warn', text: 'ไม่มีโซนไซต์/ประตู — "ออกไซต์" จะตั้งด้วยการเดินไม่ได้' })
+  return out
 }

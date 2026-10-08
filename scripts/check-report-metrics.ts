@@ -25,7 +25,7 @@ import { isTicketRequester, requesterActions, isIncidentRequester, incidentReque
 import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
 import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
-import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
+import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2097,6 +2097,30 @@ eq(path.every(p => isWalkable(PM, p.x, p.y)), true, 'never steps on a wall')
 eq(findPath(PM, { x: 1, y: 1 }, { x: 3, y: 1 }).length, 0, 'a wall target has no path')
 eq(findPath(PM, { x: 1, y: 1 }, { x: 1, y: 1 }).length, 0, 'already there = no steps')
 eq(findPath(parseMap(DEFAULT_MAP), { x: 10, y: 4 }, { x: 16, y: 4 }).length > 0, true, 'desk → meeting room is reachable around the plant/wall')
+
+
+// -- ตัวแก้ผังออฟฟิศ (Admin) --
+const ER = ['#####', '#...#', '#####']
+eq(setTile(ER, 2, 1, 'M')[1], '#.M.#', 'setTile replaces one character')
+eq(setTile(ER, 2, 1, '.'), ER, 'painting the same tile returns the same array (no re-render churn)')
+eq(setTile(ER, 9, 9, 'M'), ER, 'outside the map is ignored')
+const RZ = resizeMap(['####', '#..#', '####'], 8, 8)
+eq(RZ.length, 8, 'resize sets the height')
+eq(RZ[0], '########', 'top border is wall')
+eq(RZ[7], '########', 'bottom border is wall')
+eq(RZ[1], '#..#...#', 'old cells kept (including the old inner wall), new cells are floor, side borders wall')
+eq(resizeMap([], 2, 2).length, 8, 'size is clamped to the minimum')
+eq(resizeMap([], 999, 8)[0].length, 60, '…and the maximum')
+eq(blankMap(10, 8)[3], '#........#', 'a blank map is floor inside walls')
+eq(validateMap(DEFAULT_MAP).filter(i => i.level === 'error').length, 0, 'the default map has no errors')
+eq(validateMap(DEFAULT_MAP).length, 0, 'the default map has no warnings either — every room is reachable (the site room once was not)')
+eq(validateMap(['###', '#.#', '###']).some(i => i.text.includes('อย่างน้อย')), true, 'too small is an error')
+eq(validateMap(blankMap(10, 8).map((r, y) => (y === 0 ? '#.' + r.slice(2) : r))).some(i => i.text.includes('ขอบ')), true, 'a hole in the border is an error')
+eq(validateMap(blankMap(10, 8).map(r => r.replace(/\./g, 'M'))).some(i => i.text.includes('จุดเกิด')), true, 'no floor tile = no spawn = error')
+eq(validateMap(blankMap(10, 8).map(r => r.replace('.', 'x'))).some(i => i.text.includes('ไม่รู้จัก')), true, 'unknown characters are an error')
+const sealed = blankMap(12, 8).map((r, y) => (y >= 1 && y <= 6 ? r.slice(0, 6) + '#' + r.slice(7) : r)).map((r, y) => (y >= 1 && y <= 6 ? r.slice(0, 8) + 'M' + r.slice(9) : r))
+eq(validateMap(sealed).some(i => i.level === 'warn' && i.text.includes('เดินไปไม่ถึง')), true, 'a room walled off from the spawn point is a warning')
+eq(validateMap(blankMap(10, 8)).some(i => i.text.includes('ห้องประชุม')), true, 'a map with no meeting room warns that walking cannot set Meeting')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
