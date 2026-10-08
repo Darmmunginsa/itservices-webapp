@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { RefreshCw, Clock, CheckCircle2, ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import { Header } from '../components/layout/Header'
+import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
+import { VirtualOffice } from '../components/team/VirtualOffice'
+import { isPhotoFile } from '../components/common/PersonPhoto'
 import { Button } from '../components/common/Button'
 import { spGet } from '../services/sharepoint'
 import { getSchedule } from '../services/graph'
@@ -38,15 +41,21 @@ function xOf(iso: string, day: Date): number {
   return Math.max(0, Math.min(TRACK_W, (mins / 60) * HOUR_W))
 }
 
+// รูปจาก attachment ของ HD_AgentProfiles (ตัวเดียวกับผังองค์กร) — ไม่มีก็เป็นอวาตาร์ตัวอักษร
+type AgentRow = AgentProfile & { AttachmentFiles?: { FileName: string }[] }
+
 interface Member {
   email: string; name: string; supportGroup?: string
+  profileId: number; photoFile?: string
   slot: TeamStatusSlot | null; calBusy: CalendarBusySlot | null
   slots: TeamStatusSlot[]; calendar: CalendarBusySlot[]
 }
 
 export default function TeamStatus() {
   const { user, addToast } = useAppStore()
-  const [agents, setAgents] = useState<AgentProfile[]>([])
+  const [agents, setAgents] = useState<AgentRow[]>([])
+  // card = ออฟฟิศเสมือน · table = รายการ
+  const [view, setView] = useViewMode('team-status')
   const [slots, setSlots] = useState<TeamStatusSlot[]>([])
   const [calendar, setCalendar] = useState<CalendarBusySlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,11 +80,12 @@ export default function TeamStatus() {
   useEffect(() => {
     // ShowInTeamStatus = false → Admin ซ่อนคนนั้นไว้ (เช่น ผู้บริหาร)
     // ไม่มีคอลัมน์/ยังไม่ตั้งค่า = แสดงตามปกติ จึงไม่กระทบของเดิม
-    spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role,ShowInTeamStatus', 'Title asc')
+    // '*' ครอบคลุม ShowInTeamStatus ถ้ามี (ไม่มีก็ไม่พัง) + รูปจาก AttachmentFiles ในคำขอเดียว
+    spGet<AgentRow>('HD_AgentProfiles', undefined, '*,AttachmentFiles/FileName', 'Title asc', 500, 'AttachmentFiles')
       .then(rows => setAgents(rows.filter(a => a.ShowInTeamStatus !== false)))
       .catch(() => {
-        // คอลัมน์ยังไม่ถูกสร้าง → $select พัง ให้ fallback เป็นชุดเดิม
-        spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role', 'Title asc')
+        // expand ไม่ได้ (สิทธิ์/ลิสต์แปลก) → ชุดเดิมไม่มีรูป
+        spGet<AgentRow>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role', 'Title asc')
           .then(setAgents).catch(() => {})
       })
   }, [])
@@ -132,6 +142,7 @@ export default function TeamStatus() {
       const cal = calBy.get(k) ?? []
       return {
         email: a.EmailText, name: a.Title, supportGroup: a.SupportGroup,
+        profileId: a.id, photoFile: a.AttachmentFiles?.find(f => isPhotoFile(f.FileName))?.FileName,
         slot: activeSlotAt(mine, now),
         calBusy: cal.find(c => new Date(c.StartTime).getTime() <= t && new Date(c.EndTime).getTime() > t) ?? null,
         slots: mine, calendar: cal,
@@ -219,11 +230,22 @@ export default function TeamStatus() {
         <button onClick={() => setDayOffset(d => d + 1)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><ChevronRight size={16} /></button>
         {dayOffset !== 0 && <button onClick={() => setDayOffset(0)} className="text-xs text-primary-600">กลับวันนี้</button>}
         <span className="ml-auto text-sm text-gray-500">ว่าง <b className="text-green-600">{freeCount}</b>/{members.length} คน</span>
+        {dayOffset === 0 && <ViewToggle mode={view} onChange={setView} />}
         <button onClick={loadSlots} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800" title="รีเฟรช"><RefreshCw size={15} /></button>
       </div>
 
-      {/* ตอนนี้ใครว่าง */}
-      {dayOffset === 0 && (
+      {/* ออฟฟิศเสมือน — อวาตาร์ย้ายห้องตามสถานะ กดคนแล้วทัก/โทรผ่าน Teams */}
+      {dayOffset === 0 && view === 'card' && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase mb-3">ออฟฟิศเสมือน — กดที่คนเพื่อทัก</p>
+          <VirtualOffice people={members} meEmail={user?.email ?? ''} now={now} remaining={remaining} fmtTime={fmtTime}
+            onEndMine={endNow} onSetMine={() => setOpen(true)} />
+          {!loading && members.length === 0 && <p className="text-sm text-gray-400 py-4">ยังไม่มีข้อมูลทีม</p>}
+        </div>
+      )}
+
+      {/* ตอนนี้ใครว่าง — แบบรายการ */}
+      {dayOffset === 0 && view === 'table' && (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {members.map(m => {
             const meta = m.slot ? STATUS_META[m.slot.StatusType] : null

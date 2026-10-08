@@ -24,6 +24,7 @@ import { uploadErrorText, canEditItems, canAddItems, listHealth, listHealthText 
 import { isTicketRequester, requesterActions, isIncidentRequester, incidentRequesterActions } from '../src/utils/ticketOwner'
 import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
 import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
+import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2025,6 +2026,28 @@ eq(bulkNames('Dell 5540', 3).join('|'), 'Dell 5540 #1|Dell 5540 #2|Dell 5540 #3'
 eq(bulkNames(' Dell ', 10)[9], 'Dell #10', 'ten items pad to two digits so sorting keeps order')
 eq(bulkNames('x', 10)[0], 'x #01', '…including the first one')
 eq(bulkNames('x', 0).length, 0, 'zero makes nothing')
+
+
+// -- ออฟฟิศเสมือน (utils/virtualOffice) — แมปสถานะ→ห้อง ถ้าผิด คน "หาย" จากแผนผัง --
+eq(roomOf({ statusType: null, calendarBusy: false }), 'desk', 'nothing set and no meeting = at the desk')
+eq(roomOf({ statusType: null, calendarBusy: true }), 'meeting', 'an Outlook meeting moves you to the meeting room')
+eq(roomOf({ statusType: 'Available', calendarBusy: true }), 'meeting', 'explicit Available still yields to a live Outlook meeting')
+eq(roomOf({ statusType: 'OnSite', calendarBusy: true }), 'site', 'a self-set status beats the calendar')
+eq(roomOf({ statusType: 'Busy', calendarBusy: false }), 'focus', 'busy = focus room')
+eq(roomOf({ statusType: 'Break', calendarBusy: false }), 'lounge', 'break = lounge')
+eq(roomOf({ statusType: 'Off', calendarBusy: false }), 'away', 'off = away')
+const grouped = groupByRoom(
+  [{ n: 'a', t: 'Busy' as const }, { n: 'b', t: null }, { n: 'c', t: 'Busy' as const }],
+  p => ({ statusType: p.t, calendarBusy: false }))
+eq(grouped.focus.map(p => p.n).join(','), 'a,c', 'people land in their room, order kept')
+eq(grouped.desk.length, 1, '…and the free one at the desk')
+eq(Object.keys(grouped).length, ROOMS.length, 'every room exists even when empty, so the map never jumps')
+eq(teamsChatLink('a b@x.co'), 'https://teams.microsoft.com/l/chat/0/0?users=a%20b%40x.co', 'chat deep link encodes the address')
+eq(teamsChatLink('a@x.co', 'ว่างไหม').includes('&message=%E0%B8%A7'), true, 'optional prefilled message')
+eq(teamsCallLink('a@x.co'), 'https://teams.microsoft.com/l/call/0/0?users=a%40x.co', 'call deep link')
+eq(initials('สมชาย ใจดี'), 'ส', 'Thai names use the first character only')
+eq(initials('John Smith'), 'JS', 'Latin names use two initials')
+eq(initials('  '), '?', 'no name → placeholder')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
