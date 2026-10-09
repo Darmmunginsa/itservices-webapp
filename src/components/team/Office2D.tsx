@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
+import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
@@ -12,6 +12,8 @@ import { useOfficeVoice } from '../../hooks/useOfficeVoice'
 import { useOfficeDM, dmNotice } from '../../hooks/useOfficeDM'
 import { OfficeDMPanel } from './OfficeDMPanel'
 import { ScreenVideo } from './ScreenVideo'
+import { NotifyMenu } from './NotifyMenu'
+import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
@@ -87,7 +89,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [now, setNow] = useState(() => new Date())
   // แชทใหม่ตอนไม่ได้มองหน้าต่าง — นับขึ้นชื่อแท็บ "(3) …" และเด้ง Notification ถ้าอนุญาต
   const [unread, setUnread] = useState(0)
-  const [notifyPerm, setNotifyPerm] = useState<NotificationPermission | 'unsupported'>(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission))
   const seenMaxId = useRef<number | null>(null)
   const baseTitle = useRef(document.title)
   const dirty = useRef(false)
@@ -152,10 +153,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             seenMaxId.current = maxId
             if (fresh.length && (document.hidden || !document.hasFocus())) {
               setUnread(u => u + fresh.length)
-              if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-                const last = fresh[fresh.length - 1]
-                try { new Notification(`${last.UserName} · ${last.Room ? 'ห้อง' : 'ทั้งออฟฟิศ'}`, { body: (last.Message || last.Title).slice(0, 120), tag: 'hd-office-chat' }).onclick = () => window.focus() } catch { /* บางเบราว์เซอร์ไม่ให้สร้างจาก tab */ }
-              }
+              const last = fresh[fresh.length - 1]
+              notifyNew(`${last.UserName} · ${last.Room ? 'ห้อง' : 'ทั้งออฟฟิศ'}`, last.Message || last.Title, 'hd-office-chat')
             }
           }
         }
@@ -268,10 +267,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     document.title = unreadTitle(base, unread)
     return () => { document.title = base }
   }, [unread])
-  function askNotify() {
-    if (typeof Notification === 'undefined') return
-    Notification.requestPermission().then(p => setNotifyPerm(p)).catch(() => {})
-  }
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
@@ -290,9 +285,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     const inThread = dmOpenRef.current.tab === 'dm' && dmOpenRef.current.dmWith === r.FromEmail.toLowerCase()
     if (looking && inThread) return
     if (!looking) setUnread(u => u + 1)
-    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !looking) {
-      try { new Notification(`💬 ${r.FromName || r.FromEmail.split('@')[0]}`, { body: dmNotice(r).slice(0, 120), tag: `hd-dm-${r.FromEmail}` }).onclick = () => window.focus() } catch { /* */ }
-    }
+    if (!looking) notifyNew(`💬 ${r.FromName || r.FromEmail.split('@')[0]}`, dmNotice(r), `hd-dm-${r.FromEmail}`)
   }, [])
   const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming })
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [])
@@ -638,14 +631,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             ส่วนตัว
             {dmUnread > 0 && <span className="ml-1 text-[10px] px-1.5 rounded-full bg-red-500 text-white">{dmUnread}</span>}
           </button>
-          {/* แจ้งเตือนแชทใหม่ตอนหน้าต่างไม่ได้โฟกัส — มีความหมายที่สุดตอนดึงไปอีกจอ */}
-          {notifyPerm !== 'unsupported' && (
-            <button onClick={askNotify} disabled={notifyPerm !== 'default'}
-              title={notifyPerm === 'granted' ? 'แจ้งเตือนเปิดอยู่ — เด้งเมื่อมีแชทใหม่ตอนไม่ได้มองหน้าต่างนี้' : notifyPerm === 'denied' ? 'ถูกบล็อกในเบราว์เซอร์ — เปิดได้ที่ไอคอนกุญแจหน้า URL' : 'เปิดแจ้งเตือนเมื่อมีแชทใหม่'}
-              className={`px-2.5 border-l border-gray-200 dark:border-gray-800 ${notifyPerm === 'granted' ? 'text-green-600' : notifyPerm === 'denied' ? 'text-gray-300' : 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20'}`}>
-              {notifyPerm === 'denied' ? <BellOff size={13} /> : <Bell size={13} />}
-            </button>
-          )}
+          {/* กระดิ่ง = เมนูตั้งค่าแจ้งเตือน (กดได้เสมอ: อนุญาต / ปิด-เปิด / ทดสอบ / วิธีแก้เมื่อถูกบล็อก / เสียง) */}
+          <NotifyMenu />
         </div>
         {tab === 'dm' ? (
           <OfficeDMPanel me={me} rows={dm.rows} convs={dm.convs} now={dm.now} openWith={dmWith} setOpenWith={setDmWith}

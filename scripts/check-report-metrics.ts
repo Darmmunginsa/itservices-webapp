@@ -27,6 +27,7 @@ import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
+import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
 import { parseDecor, serializeDecor, deskSpots, canPlaceDesk, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, placeDesk, setDeskStyle, rotateDesk, deskFootprint, deskSurface, deskItemSlots, blockedTiles, walkableRows, emptyDecor, CATALOG, DESK_STYLES, MAX_ITEMS, type MyDecor as MyDecorT } from '../src/utils/officeDecor'
@@ -2301,6 +2302,16 @@ eq([...PLANT_TILES].every(ch => isFurnitureTile(ch) && !isWalkable(parseMap(['##
 eq(new Set(TILE_PALETTE.map(t => t.ch)).size, TILE_PALETTE.length, 'palette characters are unique')
 eq([...PLANT_TILES].filter(ch => DEFAULT_MAP.some(r => r.includes(ch))).length >= 7, true, 'the standard office shows off most species')
 eq(validateMap(blankMap(10, 8).map((r, y) => (y === 3 ? '#.GYLRUZN#' : r))).filter(i => i.level === 'error').length, 0, 'a map using the new species validates')
+
+
+// -- ตั้งค่าแจ้งเตือน (utils/officeAlerts) — บั๊กจริง: กระดิ่งกดไม่ได้หลังอนุญาต/ถูกบล็อก --
+eq(JSON.stringify(parseAlertSettings(null)), '{"desktop":true,"sound":true}', 'nothing stored = both on')
+eq(JSON.stringify(parseAlertSettings('{"desktop":false}')), '{"desktop":false,"sound":true}', 'a partial setting keeps the other default')
+eq(JSON.stringify(parseAlertSettings('garbage')), '{"desktop":true,"sound":true}', 'garbage = defaults, never a crash')
+eq(bellState({ desktop: true, sound: true }, 'granted'), 'on', 'allowed and on = full alerts')
+eq(bellState({ desktop: true, sound: true }, 'denied'), 'sound-only', 'blocked by the browser still alerts with sound')
+eq(bellState({ desktop: false, sound: true }, 'granted'), 'sound-only', 'desktop turned off by the user → sound only')
+eq(bellState({ desktop: false, sound: false }, 'granted'), 'off', 'both off = silent')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
