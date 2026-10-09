@@ -29,6 +29,7 @@ import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, c
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
+import { parseDecor, serializeDecor, freeDesks, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, claimDesk, deskSlot, emptyDecor, CATALOG, MAX_ITEMS, DESK_SLOTS } from '../src/utils/officeDecor'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2209,6 +2210,53 @@ eq(ns.kind === 'declined' && ns.note, 'ติดประชุมอยู่ �
 eq(voiceState(no, 'a@x', 'me@x', DT0 + 15_000 + ASK_TTL_MS + 1).kind, 'none', 'a decline fades so they can ask again later')
 eq(textOf({ id: 9, FromEmail: 'x', ToEmail: 'y', Kind: 'voice-no', Title: 'voice-no', Created: at_(0) }), '', 'a bare decline has no text (the kind name is not shown)')
 eq(conversations(yes, 'me@x').find(c => c.partner === 'a@x')!.lastText, '🎧 คุยเสียงกัน', 'voice events read as words in the list')
+
+
+// -- ตกแต่งโต๊ะ (utils/officeDecor) --
+const DM2 = parseMap(['#########', '#.......#', '#.d...d.#', '#.......#', '#.......#', '#########'])
+const other = { email: 'b@x', name: 'B', decor: { desk: { x: 6, y: 2 }, items: [{ id: 'z', kind: 'fern', x: 5, y: 3, rot: 0 as const, flip: false }] } }
+eq(freeDesks(DM2, [other]).map(p => `${p.x},${p.y}`).join(' '), '2,2', 'a desk someone has claimed is not free')
+const c1 = claimDesk(DM2, emptyDecor(), [other], { x: 6, y: 2 })
+eq('error' in c1, true, 'cannot claim a taken desk')
+eq('error' in claimDesk(DM2, emptyDecor(), [other], { x: 3, y: 2 }), true, 'only desk tiles can be claimed')
+const c2 = claimDesk(DM2, emptyDecor(), [other], { x: 2, y: 2 }) as { decor: ReturnType<typeof emptyDecor> }
+let mineD = c2.decor
+eq(`${mineD.desk!.x},${mineD.desk!.y}`, '2,2', 'claiming a free desk')
+eq(canPlace(DM2, emptyDecor(), [], 'fern', { x: 1, y: 1 }).ok, false, 'nothing can be placed before claiming a desk')
+eq(canPlace(DM2, mineD, [other], 'mug', { x: 2, y: 2 }).ok, true, 'desk items go on my own desk')
+eq(canPlace(DM2, mineD, [other], 'mug', { x: 3, y: 2 }).ok, false, '…and nowhere else')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 2, y: 2 }).ok, false, 'floor items cannot go on the desk')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 4, y: 4 }).ok, true, 'floor items go on floor within the radius')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 5, y: 3 }).ok, false, 'not on a tile where someone else already decorated (and outside my radius)')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 5, y: 1 }).ok, false, 'outside the radius is refused')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 0, y: 2 }).ok, false, 'not on a wall')
+eq(canPlace(DM2, mineD, [other], 'unicorn', { x: 1, y: 1 }).ok, false, 'unknown kinds are refused')
+for (let i = 0; i < DESK_SLOTS; i++) mineD = placeItem(mineD, 'mug', { x: 2, y: 2 })
+eq(canPlace(DM2, mineD, [other], 'lamp', { x: 2, y: 2 }).ok, false, `the desk holds ${DESK_SLOTS} items`)
+eq(mineD.items.map(it => deskSlot(mineD, it)).join(','), '0,1,2', 'desk items take slots left, right, front in order')
+mineD = placeItem(mineD, 'cat', { x: 1, y: 3 })
+eq(deskSlot(mineD, mineD.items[3]), -1, 'a floor item has no desk slot')
+eq(canPlace(DM2, mineD, [other], 'fern', { x: 1, y: 3 }).ok, false, 'one floor item per tile')
+const catId = mineD.items[3].id
+eq(rotateItem(rotateItem(rotateItem(rotateItem(mineD, catId), catId), catId), catId).items[3].rot, 0, 'four quarter turns come back to 0')
+eq(rotateItem(mineD, catId).items[3].rot, 90, 'rotate is 90° clockwise')
+eq(flipItem(mineD, catId).items[3].flip, true, 'flip mirrors')
+eq(removeItem(mineD, catId).items.length, 3, 'remove takes it out')
+eq(placeableTiles(DM2, mineD, [other], 'mug').length, 0, 'a full desk offers no tiles for desk items')
+eq(placeableTiles(DM2, mineD, [other], 'fern').every(p => Math.max(Math.abs(p.x - 2), Math.abs(p.y - 2)) <= 2), true, 'highlighted tiles are all inside the radius')
+// ย้ายโต๊ะ: ของตามไปด้วย ตัวที่วางไม่ได้ทิ้ง
+const moved = claimDesk(DM2, mineD, [], { x: 6, y: 2 }) as { decor: typeof mineD; dropped: number }
+eq(`${moved.decor.desk!.x},${moved.decor.desk!.y}`, '6,2', 'moving desk')
+eq(moved.decor.items.filter(it => it.x === 6 && it.y === 2).length, 3, 'desk items move with the desk')
+eq(moved.decor.items.find(it => it.kind === 'cat')!.x, 5, 'floor items keep their offset')
+// JSON จาก SharePoint
+const decorRound = parseDecor(serializeDecor(mineD))
+eq(decorRound.items.length, mineD.items.length, 'serialize → parse round-trips')
+eq(parseDecor('not json').desk, null, 'garbage becomes empty, never a crash')
+eq(parseDecor(JSON.stringify({ desk: { x: 1, y: 1 }, items: [{ kind: 'unicorn', x: 1, y: 1 }, { kind: 'mug', x: 1, y: 1, rot: 45 }] })).items.map(i => `${i.kind}:${i.rot}`).join(','), 'mug:0', 'unknown kinds dropped, bad rotation reset')
+eq(parseDecor(JSON.stringify({ items: Array.from({ length: 40 }, () => ({ kind: 'mug', x: 1, y: 1 })) })).items.length, MAX_ITEMS, 'item count capped')
+eq(new Set(CATALOG.map(c => c.kind)).size, CATALOG.length, 'catalog kinds are unique')
+eq(CATALOG.length >= 25, true, 'at least 25 items to choose from')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

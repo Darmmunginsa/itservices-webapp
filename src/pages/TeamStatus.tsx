@@ -270,7 +270,7 @@ export default function TeamStatus() {
 
       {mode === 'office' && (
         <Office2D mapRows={mapRows} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
-          onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} />
+          onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} onInfo={msg => addToast('success', msg)} />
       )}
 
       {mode === 'board' && (<>

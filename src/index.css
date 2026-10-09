@@ -293,3 +293,10 @@ html[data-fx='on'] .urgent-badge {
 .hd-speaking { animation: hd-talk 1s ease-out infinite; }
 @keyframes hd-talk { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.7) } 100% { box-shadow: 0 0 0 9px rgba(34,197,94,0) } }
 @media (prefers-reduced-motion: reduce) { .hd-speaking { animation: none; box-shadow: 0 0 0 3px rgba(34,197,94,.8) } }
+
+/* ตกแต่งโต๊ะ — ช่องที่คลิกวาง/จองได้ และชิ้นที่เลือกอยู่ */
+.hd-decor-hi { background: rgba(34,197,94,.18); box-shadow: inset 0 0 0 2px rgba(34,197,94,.75); animation: hd-hi 1.4s ease-in-out infinite; }
+@keyframes hd-hi { 50% { background: rgba(34,197,94,.32) } }
+.hd-decor-sel { outline: 2px solid #3b82f6; outline-offset: 1px; border-radius: 6px; animation: hd-sel 1s ease-in-out infinite; }
+@keyframes hd-sel { 50% { outline-color: #93c5fd } }
+@media (prefers-reduced-motion: reduce) { .hd-decor-hi, .hd-decor-sel { animation: none } }
