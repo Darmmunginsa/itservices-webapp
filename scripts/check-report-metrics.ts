@@ -27,7 +27,7 @@ import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
-import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, MAX_PEERS } from '../src/utils/voiceProximity'
+import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
@@ -2163,7 +2163,13 @@ eq(peersToConnect(VM, inMeeting, [{ ...inMeeting, email: 'A@X' }]).length, 0, 'n
 eq(isCaller('a@x', 'b@x') !== isCaller('b@x', 'a@x'), true, 'exactly one side of every pair places the call')
 eq(isCaller('B@x', 'a@x'), false, 'caller choice ignores case')
 eq(encodeRoom('desk', true), 'desk:mic', 'mic flag rides in the Room field')
-eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true}', '…and decodes back')
+eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true,"muted":false}', '…and decodes back')
+eq(encodeRoom('meeting', true, true), 'meeting:muted', 'joined but muted has its own marker')
+eq(JSON.stringify(decodeRoom('meeting:muted')), '{"zone":"meeting","mic":true,"muted":true}', 'a muted person is still in the call (still hears) but shows 🔇')
+eq(encodeRoom('desk', false, true), 'desk', 'not in voice → muted flag is irrelevant')
+eq(joinMuted(0), false, 'alone: join with the mic on')
+eq(joinMuted(1), false, 'one other person: a conversation, mic on')
+eq(joinMuted(2), true, 'two or more others: join muted so you do not barge in')
 eq(decodeRoom('desk').mic, false, 'no suffix = mic off')
 eq(decodeRoom(undefined).mic, false, 'missing Room = mic off')
 

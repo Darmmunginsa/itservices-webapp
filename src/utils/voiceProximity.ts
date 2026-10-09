@@ -49,13 +49,22 @@ export function peersToConnect(m: OfficeMap, me: VoicePos, others: VoicePos[]): 
  */
 export const isCaller = (me: string, other: string): boolean => me.toLowerCase() < other.toLowerCase()
 
-// ── สถานะไมค์ฝากไว้ในช่อง Room ของ HD_OfficePresence ("meeting:mic") ──
+// ── สถานะไมค์ฝากไว้ในช่อง Room ของ HD_OfficePresence ──
+//   "meeting"        ไม่ได้เข้าร่วมเสียง
+//   "meeting:mic"    เข้าร่วมเสียง ไมค์เปิด
+//   "meeting:muted"  เข้าร่วมเสียง ปิดไมค์อยู่ (ยังได้ยินคนอื่น — คนอื่นเห็นป้าย 🔇)
 // ไม่ต้องสร้างคอลัมน์ใหม่ — ถ้าเพิ่มคอลัมน์แล้วลิสต์ยังไม่มี การบันทึกตำแหน่งจะพังทั้งแถว
-export function encodeRoom(zone: string, mic: boolean): string {
-  return mic ? `${zone}:mic` : zone
+export function encodeRoom(zone: string, mic: boolean, muted = false): string {
+  return mic ? `${zone}:${muted ? 'muted' : 'mic'}` : zone
 }
 
-export function decodeRoom(raw?: string): { zone: string; mic: boolean } {
+export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: boolean } {
   const s = (raw ?? '').trim()
-  return s.endsWith(':mic') ? { zone: s.slice(0, -4), mic: true } : { zone: s, mic: false }
+  if (s.endsWith(':mic')) return { zone: s.slice(0, -4), mic: true, muted: false }
+  if (s.endsWith(':muted')) return { zone: s.slice(0, -6), mic: true, muted: true }
+  return { zone: s, mic: false, muted: false }
 }
+
+/** ห้องคนเยอะ — เข้าร่วมเสียงแบบปิดไมค์ไว้ก่อน ไม่โผล่มาส่งเสียงกลางวง */
+export const CROWD_SIZE = 3
+export const joinMuted = (othersInEarshot: number): boolean => othersInEarshot + 1 >= CROWD_SIZE

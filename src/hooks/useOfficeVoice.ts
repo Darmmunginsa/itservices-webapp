@@ -75,6 +75,8 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
   const me = meEmail.toLowerCase()
   const [micOn, setMicOn] = useState(false)
   const [muted, setMuted] = useState(false)
+  // กดค้าง Space พูดชั่วคราวตอนปิดไมค์อยู่ — ไม่เปลี่ยนสถานะ "ปิดไมค์" ปล่อยแล้วกลับเงียบ
+  const [talking, setTalking] = useState(false)
   const [meSpeaking, setMeSpeaking] = useState(false)
   const [view, setView] = useState<PeerView[]>([])
   const [sharing, setSharing] = useState(false)
@@ -284,14 +286,18 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     myAnalyser.current = null
     ctx.current?.close().catch(() => {})
     ctx.current = null
-    setMicOn(false); setMuted(false); setMeSpeaking(false); publish()
+    setMicOn(false); setMuted(false); setTalking(false); setMeSpeaking(false); publish()
     onMicChange(false)
   }, [closePeer, publish, onMicChange])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (opts?: { muted?: boolean }) => {
     if (!navigator.mediaDevices?.getUserMedia) { onError('เบราว์เซอร์นี้ใช้ไมค์ไม่ได้ (ต้องเปิดผ่าน https)'); return }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      // เริ่มแบบปิดไมค์ (ห้องคนเยอะ) — ปิด track ก่อนต่อสายใด ๆ จะได้ไม่หลุดเสียงแม้เสี้ยววินาที
+      const startMuted = !!opts?.muted
+      s.getAudioTracks().forEach(t => { t.enabled = !startMuted })
+      setMuted(startMuted)
       stream.current = s
       ctx.current = new AudioContext()
       const an = ctx.current.createAnalyser()
@@ -306,10 +312,17 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     }
   }, [onError, onMicChange])
 
-  const toggleMute = useCallback(() => {
-    const next = !muted
+  const setMute = useCallback((next: boolean) => {
     stream.current?.getAudioTracks().forEach(t => { t.enabled = !next })
-    setMuted(next)
+    setMuted(next); setTalking(false)
+  }, [])
+  const toggleMute = useCallback(() => setMute(!muted), [muted, setMute])
+
+  /** กดค้างเพื่อพูด — ใช้ได้เฉพาะตอนปิดไมค์อยู่ */
+  const pushToTalk = useCallback((on: boolean) => {
+    if (!muted || !stream.current) return
+    stream.current.getAudioTracks().forEach(t => { t.enabled = on })
+    setTalking(on)
   }, [muted])
 
   // loop ต่อสาย
@@ -331,10 +344,10 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
         if (sp !== p.speaking) { p.speaking = sp; changed = true }
       }
       if (changed) publish()
-      if (myAnalyser.current) setMeSpeaking(!muted && level(myAnalyser.current, buf) > 0.04)
+      if (myAnalyser.current) setMeSpeaking((!muted || talking) && level(myAnalyser.current, buf) > 0.04)
     }, 200)
     return () => clearInterval(t)
-  }, [micOn, muted, publish])
+  }, [micOn, muted, talking, publish])
 
   // ออกจากหน้า = วางสายทุกสายและคืนไมค์
   useEffect(() => () => {
@@ -345,5 +358,5 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     ctx.current?.close().catch(() => {})
   }, [])
 
-  return { micOn, muted, meSpeaking, peers: view, start, stop, toggleMute, privatePeer, sharing, canShare, startShare, stopShare, myScreen }
+  return { micOn, muted, talking, meSpeaking, peers: view, start, stop, toggleMute, setMute, pushToTalk, privatePeer, sharing, canShare, startShare, stopShare, myScreen }
 }

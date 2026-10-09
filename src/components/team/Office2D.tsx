@@ -14,7 +14,7 @@ import { useOfficeDM, dmNotice } from '../../hooks/useOfficeDM'
 import { OfficeDMPanel } from './OfficeDMPanel'
 import { ScreenVideo } from './ScreenVideo'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
-import { decodeRoom, encodeRoom, HEAR_RADIUS } from '../../utils/voiceProximity'
+import { decodeRoom, encodeRoom, joinMuted, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
 //
@@ -78,6 +78,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const posRef = useRef<Pos | null>(null)
   // ไมค์เปิดอยู่ไหม — ฝากไปกับตำแหน่ง (ช่อง Room = "desk:mic") ให้คนอื่นรู้ว่าต่อสายได้
   const micRef = useRef(false)
+  const mutedRef = useRef(false)
   const zoneRef = useRef<Zone | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -156,7 +157,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       if (!dirty.current || !posRef.current) return
       dirty.current = false
       const p = posRef.current
-      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current) }).catch(() => { dirty.current = true })
+      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current) }).catch(() => { dirty.current = true })
     }
     const f = setInterval(flush, FLUSH_MS)
     const h = setInterval(() => { if (!dirty.current) heartbeat(rowId).catch(() => {}) }, HEARTBEAT_MS)
@@ -256,7 +257,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
-  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic }))
+  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted }))
 
   // ── เสียงตามระยะ ──
   const onMicChange = useCallback((on: boolean) => { micRef.current = on; dirty.current = true }, [])
@@ -279,6 +280,34 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [])
 
   const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith })
+
+  // ปิด/เปิดไมค์ → บอกคนอื่นผ่านตำแหน่ง (ป้าย 🔇 บนตัวเรา) · กดค้างพูดไม่นับ (สั้นเกินกว่าจะส่งทัน)
+  useEffect(() => { mutedRef.current = voice.muted; dirty.current = true }, [voice.muted])
+
+  // เข้าร่วมเสียง: ห้องที่มีคนได้ยินเรา 2 คนขึ้นไป → เริ่มแบบปิดไมค์
+  const joinVoice = () => {
+    const crowd = joinMuted(voice.peers.length || inMyZone.filter(o => o.mic).length)
+    voice.start({ muted: crowd })
+    if (crowd) onVoiceError('เข้าร่วมแบบปิดไมค์ไว้ก่อน เพราะในห้องมีหลายคน — กด M เพื่อเปิดไมค์ หรือกดค้าง Space เพื่อพูด')
+  }
+
+  // คีย์ลัด: M = เปิด/ปิดไมค์ · กดค้าง Space = พูดชั่วคราวตอนปิดไมค์ — ไม่ทำงานตอนพิมพ์ในช่องข้อความ
+  const { micOn: vMicOn, toggleMute: vToggle, pushToTalk: vPtt } = voice
+  useEffect(() => {
+    if (!vMicOn) return
+    const typing = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    const down = (e: KeyboardEvent) => {
+      if (typing(e.target) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === 'm' || e.key === 'M') { e.preventDefault(); vToggle() }
+      if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) vPtt(true) }
+    }
+    const up = (e: KeyboardEvent) => { if (e.code === 'Space') vPtt(false) }
+    const blur = () => vPtt(false)   // สลับหน้าต่างระหว่างกดค้าง — อย่าค้างไมค์เปิดไว้
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', blur)
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur) }
+  }, [vMicOn, vToggle, vPtt])
 
   // รับสายส่วนตัวแล้วไมค์ยังปิด → เปิดให้เอง · สายจบแล้วไมค์ที่เปิดเพราะสาย → ปิดคืน
   const micForCall = useRef(false)
@@ -325,14 +354,19 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
           {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
           {!voice.micOn ? (
-            <button onClick={voice.start} title={`เปิดไมค์ — คุยกับคนในห้องเดียวกัน หรือโต๊ะในระยะ ${HEAR_RADIUS} ช่อง (เฉพาะคนที่เปิดไมค์)`}
+            <button onClick={joinVoice} title={`เข้าร่วมเสียง — คุยกับคนในห้องเดียวกัน หรือโต๊ะในระยะ ${HEAR_RADIUS} ช่อง (เฉพาะคนที่เข้าร่วมเสียง) · ห้องคนเยอะจะเข้าแบบปิดไมค์ไว้ก่อน`}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700">
               <Headphones size={12} /> เข้าร่วมเสียง
             </button>
           ) : (<>
-            <button onClick={voice.toggleMute} title={voice.muted ? 'เปิดเสียงไมค์' : 'ปิดเสียงไมค์ (ยังได้ยินคนอื่น)'}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${voice.muted ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20' : voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-              {voice.muted ? <MicOff size={12} /> : <Mic size={12} />} {voice.muted ? 'ปิดไมค์อยู่' : 'ไมค์เปิด'}
+            {/* ปุ่มบอก "สิ่งที่จะเกิดเมื่อกด" ไม่ใช่สถานะ — เดิมป้าย "ไมค์เปิด" ดูเหมือนแค่ป้ายบอก คนเลยหาปุ่มปิดไมค์ไม่เจอ */}
+            <button onClick={voice.toggleMute} title={voice.muted ? 'เปิดไมค์ (กด M) · หรือกดค้าง Space เพื่อพูดชั่วคราว' : 'ปิดไมค์ (กด M) — ยังได้ยินคนอื่นตามปกติ'}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-medium shadow-sm ${voice.muted
+                ? (voice.talking ? 'bg-green-600 text-white' : 'bg-red-600 text-white hover:bg-red-700')
+                : `border ${voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:border-red-400 hover:text-red-600'}`}`}>
+              {voice.muted && !voice.talking ? <MicOff size={13} /> : <Mic size={13} />}
+              {voice.muted ? (voice.talking ? 'กำลังพูด…' : 'เปิดไมค์') : 'ปิดไมค์'}
+              <kbd className={`text-[9px] px-1 rounded ${voice.muted ? 'bg-white/25' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>M</kbd>
             </button>
             {voice.canShare && (voice.sharing ? (
               <button onClick={voice.stopShare} title="หยุดแชร์หน้าจอ" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><MonitorX size={12} /> หยุดแชร์</button>
@@ -396,6 +430,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={() => dm.send(dm.callWith!, 'voice-end')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><PhoneOff size={11} /> วางสาย</button>
           </div>
         )}
+        {voice.micOn && voice.muted && (
+          <p className="mb-1 text-[11px] text-red-600">🔇 ปิดไมค์อยู่ — คนอื่นไม่ได้ยินคุณ · กดค้าง <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">Space</kbd> เพื่อพูดชั่วคราว หรือกด <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">M</kbd> เปิดไมค์</p>
+        )}
         {voice.micOn && !dm.callWith && (
           <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
             {voice.peers.length === 0
@@ -405,6 +442,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                   <span className={`w-1.5 h-1.5 rounded-full ${p.state === 'connected' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`} />
                   {nameOf(p.email)}
                   {p.screen && <span title="กำลังแชร์หน้าจอ">🖥️</span>}
+                  {online.find(o => o.email.toLowerCase() === p.email)?.muted && <span title="ปิดไมค์อยู่">🔇</span>}
                   {p.state === 'connected' ? (p.volume < 1 ? <span className="text-gray-400">· {Math.round(p.volume * 100)}%</span> : null) : <span>· กำลังต่อ…</span>}
                 </span>
               ))}
@@ -452,7 +490,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                   <span className="hd-avatar-shadow" />
                   <span className={`relative rounded-full ring-2 shadow-md ${speakingSet.has(r.email.toLowerCase()) ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={r.UserName} size={28} />
-                    {r.mic && <span className="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title="เปิดไมค์อยู่"><Mic size={8} className="text-green-600" /></span>}
+                    {r.mic && <span className="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title={r.muted ? 'ปิดไมค์อยู่' : 'เปิดไมค์อยู่'}>
+                      {r.muted ? <MicOff size={8} className="text-red-600" /> : <Mic size={8} className="text-green-600" />}</span>}
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.UserName.split(/\s+/)[0]}</span>
                   {dm.callWith === r.email.toLowerCase() && <span className="absolute -top-2 -right-1 text-[10px]" title="กำลังคุยส่วนตัว">🔒</span>}
@@ -470,6 +509,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                   <span key={`${pos.x},${pos.y}`} className={`hd-step rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 shadow-md ${voice.meSpeaking ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={meName} size={28} />
                   </span>
+                  {voice.micOn && voice.muted && !voice.talking && <span className="absolute right-0 top-4 w-3.5 h-3.5 rounded-full bg-red-600 flex items-center justify-center shadow" title="ปิดไมค์อยู่"><MicOff size={8} className="text-white" /></span>}
                   <span className="text-[9px] leading-tight px-1 rounded bg-primary-600 text-white whitespace-nowrap">ฉัน</span>
                 </div>
               )

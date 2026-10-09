@@ -40,6 +40,9 @@ function Person({ email, x, y, otherEmail, ox, oy }: { email: string; x: number;
       <button className="ml-2 px-2 border rounded" onClick={v.startShare}>share</button>
       <button className="ml-2 px-2 border rounded" onClick={v.stopShare}>unshare</button>
       <span data-sharing>{String(v.sharing)}</span>
+      <button className="ml-2 px-2 border rounded" onClick={v.toggleMute}>mute</button>
+      <button className="ml-2 px-2 border rounded" onMouseDown={() => v.pushToTalk(true)} onMouseUp={() => v.pushToTalk(false)}>ptt</button>
+      <span data-muted>{String(v.muted)}</span>
       {v.peers.filter(p => p.screen).map(p => <ScreenVideo key={p.email} stream={p.screen!} className="w-48 border" />)}
       <pre data-peers>{JSON.stringify(v.peers.map(p => ({ ...p, screen: !!p.screen })))}</pre>
       <pre className="text-red-600">{errs.join('\n')}</pre>
