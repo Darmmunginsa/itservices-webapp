@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones } from 'lucide-react'
+import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
@@ -7,10 +7,12 @@ import {
 } from '../../utils/officeMap'
 import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, type PresenceRow, type ChatRow } from '../../services/office'
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
-import { teamsChatLink } from '../../utils/virtualOffice'
 import { unreadTitle } from '../../utils/popout'
 import { OfficeTile, OfficeDefs } from './OfficeTile'
 import { useOfficeVoice } from '../../hooks/useOfficeVoice'
+import { useOfficeDM, dmNotice } from '../../hooks/useOfficeDM'
+import { OfficeDMPanel } from './OfficeDMPanel'
+import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
@@ -60,7 +62,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [pos, setPos] = useState<Pos | null>(null)
   const [others, setOthers] = useState<PresenceRow[]>([])
   const [chat, setChat] = useState<ChatRow[]>([])
-  const [tab, setTab] = useState<'all' | Zone>('all')
+  const [tab, setTab] = useState<'all' | Zone | 'dm'>('all')
+  const [dmWith, setDmWith] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -224,7 +227,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     if (!t || !meEmail) return
     setSending(true)
     try {
-      const room = tab === 'all' ? '' : tab
+      const room = tab === 'all' || tab === 'dm' ? '' : tab
       const res = await sendChat({ email: meEmail, name: meName, text: t, room })
       setChat(prev => [...prev, { id: res.id, Title: t.slice(0, 255), Message: t.length > 255 ? t : undefined, UserEmail: meEmail, UserName: meName, Room: room, Created: new Date().toISOString() }])
       setText('')
@@ -257,12 +260,38 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ── เสียงตามระยะ ──
   const onMicChange = useCallback((on: boolean) => { micRef.current = on; dirty.current = true }, [])
   const onVoiceError = useCallback((msg: string) => cb.current.onError(msg), [])
-  const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange })
+
+  // ── แชทส่วนตัว + ขอคุยเสียง ──
+  // ของใหม่ตอนไม่ได้มอง/ไม่ได้เปิดห้องนั้น → นับขึ้นชื่อแท็บ + Notification (ใช้ระบบเดียวกับแชทออฟฟิศ)
+  const dmOpenRef = useRef<{ tab: string; dmWith: string | null }>({ tab: 'all', dmWith: null })
+  useEffect(() => { dmOpenRef.current = { tab, dmWith } }, [tab, dmWith])
+  const onDMIncoming = useCallback((r: DMRow) => {
+    const looking = !document.hidden && document.hasFocus()
+    const inThread = dmOpenRef.current.tab === 'dm' && dmOpenRef.current.dmWith === r.FromEmail.toLowerCase()
+    if (looking && inThread) return
+    if (!looking) setUnread(u => u + 1)
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && !looking) {
+      try { new Notification(`💬 ${r.FromName || r.FromEmail.split('@')[0]}`, { body: dmNotice(r).slice(0, 120), tag: `hd-dm-${r.FromEmail}` }).onclick = () => window.focus() } catch { /* */ }
+    }
+  }, [])
+  const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming })
+  const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [])
+
+  const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith })
+
+  // รับสายส่วนตัวแล้วไมค์ยังปิด → เปิดให้เอง · สายจบแล้วไมค์ที่เปิดเพราะสาย → ปิดคืน
+  const micForCall = useRef(false)
+  const { micOn, start: startMic, stop: stopMic } = voice
+  useEffect(() => {
+    if (dm.callWith && !micOn) { micForCall.current = true; startMic() }
+    if (!dm.callWith && micForCall.current) { micForCall.current = false; if (micOn) stopMic() }
+  }, [dm.callWith, micOn, startMic, stopMic])
+  const dmUnread = totalUnread(dm.convs)
   const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
   const connected = voice.peers.filter(p => p.state === 'connected')
-  const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? email.split('@')[0]
+  const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
-  const visibleChat = chat.filter(c => chatVisible(c, tab))
+  const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }) }, [visibleChat.length, tab])
   // จอแคบ (มือถือ) แผนที่กว้างกว่าจอ — เลื่อนตามตัวเองไว้เสมอ
@@ -303,7 +332,25 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           </>)}
           <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
         </div>
-        {voice.micOn && (
+        {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
+        {dm.asks.slice(0, 1).map(a => (
+          <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
+            <span className="text-base animate-bounce">📞</span>
+            <span className="flex-1 min-w-0"><b>{a.name}</b> ถามว่า สะดวกคุยด้วยเสียงไหม?</span>
+            <button onClick={async () => { if (dm.callWith && dm.callWith !== a.partner) await dm.send(dm.callWith, 'voice-end'); dm.send(a.partner, 'voice-yes'); openDM(a.partner) }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-600 text-white hover:bg-green-700"><Phone size={11} /> สะดวก</button>
+            <button onClick={() => openDM(a.partner)} className="px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600">ตอบในแชท</button>
+          </div>
+        ))}
+        {dm.callWith && (
+          <div className="mb-2 p-2 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-xs flex items-center gap-2">
+            <Lock size={12} className="text-green-600" />
+            <span className="flex-1 min-w-0">กำลังคุยส่วนตัวกับ <b>{nameOf(dm.callWith)}</b> — คนรอบตัวไม่ได้ยิน
+              {voice.peers.find(p => p.email === dm.callWith)?.state !== 'connected' && <span className="text-gray-400"> · กำลังต่อสาย…</span>}</span>
+            <button onClick={() => dm.send(dm.callWith!, 'voice-end')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><PhoneOff size={11} /> วางสาย</button>
+          </div>
+        )}
+        {voice.micOn && !dm.callWith && (
           <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
             {voice.peers.length === 0
               ? <span className="text-gray-400">🎧 ยังไม่มีใครใกล้ ๆ ที่เปิดไมค์ — เดินเข้าห้องเดียวกัน หรือไปยืนข้างโต๊ะเพื่อน</span>
@@ -351,9 +398,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               const m = memberBy.get(r.email.toLowerCase())
               const p = clampToMap(map, { x: r.X, y: r.Y }, hashIndex(r.email))
               return (
-                <a key={r.id} href={teamsChatLink(r.UserEmail)} target="_blank" rel="noopener noreferrer"
-                  title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชท Teams`}
-                  className="absolute z-10 flex flex-col items-center hd-avatar"
+                <button key={r.id} onClick={e => { e.stopPropagation(); openDM(r.UserEmail) }}
+                  title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}
+                  className="absolute z-10 flex flex-col items-center hd-avatar cursor-pointer"
                   style={{ left: p.x * TILE, top: p.y * TILE - 8, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
                   <span className="hd-avatar-shadow" />
                   <span className={`relative rounded-full ring-2 shadow-md ${speakingSet.has(r.email.toLowerCase()) ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
@@ -361,7 +408,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                     {r.mic && <span className="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title="เปิดไมค์อยู่"><Mic size={8} className="text-green-600" /></span>}
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.UserName.split(/\s+/)[0]}</span>
-                </a>
+                  {dm.callWith === r.email.toLowerCase() && <span className="absolute -top-2 -right-1 text-[10px]" title="กำลังคุยส่วนตัว">🔒</span>}
+                </button>
               )
             })}
             {/* ฉัน */}
@@ -387,8 +435,12 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       <div className="lg:w-80 flex flex-col border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden" style={{ minHeight: 320, maxHeight: '70vh' }}>
         <div className="flex text-xs border-b border-gray-200 dark:border-gray-800 items-stretch">
           <button onClick={() => setTab('all')} className={`flex-1 py-2 ${tab === 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>ทั้งออฟฟิศ</button>
-          <button onClick={() => setTab(myZone)} className={`flex-1 py-2 ${tab !== 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>
+          <button onClick={() => setTab(myZone)} className={`flex-1 py-2 ${tab !== 'all' && tab !== 'dm' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>
             {ZONE_LABEL[myZone]} ({inMyZone.length + 1})
+          </button>
+          <button onClick={() => setTab('dm')} className={`flex-1 py-2 relative ${tab === 'dm' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>
+            ส่วนตัว
+            {dmUnread > 0 && <span className="ml-1 text-[10px] px-1.5 rounded-full bg-red-500 text-white">{dmUnread}</span>}
           </button>
           {/* แจ้งเตือนแชทใหม่ตอนหน้าต่างไม่ได้โฟกัส — มีความหมายที่สุดตอนดึงไปอีกจอ */}
           {notifyPerm !== 'unsupported' && (
@@ -399,6 +451,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             </button>
           )}
         </div>
+        {tab === 'dm' ? (
+          <OfficeDMPanel me={me} rows={dm.rows} convs={dm.convs} now={dm.now} openWith={dmWith} setOpenWith={setDmWith}
+            send={dm.send} markRead={dm.markRead} callWith={dm.callWith}
+            people={members.map(mm => ({ email: mm.email, name: mm.name, profileId: mm.profileId, photoFile: mm.photoFile, online: online.some(o => o.email.toLowerCase() === mm.email.toLowerCase()) }))} />
+        ) : (<>
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-gray-50/60 dark:bg-gray-900/40">
           {visibleChat.length === 0 && <p className="text-[11px] text-gray-400 text-center py-6">{tab === 'all' ? 'ยังไม่มีข้อความ — ทักทายทีมได้เลย' : `ข้อความในนี้เห็นเฉพาะคนที่อยู่${ZONE_LABEL[myZone]}`}</p>}
           {visibleChat.map(c => {
@@ -422,6 +479,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             className="flex-1 min-w-0 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           <button onClick={submit} disabled={sending || !text.trim()} className="px-2.5 rounded-lg bg-primary-600 text-white disabled:opacity-50"><Send size={13} /></button>
         </div>
+        </>)}
       </div>
     </div>
   )

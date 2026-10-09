@@ -42,6 +42,8 @@ interface Args {
   onError: (msg: string) => void
   /** ไมค์เปิด/ปิด — ให้ฝั่งออฟฟิศเขียนลงตำแหน่ง (ช่อง Room) ให้คนอื่นรู้ */
   onMicChange: (on: boolean) => void
+  /** สายส่วนตัว (จากแชทส่วนตัว) — มีค่า = ต่อกับคนนี้คนเดียว ไม่สนระยะ และไม่รับสายจากคนรอบตัว */
+  privatePeer?: string | null
 }
 
 /** รอรวบ ICE candidate ให้ครบแล้วค่อยส่ง SDP ทีเดียว — ลดข้อความเหลือ 1 ต่อฝั่ง */
@@ -62,7 +64,7 @@ const level = (an: AnalyserNode, buf: Uint8Array<ArrayBuffer>): number => {
   return Math.sqrt(sum / buf.length)
 }
 
-export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChange }: Args) {
+export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChange, privatePeer = null }: Args) {
   const me = meEmail.toLowerCase()
   const [micOn, setMicOn] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -76,8 +78,8 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
   const myAnalyser = useRef<AnalyserNode | null>(null)
   const busy = useRef(false)
   // ค่าล่าสุดสำหรับ loop — ไม่เอาเข้า deps ไม่งั้น interval ถูกตั้งใหม่ทุก 3 วิที่ตำแหน่งคนอื่นเปลี่ยน
-  const live = useRef({ map, mePos, others, onError })
-  useEffect(() => { live.current = { map, mePos, others, onError } }, [map, mePos, others, onError])
+  const live = useRef({ map, mePos, others, onError, privatePeer })
+  useEffect(() => { live.current = { map, mePos, others, onError, privatePeer } }, [map, mePos, others, onError, privatePeer])
 
   const publish = useCallback(() => {
     setView([...peers.current.entries()].map(([email, p]) => ({ email, state: p.state, speaking: p.speaking, volume: p.volume })))
@@ -143,13 +145,16 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     if (busy.current || !stream.current) return
     busy.current = true
     try {
-      const { map: m, mePos: pos, others: os, onError: err } = live.current
+      const { map: m, mePos: pos, others: os, onError: err, privatePeer: priv } = live.current
+      const privEmail = priv ? priv.toLowerCase() : null
       // 1. ข้อความแนะนำตัวที่ส่งถึงฉัน
       const inbox = await takeSignals(me).catch(() => null)
       if (inbox === null) err('ต่อสายเสียงไม่ได้ — ตรวจว่ามี list HD_OfficeSignal (ดู docs/Team-Status.md)')
       for (const s of inbox ?? []) {
         const from = s.FromEmail.toLowerCase()
         try {
+          // อยู่ในสายส่วนตัว — ไม่รับสายจากคนอื่น ไม่งั้นคนเดินผ่านได้ยินเราไม่กี่วินาทีก่อนถูกตัด
+          if (s.Title === 'offer' && privEmail && from !== privEmail) { sendSignal(me, from, 'bye').catch(() => {}); continue }
           if (s.Title === 'offer' && s.Payload) await answer(from, s.Payload)
           else if (s.Title === 'answer' && s.Payload) {
             const p = peers.current.get(from)
@@ -157,10 +162,10 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
           } else if (s.Title === 'bye') closePeer(from, false)
         } catch { closePeer(from, false) }
       }
-      if (!pos) return
-      // 2. ใครควรได้ยินกันตอนนี้
-      const meP = { email: me, x: pos.x, y: pos.y }
-      const wantList = peersToConnect(m, meP, os.filter(o => o.mic).map(o => ({ email: o.email, x: o.x, y: o.y })))
+      if (!pos && !privEmail) return
+      // 2. ใครควรได้ยินกันตอนนี้ — สายส่วนตัว = คนเดียว ไม่สนระยะ/ไมค์ของเขา (เขากดรับแล้ว ไมค์จะเปิดเอง)
+      const meP = { email: me, x: pos?.x ?? 0, y: pos?.y ?? 0 }
+      const wantList = privEmail ? [privEmail] : peersToConnect(m, meP, os.filter(o => o.mic).map(o => ({ email: o.email, x: o.x, y: o.y })))
       const want = new Set(wantList)
       const now = Date.now()
       for (const email of wantList) {
@@ -179,7 +184,7 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
           continue
         }
         const o = os.find(x => x.email.toLowerCase() === email)
-        const v = o ? volumeFor(m, meP, o) : 0
+        const v = email === privEmail ? 1 : o ? volumeFor(m, meP, o) : 0
         p.volume = v
         p.audio.volume = Math.max(0, Math.min(1, v))
       }
@@ -254,5 +259,5 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     ctx.current?.close().catch(() => {})
   }, [])
 
-  return { micOn, muted, meSpeaking, peers: view, start, stop, toggleMute }
+  return { micOn, muted, meSpeaking, peers: view, start, stop, toggleMute, privatePeer }
 }

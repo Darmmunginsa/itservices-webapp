@@ -28,6 +28,7 @@ import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } fr
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, MAX_PEERS } from '../src/utils/voiceProximity'
+import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2165,6 +2166,43 @@ eq(encodeRoom('desk', true), 'desk:mic', 'mic flag rides in the Room field')
 eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true}', '…and decodes back')
 eq(decodeRoom('desk').mic, false, 'no suffix = mic off')
 eq(decodeRoom(undefined).mic, false, 'missing Room = mic off')
+
+
+// -- แชทส่วนตัว + ขอคุยเสียง (utils/officeDM) --
+const DT0 = Date.parse('2026-10-09T09:00:00Z')
+const at_ = (sec: number) => new Date(DT0 + sec * 1000).toISOString()
+const DMR = [
+  { id: 1, FromEmail: 'a@x', ToEmail: 'me@x', FromName: 'อารีย์', Kind: 'text', Title: 'สวัสดี', Created: at_(0) },
+  { id: 2, FromEmail: 'me@x', ToEmail: 'a@x', Kind: 'text', Title: 'ครับ', Created: at_(5) },
+  { id: 3, FromEmail: 'b@x', ToEmail: 'me@x', FromName: 'บอส', Kind: 'text', Title: 'งานด่วน', Created: at_(6) },
+  { id: 4, FromEmail: 'a@x', ToEmail: 'c@x', Kind: 'text', Title: 'ไม่ใช่ของฉัน', Created: at_(7) },
+]
+eq(dmThread(DMR, 'me@x', 'A@X').map(r => r.id).join(','), '1,2', 'a thread is both directions, oldest first, case-insensitive')
+const cv = conversations(DMR, 'me@x', { 'a@x': 1 })
+eq(cv.map(c => c.partner).join(','), 'b@x,a@x', 'conversations newest first; pairs I am not in never appear')
+eq(cv.find(c => c.partner === 'a@x')!.unread, 0, 'read up to id 1, my own reply never counts as unread')
+eq(cv.find(c => c.partner === 'b@x')!.unread, 1, 'unseen message from someone else counts')
+eq(cv.find(c => c.partner === 'b@x')!.name, 'บอส', 'name comes from the sender')
+eq(totalUnread(cv), 1, 'total unread')
+
+const ask = [...DMR, { id: 5, FromEmail: 'a@x', ToEmail: 'me@x', Kind: 'voice-ask', Title: 'voice-ask', Created: at_(10) }]
+eq(voiceState(ask, 'me@x', 'a@x', DT0 + 20_000).kind, 'asking-in', 'their ask waits for my answer')
+eq(voiceState(ask, 'a@x', 'me@x', DT0 + 20_000).kind, 'asking-out', '…and on their side it is outgoing')
+eq(voiceState(ask, 'me@x', 'a@x', DT0 + 10_000 + ASK_TTL_MS + 1).kind, 'none', 'an unanswered ask expires so nobody accepts a stale one')
+eq(incomingAsks(ask, 'me@x', DT0 + 20_000).map(x => x.partner).join(','), 'a@x', 'incoming asks are listed for the banner')
+eq(voiceState(ask, 'me@x', 'a@x', DT0 + 20_000).kind === 'asking-in' && voiceState(ask, 'me@x', 'b@x', DT0 + 20_000).kind, 'none', 'other pairs are unaffected')
+const yes = [...ask, { id: 6, FromEmail: 'me@x', ToEmail: 'a@x', Kind: 'voice-yes', Title: 'voice-yes', Created: at_(15) }]
+eq(voiceState(yes, 'me@x', 'a@x', DT0 + 60_000).kind, 'active', 'accepting starts the private call')
+eq(voiceState(yes, 'a@x', 'me@x', DT0 + 60_000).kind, 'active', '…for both sides, from the same rows')
+eq(activeCallPartner(yes, 'me@x', DT0 + 60_000), 'a@x', 'the active call partner is known')
+const ended = [...yes, { id: 7, FromEmail: 'a@x', ToEmail: 'me@x', Kind: 'voice-end', Title: 'voice-end', Created: at_(90) }]
+eq(activeCallPartner(ended, 'me@x', DT0 + 100_000), null, 'either side hanging up ends it')
+const no = [...ask, { id: 6, FromEmail: 'me@x', ToEmail: 'a@x', Kind: 'voice-no', Title: 'ติดประชุมอยู่ ขอ 10 นาที', Created: at_(15) }]
+const ns = voiceState(no, 'a@x', 'me@x', DT0 + 30_000)
+eq(ns.kind === 'declined' && ns.note, 'ติดประชุมอยู่ ขอ 10 นาที', 'a decline carries the quick reason')
+eq(voiceState(no, 'a@x', 'me@x', DT0 + 15_000 + ASK_TTL_MS + 1).kind, 'none', 'a decline fades so they can ask again later')
+eq(textOf({ id: 9, FromEmail: 'x', ToEmail: 'y', Kind: 'voice-no', Title: 'voice-no', Created: at_(0) }), '', 'a bare decline has no text (the kind name is not shown)')
+eq(conversations(yes, 'me@x').find(c => c.partner === 'a@x')!.lastText, '🎧 คุยเสียงกัน', 'voice events read as words in the list')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
