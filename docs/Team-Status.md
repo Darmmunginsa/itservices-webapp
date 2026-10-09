@@ -159,3 +159,8 @@
 - หน้าต่างหลักกับหน้าต่างแยกเปิดพร้อมกันได้ (เขียนตำแหน่งแถวเดียวกัน) — แต่ควรเดินจากหน้าต่างเดียว
 
 โค้ด: [`src/utils/popout.ts`](../src/utils/popout.ts) (`isPopout` `popoutUrl` `popoutFeatures` `unreadTitle` — 12 เทสต์) · `App.tsx` เปลือกบางเมื่อ popout
+
+### ไม่ลง Activity Log
+
+`HD_OfficePresence` (ตำแหน่ง + heartbeat ทุก 30 วิ) · `HD_OfficeChat` · `HD_TeamStatus` อยู่ในรายการยกเว้นของ `services/activityLog.ts`
+— วันแรกที่เปิดใช้ log ถูกแถว "แก้ไข HD_OfficePresence #1" ทุก 30 วิ ท่วมจนหาของจริงไม่เจอ · แถวเก่าที่ลงไปแล้วลบได้จากลิสต์ `HD_ActivityLog` กรอง ListName
