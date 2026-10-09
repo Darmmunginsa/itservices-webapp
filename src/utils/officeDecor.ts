@@ -8,8 +8,9 @@
 
 import { tileAt, isWalkable, type OfficeMap, type Pos } from './officeMap'
 
-export const DECOR_RADIUS = 2
-export const MAX_ITEMS = 16
+// รอบโต๊ะ 3 ช่อง = พื้นที่ 7×7 — เดิม 2 ช่อง (5×5) แต่งแล้วแน่นเกิน ผู้ใช้ขอขยาย
+export const DECOR_RADIUS = 3
+export const MAX_ITEMS = 24
 /** ของบนโต๊ะวางได้กี่ชิ้น — ซ้าย / ขวา / หน้า (จอกลางโต๊ะเป็นของโต๊ะอยู่แล้ว) */
 export const DESK_SLOTS = 3
 
@@ -135,6 +136,8 @@ export function canPlace(m: OfficeMap, mine: MyDecor, others: OthersDecor[], kin
   // โต๊ะส่วนตัววางบนพื้น ช่องโต๊ะจึงเป็นพื้นที่เดินได้ — ต้องกันของวางพื้นไม่ให้ทับโต๊ะตัวเอง
   if (def.surface === 'floor' && onMyDesk) return { ok: false, reason: `${def.label} วางบนพื้นรอบโต๊ะ ไม่ใช่บนโต๊ะ` }
   if (def.surface === 'floor' && !isWalkable(m, at.x, at.y)) return { ok: false, reason: `${def.label} ต้องวางบนพื้น` }
+  // อยู่โซนเดียวกับโต๊ะเท่านั้น — รัศมี 3 ช่องเลยกำแพงไปถึงห้องประชุม/มุมกาแฟ ซึ่งเป็นพื้นที่ส่วนกลาง
+  if (def.surface === 'floor' && tileAt(m, at.x, at.y) !== tileAt(m, mine.desk.x, mine.desk.y)) return { ok: false, reason: 'วางได้เฉพาะในโซนเดียวกับโต๊ะ — ห้องประชุม/มุมกาแฟเป็นพื้นที่ส่วนกลาง' }
   const here = mine.items.filter(i => i.id !== ignoreId && i.x === at.x && i.y === at.y)
   if (onMyDesk ? here.length >= DESK_SLOTS : here.length > 0) return { ok: false, reason: onMyDesk ? `บนโต๊ะวางได้ ${DESK_SLOTS} ชิ้น` : 'ช่องนี้มีของอยู่แล้ว' }
   if (others.some(o => o.decor.items.some(i => i.x === at.x && i.y === at.y))) return { ok: false, reason: 'ช่องนี้เป็นของแต่งของคนอื่น' }
