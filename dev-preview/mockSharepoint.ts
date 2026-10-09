@@ -4,3 +4,4 @@ export async function spGet<T>(): Promise<T[]> { return [] }
 export async function spCreate(): Promise<{ id: number }> { return { id: 1 } }
 export async function spUpdate(): Promise<void> {}
 export async function spDelete(): Promise<void> {}
+export async function spAttachmentBlob(): Promise<{ url: string; type: string }> { throw new Error('mock') }

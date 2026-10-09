@@ -9,7 +9,7 @@ import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendCh
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
 import { teamsChatLink } from '../../utils/virtualOffice'
 import { unreadTitle } from '../../utils/popout'
-import { TILE_STYLE } from './officeTiles'
+import { OfficeTile, OfficeDefs } from './OfficeTile'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
 //
@@ -280,28 +280,32 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         </div>
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onClick={() => boardRef.current?.focus()}
-          className={`relative overflow-auto rounded-2xl border-2 outline-none select-none ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
+          className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
           style={{ maxHeight: '70vh' }}>
           {!focused && pos && (
             <div className="absolute z-20 top-2 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white pointer-events-none">คลิกที่แผนที่แล้วใช้ลูกศรเดิน</div>
           )}
           <div className="relative" style={{ width: map.width * TILE, height: map.height * TILE }}>
             {/* พื้น */}
+            <OfficeDefs />
             {map.rows.map((row, y) => row.split('').map((ch, x) => {
-              const st = TILE_STYLE[ch] ?? TILE_STYLE['.']
               const walk = 'MFCS.E'.includes(ch)
               return (
                 <div key={`${x},${y}`} onClick={e => { if (walk) { e.stopPropagation(); boardRef.current?.focus(); walkTo({ x, y }) } }}
-                  className={`absolute flex items-center justify-center ${st.cls} ${walk ? 'cursor-pointer hover:brightness-95' : ''} ${ch === '#' ? '' : 'border border-black/5 dark:border-white/5'}`}
-                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, fontSize: 20 }}>
-                  {st.emoji}
+                  className={`absolute ${walk ? 'cursor-pointer hd-tile-walk' : ''}`}
+                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: 'dTPKW'.includes(ch) ? 1 : undefined }}>
+                  <OfficeTile rows={map.rows} x={x} y={y} size={TILE} />
                 </div>
               )
             }))}
-            {/* ป้ายโซน */}
+            {/* แสงจากหน้าต่างซ้ายบน + ขอบมืด — ให้ทั้งห้องดูมีความลึก */}
+            <div className="absolute inset-0 pointer-events-none z-[2]" style={{
+              background: 'radial-gradient(ellipse at 18% 8%, rgba(255,248,220,.28), transparent 55%), radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(15,23,42,.22) 100%)',
+            }} />
+            {/* ป้ายโซน — แผ่นป้ายติดผนัง */}
             {zoneLabels.map(l => (
-              <div key={l.zone} className="absolute pointer-events-none text-[10px] font-semibold text-gray-600/80 dark:text-gray-300/80 px-1"
-                style={{ left: l.x * TILE + 2, top: l.y * TILE + 1 }}>{ZONE_LABEL[l.zone]}</div>
+              <div key={l.zone} className="absolute pointer-events-none z-[5] text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-white/85 dark:bg-gray-900/85 text-gray-700 dark:text-gray-200 shadow-sm border border-black/5"
+                style={{ left: l.x * TILE + 3, top: l.y * TILE + 3 }}>{ZONE_LABEL[l.zone]}</div>
             ))}
             {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}
             {online.map(r => {
@@ -310,9 +314,10 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               return (
                 <a key={r.id} href={teamsChatLink(r.UserEmail)} target="_blank" rel="noopener noreferrer"
                   title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชท Teams`}
-                  className="absolute z-10 flex flex-col items-center"
+                  className="absolute z-10 flex flex-col items-center hd-avatar"
                   style={{ left: p.x * TILE, top: p.y * TILE - 8, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
-                  <span className="rounded-full ring-2" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
+                  <span className="hd-avatar-shadow" />
+                  <span className="rounded-full ring-2 shadow-md" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={r.UserName} size={28} />
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.UserName.split(/\s+/)[0]}</span>
@@ -323,9 +328,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {pos && (() => {
               const m = memberBy.get(me)
               return (
-                <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none"
+                <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none hd-avatar"
                   style={{ left: pos.x * TILE, top: pos.y * TILE - 8, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
-                  <span className="rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
+                  <span className="hd-avatar-shadow" />
+                  {/* key ตามตำแหน่ง = เล่นแอนิเมชันเด้ง 1 ครั้งทุกก้าว */}
+                  <span key={`${pos.x},${pos.y}`} className="hd-step rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 shadow-md" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={meName} size={28} />
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-primary-600 text-white whitespace-nowrap">ฉัน</span>

@@ -5,7 +5,7 @@ import { Button } from '../common/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { getOfficeMapRows, saveOfficeMap, resetOfficeMap } from '../../services/office'
 import { DEFAULT_MAP, TILE_PALETTE, setTile, resizeMap, blankMap, validateMap, parseMap, spawnPoint } from '../../utils/officeMap'
-import { TILE_STYLE } from '../team/officeTiles'
+import { OfficeTile, OfficeDefs } from '../team/OfficeTile'
 
 // ── Admin: ตัวแก้ผังออฟฟิศ 2D — ระบายสีช่องด้วยเมาส์ ไม่ต้องพิมพ์ตัวอักษรเอง ──
 //
@@ -13,6 +13,14 @@ import { TILE_STYLE } from '../team/officeTiles'
 // ตรวจก่อนบันทึก: ขอบต้องเป็นกำแพง · ต้องมีจุดเกิด · เตือนห้องที่เดินไปไม่ถึง
 
 const TILE = 24
+
+// ตัวอย่างในจานสี — วางช่องนั้นกลางผัง 3×3: เฟอร์นิเจอร์อยู่บนพื้นไม้ · กำแพงมีพื้นข้างล่างเลยเห็นหน้าผนัง · พื้นโชว์ลายเต็ม
+const PALETTE_ROWS: Record<string, string[]> = Object.fromEntries(
+  TILE_PALETTE.map(t => [t.ch,
+    t.ch === '#' ? ['###', '###', '...']
+      : 'dTPKW'.includes(t.ch) ? ['...', `.${t.ch}.`, '...']
+        : [t.ch.repeat(3), t.ch.repeat(3), t.ch.repeat(3)]]),
+)
 
 export function OfficeMapEditor() {
   const { addToast } = useAppStore()
@@ -111,14 +119,14 @@ export function OfficeMapEditor() {
       </p>
 
       {/* จานสี */}
+      <OfficeDefs />
       <div className="flex flex-wrap gap-1.5 mb-3">
         {TILE_PALETTE.map(t => {
-          const st = TILE_STYLE[t.ch]
           const on = brush === t.ch
           return (
             <button key={t.ch} onClick={() => setBrush(t.ch)} title={t.hint}
               className={`flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-lg border text-xs ${on ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-              <span className={`inline-flex items-center justify-center rounded ${st.cls}`} style={{ width: 20, height: 20, fontSize: 13 }}>{st.emoji ?? (t.ch === '#' ? '' : '')}</span>
+              <span className="inline-flex rounded overflow-hidden"><OfficeTile rows={PALETTE_ROWS[t.ch]} x={1} y={1} size={22} /></span>
               {t.label}
               <span className="font-mono text-[10px] text-gray-400">{t.ch}</span>
             </button>
@@ -142,17 +150,18 @@ export function OfficeMapEditor() {
         <div className="overflow-auto border border-gray-200 dark:border-gray-800 rounded-xl select-none" style={{ maxHeight: '60vh' }}
           onMouseLeave={endStroke}>
           <div className="relative" style={{ width: w * TILE, height: h * TILE }}>
+            <OfficeDefs />
             {rows.map((row, y) => row.split('').map((ch, x) => {
-              const st = TILE_STYLE[ch] ?? TILE_STYLE['.']
               const isSpawn = spawn && spawn.x === x && spawn.y === y
               return (
                 <div key={`${x},${y}`}
                   onMouseDown={e => { e.preventDefault(); beginStroke(x, y) }}
                   onMouseEnter={() => paint(x, y)}
                   title={`(${x},${y}) ${TILE_PALETTE.find(t => t.ch === ch)?.label ?? ch}`}
-                  className={`absolute flex items-center justify-center cursor-crosshair ${st.cls} ${ch === '#' ? '' : 'border border-black/5 dark:border-white/5'}`}
-                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, fontSize: 13 }}>
-                  {isSpawn ? <span title="จุดเกิดของคนใหม่" className="w-2.5 h-2.5 rounded-full bg-primary-600 ring-2 ring-white" /> : st.emoji}
+                  className="absolute cursor-crosshair hover:brightness-110"
+                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: 'dTPKW'.includes(ch) ? 1 : undefined }}>
+                  <OfficeTile rows={rows} x={x} y={y} size={TILE} />
+                  {isSpawn && <span title="จุดเกิดของคนใหม่" className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full bg-primary-600 ring-2 ring-white" />}
                 </div>
               )
             }))}
