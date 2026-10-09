@@ -1,5 +1,5 @@
 import { RotateCw, FlipHorizontal2, Trash2, Save, X, MoveRight, LogOut, RotateCcwSquare } from 'lucide-react'
-import { CATALOG, DESK_STYLES, MAX_ITEMS, DECOR_RADIUS, DESK_SLOTS, type MyDecor } from '../../utils/officeDecor'
+import { CATALOG, DESK_STYLES, MAX_ITEMS, DESK_ITEM_SLOTS, type MyDecor } from '../../utils/officeDecor'
 import { DecorSprite } from './DecorSprite'
 import { DeskSprite } from './DeskSprite'
 
@@ -34,9 +34,9 @@ export function DecorPanel(p: Props) {
         <p className="text-xs font-semibold">🎨 ตกแต่งโต๊ะของฉัน</p>
         <p className="text-[10px] text-gray-500 mt-0.5">
           {!p.draft.desk
-            ? 'เลือกแบบโต๊ะด้านล่าง แล้วคลิกช่องเขียวบนแผนที่ เพื่อวางโต๊ะตรงไหนก็ได้ในโซนทำงาน / ห้องโฟกัส'
-            : p.movingDesk ? 'คลิกช่องเขียวเพื่อย้ายโต๊ะไปที่นั่น — ของแต่งย้ายตาม'
-            : `เลือกของแล้วคลิกช่องสีเขียวรอบโต๊ะ (${DECOR_RADIUS} ช่อง) · บนโต๊ะวางได้ ${DESK_SLOTS} ชิ้น · ${p.draft.items.length}/${MAX_ITEMS} ชิ้น`}
+            ? 'เลือกแบบโต๊ะ แล้วคลิกช่องเขียว = ตำแหน่งกลางโต๊ะ (โต๊ะกิน 3×3 ช่อง แถวล่างเป็นที่นั่ง)'
+            : p.movingDesk ? 'คลิกช่องเขียว (กลางโต๊ะ) เพื่อย้ายโต๊ะไปที่นั่น — ของแต่งย้ายตาม'
+            : `เลือกของแล้วคลิกช่องสีเขียว · ของบนโต๊ะวางที่มุมโต๊ะ ${DESK_ITEM_SLOTS} จุด · ของวางพื้นรอบโต๊ะ 2 ช่อง · ${p.draft.items.length}/${MAX_ITEMS} ชิ้น`}
         </p>
       </div>
 

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
-  parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
-  KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir,
+  parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap,
 } from '../../utils/officeMap'
 import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, type PresenceRow, type ChatRow } from '../../services/office'
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
@@ -17,7 +16,7 @@ import { DecorSprite } from './DecorSprite'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
-import { deskSpots, placeableTiles, deskSlot, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
+import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, joinMuted, HEAR_RADIUS } from '../../utils/voiceProximity'
 
@@ -27,6 +26,16 @@ import { decodeRoom, encodeRoom, joinMuted, HEAR_RADIUS } from '../../utils/voic
 // เข้าโซน → แจ้ง onZoneChange ให้หน้าแม่ตั้งสถานะ · แชท 2 แท็บ: ทั้งออฟฟิศ / ห้องที่ยืนอยู่
 
 const TILE = 36
+
+// แผนที่สำหรับเดิน — คำนวณใหม่เฉพาะเมื่อผังหรือชุดโต๊ะเปลี่ยน (cache ค่าล่าสุดค่าเดียว)
+// ไม่ใช้ useMemo: React compiler ไม่ยอมให้ memo ที่อ่าน map.rows แต่ deps เป็น string ที่คำนวณต่อ render
+let _walkCache: { rows: string[]; key: string; map: OfficeMap } | null = null
+function walkMapFor(rows: string[], key: string): OfficeMap {
+  if (_walkCache && _walkCache.rows === rows && _walkCache.key === key) return _walkCache.map
+  const m = parseMap(walkableRows(rows, new Set(key ? key.split(';') : [])))
+  _walkCache = { rows, key, map: m }
+  return m
+}
 const POLL_MS = 3000
 const FLUSH_MS = 1500
 const HEARTBEAT_MS = 30_000
@@ -83,6 +92,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const baseTitle = useRef(document.title)
   const dirty = useRef(false)
   const posRef = useRef<Pos | null>(null)
+  // แผนที่สำหรับเดิน = ผังออฟฟิศ + ตัวโต๊ะส่วนตัว 3×3 ที่ขวางทาง (อัปเดตเมื่อโหลดโต๊ะของทีม)
+  const walkRef = useRef<OfficeMap>(map)
   // ไมค์เปิดอยู่ไหม — ฝากไปกับตำแหน่ง (ช่อง Room = "desk:mic") ให้คนอื่นรู้ว่าต่อสายได้
   const micRef = useRef(false)
   const mutedRef = useRef(false)
@@ -182,7 +193,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     const cur = posRef.current
     if (!cur) return
     stopWalk()
-    const next = step(map, cur, dir)
+    const next = step(walkRef.current, cur, dir)
     if (next === cur) return
     posRef.current = next
     dirty.current = true
@@ -217,7 +228,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const walkTo = useCallback((target: Pos) => {
     if (!posRef.current) return
     stopWalk()
-    const path = findPath(map, posRef.current, target)
+    const path = findPath(walkRef.current, posRef.current, target)
     if (!path.length) return
     const queue = [...path]
     const tick = () => {
@@ -343,6 +354,18 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     ...decor.others,
     { email: me, name: meName, decor: decor.mine },
   ]
+  // ตัวโต๊ะส่วนตัว (6 ช่อง/คน) ขวางทางเดิน — สร้างแผนที่เดินใหม่เมื่อชุดโต๊ะเปลี่ยนเท่านั้น
+  const blockedKey = [...blockedTiles(allDecor.map(d => d.decor.desk))].sort().join(';')
+  const walkMap = walkMapFor(map.rows, blockedKey)
+  useEffect(() => {
+    walkRef.current = walkMap
+    // ยืนอยู่ตรงที่กลายเป็นตัวโต๊ะ (มีคนเพิ่งวางโต๊ะทับ) → ย้ายไปจุดเกิด ไม่ให้ติดอยู่ในโต๊ะ
+    const p = posRef.current
+    if (p && !isWalkable(walkMap, p.x, p.y)) {
+      const out = spawnPoint(walkMap, hashIndex(me))
+      Promise.resolve().then(() => { posRef.current = out; dirty.current = true; setPos(out) })
+    }
+  }, [walkMap, me])
   const hiTiles = decor.decorating
     ? (decor.movingDesk || !decor.draft.desk ? deskSpots(map, decor.draft, decor.others) : decor.kind ? placeableTiles(map, decor.draft, decor.others, decor.kind) : [])
     : []
@@ -516,15 +539,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {/* ── ของแต่งของทุกคน + ป้ายชื่อโต๊ะ ── (ไม่ขวางการคลิก — คลิกตกลงที่ช่องข้างใต้) */}
             {allDecor.map(d => (<div key={d.email} className="contents">
               {d.decor.desk && (
-                <div className="absolute pointer-events-none" style={{ left: d.decor.desk.x * TILE, top: d.decor.desk.y * TILE, width: TILE, height: TILE, zIndex: 2 }}>
-                  <DeskSprite style={d.decor.desk.style} rot={d.decor.desk.rot} size={TILE} />
+                <div className="absolute pointer-events-none" style={{ left: (d.decor.desk.x - 1) * TILE, top: (d.decor.desk.y - 1) * TILE, width: TILE * 3, height: TILE * 3, zIndex: 2 }}>
+                  <DeskSprite style={d.decor.desk.style} rot={d.decor.desk.rot} size={TILE * 3} />
                 </div>
               )}
               {d.decor.items.map(it => {
-                const slot = deskSlot(d.decor, it)
-                // ของบนโต๊ะ: ย่อลงครึ่งหนึ่ง วางซ้าย / ขวา / หน้าจอ — จอกลางโต๊ะยังเห็น
-                const off = slot === 0 ? [-9, -2] : slot === 1 ? [9, -2] : slot === 2 ? [0, 7] : [0, 0]
-                const size = slot >= 0 ? TILE * 0.5 : TILE
+                // โต๊ะ 3×3 ใหญ่พอ — ของบนมุมโต๊ะใช้ขนาดเต็มช่องได้เลย (ย่อนิดเดียวให้เห็นขอบโต๊ะ)
+                const onDesk = d.decor.desk && Math.max(Math.abs(it.x - d.decor.desk.x), Math.abs(it.y - d.decor.desk.y)) <= 1
+                const size = onDesk ? TILE * 0.8 : TILE
+                const off = [0, 0]
                 const sel = decor.decorating && d.email === me && decor.selected === it.id
                 return (
                   <div key={it.id} className={`absolute pointer-events-none ${sel ? 'hd-decor-sel' : ''}`}
@@ -534,8 +557,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 )
               })}
               {d.decor.desk && (
-                <div className="absolute pointer-events-none z-[4] flex justify-center" style={{ left: d.decor.desk.x * TILE - 8, top: d.decor.desk.y * TILE - 7, width: TILE + 16 }}>
-                  <span className={`text-[8px] leading-none px-1 py-0.5 rounded shadow-sm truncate max-w-full ${d.email === me ? 'bg-primary-600 text-white' : 'bg-amber-900/85 text-amber-50'}`}>
+                <div className="absolute pointer-events-none z-[4] flex justify-center" style={{ left: (d.decor.desk.x - 1) * TILE, top: (d.decor.desk.y - 1) * TILE - 8, width: TILE * 3 }}>
+                  <span className={`text-[10px] leading-none px-1.5 py-0.5 rounded shadow-sm truncate max-w-full ${d.email === me ? 'bg-primary-600 text-white' : 'bg-amber-900/85 text-amber-50'}`}>
                     {d.email === me ? 'โต๊ะฉัน' : d.name.split(/\s+/)[0]}
                   </span>
                 </div>
@@ -561,7 +584,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}
             {online.map(r => {
               const m = memberBy.get(r.email.toLowerCase())
-              const p = clampToMap(map, { x: r.X, y: r.Y }, hashIndex(r.email))
+              const p = clampToMap(walkMap, { x: r.X, y: r.Y }, hashIndex(r.email))
               return (
                 <button key={r.id} onClick={e => { e.stopPropagation(); openDM(r.UserEmail) }}
                   title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}

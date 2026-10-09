@@ -138,7 +138,10 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
     begin, cancel, save, onTileClick, act, releaseDesk,
     deskStyle: draft.desk?.style ?? pendingStyle,
     pickDeskStyle: (st: string) => { if (draft.desk) setDraft(d => setDeskStyle(d, st)); else setPendingStyle(st) },
-    turnDesk: () => setDraft(d => rotateDesk(d)),
+    turnDesk: () => {
+      const r = rotateDesk(map, draft, others)
+      if ('error' in r) cb.current.onError(r.error); else setDraft(r.decor)
+    },
     pickKind: (k: string | null) => { setKind(k); setSelected(null) },
     startMoveDesk: () => { setMovingDesk(true); setKind(null); setSelected(null) },
     selectedLabel: selectedItem ? defOf(selectedItem.kind)?.label ?? '' : '',

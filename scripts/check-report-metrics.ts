@@ -29,7 +29,7 @@ import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, c
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
-import { parseDecor, serializeDecor, deskSpots, canPlaceDesk, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, placeDesk, setDeskStyle, rotateDesk, deskSlot, emptyDecor, CATALOG, DESK_STYLES, MAX_ITEMS, DESK_SLOTS } from '../src/utils/officeDecor'
+import { parseDecor, serializeDecor, deskSpots, canPlaceDesk, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, placeDesk, setDeskStyle, rotateDesk, deskFootprint, deskSurface, deskItemSlots, blockedTiles, walkableRows, emptyDecor, CATALOG, DESK_STYLES, MAX_ITEMS, type MyDecor as MyDecorT } from '../src/utils/officeDecor'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2212,63 +2212,84 @@ eq(textOf({ id: 9, FromEmail: 'x', ToEmail: 'y', Kind: 'voice-no', Title: 'voice
 eq(conversations(yes, 'me@x').find(c => c.partner === 'a@x')!.lastText, '🎧 คุยเสียงกัน', 'voice events read as words in the list')
 
 
-// -- ตกแต่งโต๊ะ (utils/officeDecor) — วางโต๊ะเองได้ทุกที่ในโซนทำงาน/โฟกัส --
-const DM2 = parseMap(['###########', '#.........#', '#.d.......#', '#.........#', '#.........#', '#FFF#MMMMM#', '###########'])
-const other = { email: 'b@x', name: 'B', decor: { desk: { x: 8, y: 2, style: 'white', rot: 0 as const }, items: [{ id: 'z', kind: 'fern', x: 7, y: 3, rot: 0 as const, flip: false }] } }
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 4, y: 3 }).ok, true, 'any free desk-zone floor tile can hold my desk')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 2, y: 5 }).ok, true, 'the focus room is allowed too')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 6, y: 5 }).ok, false, 'not in the meeting room')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 2, y: 2 }).ok, false, 'not on a shared (hot) desk from the map')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 0, y: 1 }).ok, false, 'not on a wall')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 8, y: 2 }).ok, false, 'not on someone else\u2019s desk')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 7, y: 1 }).ok, false, 'leave at least one tile between desks')
-eq(canPlaceDesk(DM2, emptyDecor(), [other], { x: 7, y: 3 }).ok, false, 'not on someone else\u2019s decor')
-eq(deskSpots(DM2, emptyDecor(), [other]).every(p => canPlaceDesk(DM2, emptyDecor(), [other], p).ok), true, 'highlighted spots are all valid')
-const c2 = placeDesk(DM2, emptyDecor(), [other], { x: 3, y: 2 }, 'gaming') as { decor: ReturnType<typeof emptyDecor> }
-let mineD = c2.decor
-eq(`${mineD.desk!.x},${mineD.desk!.y},${mineD.desk!.style},${mineD.desk!.rot}`, '3,2,gaming,0', 'placing a desk with a chosen style')
-eq('error' in placeDesk(DM2, emptyDecor(), [other], { x: 6, y: 5 }), true, 'placeDesk refuses with a reason')
-eq(setDeskStyle(mineD, 'executive').desk!.style, 'executive', 'style can be changed later')
-eq(setDeskStyle(mineD, 'spaceship').desk!.style, 'gaming', 'unknown styles are ignored')
-eq(rotateDesk(rotateDesk(mineD)).desk!.rot, 180, 'desk rotates in quarter turns')
-eq(new Set(DESK_STYLES.map(d => d.style)).size >= 9, true, 'at least nine desk styles')
-eq(canPlace(DM2, emptyDecor(), [], 'fern', { x: 1, y: 1 }).ok, false, 'nothing can be placed before claiming a desk')
-eq(canPlace(DM2, mineD, [other], 'mug', { x: 3, y: 2 }).ok, true, 'desk items go on my own desk')
-eq(canPlace(DM2, mineD, [other], 'mug', { x: 4, y: 2 }).ok, false, '…and nowhere else')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 3, y: 2 }).ok, false, 'floor items cannot go on the desk')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 5, y: 4 }).ok, true, 'floor items go on floor within the radius')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 7, y: 3 }).ok, false, 'not on a tile where someone else already decorated (and outside my radius)')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 6, y: 1 }).ok, true, 'three tiles away is inside the radius now')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 6, y: 5 }).ok, false, 'not into the meeting room even inside the radius — it is shared space')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 3, y: 5 }).ok, false, 'not into the focus room either when my desk is on the desk floor')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 7, y: 1 }).ok, false, 'four tiles away is outside the radius')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 2, y: 2 }).ok, false, 'not on the shared desk tile (it is furniture)')
-eq(canPlace(DM2, mineD, [other], 'unicorn', { x: 1, y: 1 }).ok, false, 'unknown kinds are refused')
-for (let i = 0; i < DESK_SLOTS; i++) mineD = placeItem(mineD, 'mug', { x: 3, y: 2 })
-eq(canPlace(DM2, mineD, [other], 'lamp', { x: 3, y: 2 }).ok, false, `the desk holds ${DESK_SLOTS} items`)
-eq(mineD.items.map(it => deskSlot(mineD, it)).join(','), '0,1,2', 'desk items take slots left, right, front in order')
-mineD = placeItem(mineD, 'cat', { x: 2, y: 3 })
-eq(deskSlot(mineD, mineD.items[3]), -1, 'a floor item has no desk slot')
-eq(canPlace(DM2, mineD, [other], 'fern', { x: 2, y: 3 }).ok, false, 'one floor item per tile')
-const catId = mineD.items[3].id
-eq(rotateItem(rotateItem(rotateItem(rotateItem(mineD, catId), catId), catId), catId).items[3].rot, 0, 'four quarter turns come back to 0')
-eq(rotateItem(mineD, catId).items[3].rot, 90, 'rotate is 90° clockwise')
-eq(flipItem(mineD, catId).items[3].flip, true, 'flip mirrors')
-eq(removeItem(mineD, catId).items.length, 3, 'remove takes it out')
-eq(placeableTiles(DM2, mineD, [other], 'mug').length, 0, 'a full desk offers no tiles for desk items')
-eq(placeableTiles(DM2, mineD, [other], 'fern').every(p => Math.max(Math.abs(p.x - 3), Math.abs(p.y - 2)) <= 3), true, 'highlighted tiles are all inside the radius')
-// ย้ายโต๊ะ: ของตามไปด้วย ตัวที่วางไม่ได้ทิ้ง
-const moved = placeDesk(DM2, mineD, [], { x: 6, y: 3 }) as { decor: typeof mineD; dropped: number }
-eq(`${moved.decor.desk!.x},${moved.decor.desk!.y},${moved.decor.desk!.style}`, '6,3,gaming', 'moving the desk keeps its style')
-eq(moved.decor.items.filter(it => it.x === 6 && it.y === 3).length, 3, 'desk items move with the desk')
-eq(moved.decor.items.find(it => it.kind === 'cat')!.x, 5, 'floor items keep their offset')
-eq(parseDecor(JSON.stringify({ desk: { x: 1, y: 1, style: 'spaceship', rot: 33 } })).desk!.style + parseDecor(JSON.stringify({ desk: { x: 1, y: 1, style: 'spaceship', rot: 33 } })).desk!.rot, 'classic0', 'bad desk style/rotation fall back to classic, 0°')
+// -- ตกแต่งโต๊ะ (utils/officeDecor) — โต๊ะส่วนตัว 3×3 วางเองได้ ตัวโต๊ะขวางทาง แถวล่างเป็นที่นั่ง --
+const DM3 = parseMap([
+  '#############',
+  '#...........#',
+  '#...........#',
+  '#...........#',
+  '#.....d.....#',
+  '#...........#',
+  '#...........#',
+  '#FFFFF#MMMMM#',
+  '#FFFFF#MMMMM#',
+  '#FFFFF#MMMMM#',
+  '#############',
+])
+const kk = (p: { x: number; y: number }) => `${p.x},${p.y}`
+const other3 = { email: 'b@x', name: 'B', decor: { desk: { x: 9, y: 2, style: 'white', rot: 0 as const }, items: [{ id: 'z', kind: 'fern', x: 2, y: 5, rot: 0 as const, flip: false }] } }
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 3, y: 2 }).ok, true, 'a 3x3 desk fits on open desk floor')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 1, y: 2 }).ok, false, 'all nine tiles must be floor — not into the wall')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 6, y: 3 }).ok, false, 'not over a shared hot desk')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 3, y: 8 }).ok, true, 'fits in the focus room')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 9, y: 8 }).ok, false, 'not in the meeting room')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 6, y: 2 }).ok, false, 'too close to another desk (no walkway)')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 5, y: 2 }).ok, true, 'one free column between desks is enough')
+eq(canPlaceDesk(DM3, emptyDecor(), [other3], { x: 2, y: 5 }).ok, false, 'not over someone else\u2019s decor')
+eq(deskSpots(DM3, emptyDecor(), [other3]).every(p => canPlaceDesk(DM3, emptyDecor(), [other3], p).ok), true, 'highlighted desk centres are all valid')
+const CC = parseMap(['#######', '#.....#', '#.....#', '#.....#', '###.###', '#.....#', '#######'])
+eq(canPlaceDesk(CC, emptyDecor(), [], { x: 3, y: 2 }, 0).ok, true, 'seat row facing the corridor keeps the way open')
+eq(canPlaceDesk(CC, emptyDecor(), [], { x: 3, y: 2 }, 180).ok, false, 'turned round, the desk would seal the corridor — refused')
+let m3 = (placeDesk(DM3, emptyDecor(), [other3], { x: 3, y: 2 }, 'gaming') as { decor: MyDecorT }).decor
+eq(`${m3.desk!.x},${m3.desk!.y},${m3.desk!.style},${m3.desk!.rot}`, '3,2,gaming,0', 'placing a desk with a chosen style')
+eq('error' in placeDesk(DM3, emptyDecor(), [other3], { x: 9, y: 8 }), true, 'placeDesk refuses with a reason')
+eq(deskFootprint(m3.desk!).length, 9, 'a desk covers nine tiles')
+eq(deskSurface(m3.desk!).map(kk).join(' '), '2,1 3,1 4,1 2,2 3,2 4,2', 'facing down: the top two rows are the desk itself')
+eq(deskItemSlots(m3.desk!).map(kk).join(' '), '2,1 4,1 2,2 4,2', 'desk items sit on the four corners (monitor and keyboard stay clear)')
+const WM = parseMap(walkableRows(DM3.rows, blockedTiles([m3.desk, null])))
+eq(isWalkable(WM, 3, 2), false, 'you cannot walk through the desk')
+eq(isWalkable(WM, 3, 3), true, '…but you can step into the seat row')
+eq(blockedTiles([m3.desk, other3.decor.desk]).size, 12, 'each desk blocks six tiles')
+eq(canPlace(DM3, m3, [other3], 'mug', { x: 2, y: 1 }).ok, true, 'a desk item on a corner of my desk')
+eq(canPlace(DM3, m3, [other3], 'mug', { x: 3, y: 1 }).ok, false, '…not where the monitor is')
+eq(canPlace(DM3, m3, [other3], 'mug', { x: 3, y: 3 }).ok, false, '…not on the seat row')
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 3, y: 3 }).ok, false, 'floor items are not allowed on the seat row either')
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 5, y: 2 }).ok, true, 'floor items go around the desk')
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 6, y: 2 }).ok, true, '…up to two tiles past the desk edge')
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 7, y: 2 }).ok, false, '…not three')
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 3, y: 6 }).ok, false, 'outside the radius (desk centre + 3) is refused')
+eq(canPlace(DM3, emptyDecor(), [], 'fern', { x: 1, y: 1 }).ok, false, 'nothing can be placed before placing a desk')
+eq(canPlace(DM3, m3, [other3], 'unicorn', { x: 5, y: 1 }).ok, false, 'unknown kinds are refused')
+for (const p of deskItemSlots(m3.desk!)) m3 = placeItem(m3, 'mug', p)
+eq(placeableTiles(DM3, m3, [other3], 'lamp').length, 0, 'a desk with all four corners used offers no more desk spots')
+m3 = placeItem(m3, 'cat', { x: 5, y: 3 })
+eq(canPlace(DM3, m3, [other3], 'fern', { x: 5, y: 3 }).ok, false, 'one floor item per tile')
+const catId3 = m3.items[4].id
+eq(rotateItem(rotateItem(rotateItem(rotateItem(m3, catId3), catId3), catId3), catId3).items[4].rot, 0, 'four quarter turns come back to 0')
+eq(flipItem(m3, catId3).items[4].flip, true, 'flip mirrors')
+eq(removeItem(m3, catId3).items.length, 4, 'remove takes it out')
+eq(setDeskStyle(m3, 'executive').desk!.style, 'executive', 'desk style can be changed later')
+eq(setDeskStyle(m3, 'spaceship').desk!.style, 'gaming', 'unknown styles are ignored')
+// หมุนโต๊ะ: ของบนมุมโต๊ะหมุนตาม ของวางพื้นอยู่ที่เดิม
+const rot3 = rotateDesk(DM3, m3, [other3]) as { decor: MyDecorT }
+eq(rot3.decor.desk!.rot, 90, 'desk turns a quarter')
+eq(rot3.decor.items.filter(i => i.kind === 'mug').map(kk).sort().join(' '), deskItemSlots(rot3.decor.desk!).map(kk).sort().join(' '), 'desk items turn with the desk and land exactly on the new corners')
+eq(deskSurface(rot3.decor.desk!).some(p => p.x === 2), false, 'facing left after turning: the seat column is x=2')
+eq(rot3.decor.items.find(i => i.kind === 'cat')!.x, 5, 'floor items do not move when the desk turns')
+eq('error' in rotateDesk(CC, (placeDesk(CC, emptyDecor(), [], { x: 3, y: 2 }) as { decor: MyDecorT }).decor, []), true, 'turning sideways in the corridor room would cover the corridor mouth — refused, desk stays as it was')
+// ย้ายโต๊ะ: ของตามไปด้วย
+const mv3 = placeDesk(DM3, m3, [], { x: 3, y: 5 }) as { decor: MyDecorT; dropped: number }
+eq(`${mv3.decor.desk!.x},${mv3.decor.desk!.y},${mv3.decor.desk!.style}`, '3,5,gaming', 'moving the desk keeps its style')
+eq(mv3.decor.items.filter(i => i.kind === 'mug').length, 4, 'desk items move with the desk')
+eq(mv3.decor.items.find(i => i.kind === 'cat')!.y, 6, 'floor items keep their offset')
+eq(DESK_STYLES.length >= 9, true, 'at least nine desk styles')
 // JSON จาก SharePoint
-const decorRound = parseDecor(serializeDecor(mineD))
-eq(decorRound.items.length, mineD.items.length, 'serialize → parse round-trips')
+const decorRound = parseDecor(serializeDecor(m3))
+eq(decorRound.items.length, m3.items.length, 'serialize → parse round-trips')
 eq(parseDecor('not json').desk, null, 'garbage becomes empty, never a crash')
 eq(parseDecor(JSON.stringify({ desk: { x: 1, y: 1 }, items: [{ kind: 'unicorn', x: 1, y: 1 }, { kind: 'mug', x: 1, y: 1, rot: 45 }] })).items.map(i => `${i.kind}:${i.rot}`).join(','), 'mug:0', 'unknown kinds dropped, bad rotation reset')
 eq(parseDecor(JSON.stringify({ items: Array.from({ length: 40 }, () => ({ kind: 'mug', x: 1, y: 1 })) })).items.length, MAX_ITEMS, 'item count capped')
+eq(parseDecor(JSON.stringify({ desk: { x: 1, y: 1, style: 'spaceship', rot: 33 } })).desk!.style, 'classic', 'bad desk style falls back to classic')
 eq(new Set(CATALOG.map(c => c.kind)).size, CATALOG.length, 'catalog kinds are unique')
 eq(CATALOG.length >= 25, true, 'at least 25 items to choose from')
 

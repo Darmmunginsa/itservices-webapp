@@ -15,18 +15,19 @@ import type { StatusType } from '../types/teamStatus'
  *  d  โต๊ะ+คอม (เดินไม่ได้)      T  โต๊ะประชุม (เดินไม่ได้)
  *  P  ต้นไม้ · K เครื่องกาแฟ · W ไวท์บอร์ด · E ประตูออก (เดินได้ = ออกไซต์)
  */
+// โต๊ะส่วนกลาง (hot desk) แถวเดียว — พื้นที่ที่เหลือเปิดโล่งไว้ให้สมาชิกวางโต๊ะส่วนตัว 3×3 เอง
 export const DEFAULT_MAP = [
   '############################',
   '#..........#MMMMMMMMMMW....#',
   '#.dd.dd.dd.#MMMTTTTMMM.....#',
   '#..........#MMMTTTTMMM.PP..#',
-  '#.dd.dd.dd.#MMMMMMMMMM.....#',
+  '#..........#MMMMMMMMMM.....#',
   '#..........####...####.....#',
-  '#.dd.dd.dd.................#',
+  '#..........................#',
   '#..........P..........P....#',
   '#######..#######....###..###',
   '#FFFFF..FFF#CCCCCCCCCC#SSSE#',
-  '#FFdFF..FdF#CKCCCCCCCC#SSSS#',
+  '#FFFFF..FFF#CKCCCCCCCC#SSSS#',
   '#FFFFF..FFF#CCCTTCCCCC#SSSS#',
   '#FFFFF..FFF#CCCCCCCCCC#SSSS#',
   '############################',
