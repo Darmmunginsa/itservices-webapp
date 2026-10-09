@@ -18,20 +18,26 @@ import type { StatusType } from '../types/teamStatus'
 // โต๊ะส่วนกลาง (hot desk) แถวเดียว — พื้นที่ที่เหลือเปิดโล่งไว้ให้สมาชิกวางโต๊ะส่วนตัว 3×3 เอง
 export const DEFAULT_MAP = [
   '############################',
-  '#..........#MMMMMMMMMMW....#',
+  '#..........#MMMMMMMMMMW...L#',
   '#.dd.dd.dd.#MMMTTTTMMM.....#',
-  '#..........#MMMTTTTMMM.PP..#',
+  '#..........#MMMTTTTMMM.GY..#',
   '#..........#MMMMMMMMMM.....#',
   '#..........####...####.....#',
   '#..........................#',
-  '#..........P..........P....#',
+  '#N.........R..........J....#',
   '#######..#######....###..###',
   '#FFFFF..FFF#CCCCCCCCCC#SSSE#',
-  '#FFFFF..FFF#CKCCCCCCCC#SSSS#',
+  '#FFFFF..FFZ#CKCCCCCCCC#SSSS#',
   '#FFFFF..FFF#CCCTTCCCCC#SSSS#',
   '#FFFFF..FFF#CCCCCCCCCC#SSSS#',
   '############################',
 ]
+
+/** ต้นไม้ทุกชนิด — วาดแบบมองด้านข้าง สูงล้นขึ้นไปช่องบนได้ · เดินผ่านไม่ได้ */
+export const PLANT_TILES = 'PGYLRUZNJ'
+/** ช่องเฟอร์นิเจอร์/ต้นไม้ — วางชั้นเหนือพื้น (วาดล้นขอบช่องได้โดยไม่ถูกช่องข้าง ๆ ทับ) */
+export const FURNITURE_TILES = 'dTKW' + PLANT_TILES
+export const isFurnitureTile = (ch: string): boolean => FURNITURE_TILES.includes(ch)
 
 export type Zone = 'desk' | 'meeting' | 'focus' | 'cafe' | 'site'
 
@@ -165,7 +171,15 @@ export const TILE_PALETTE: TileDef[] = [
   { ch: 'E', label: 'ประตูออก',      walkable: true,  hint: 'เหมือนโซนไซต์ แต่มีรูปประตู' },
   { ch: 'd', label: 'โต๊ะ + คอม',     walkable: false, hint: 'เฟอร์นิเจอร์ (เดินไม่ได้)' },
   { ch: 'T', label: 'โต๊ะประชุม',    walkable: false, hint: 'เฟอร์นิเจอร์ (เดินไม่ได้)' },
-  { ch: 'P', label: 'ต้นไม้',        walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
+  { ch: 'P', label: 'มอนสเตอร่า',    walkable: false, hint: 'ต้นไม้ — ใบใหญ่ฉีกแฉก พุ่มกว้าง' },
+  { ch: 'G', label: 'ปาล์ม',         walkable: false, hint: 'ต้นไม้ — ลำต้นสูง ทางใบแผ่' },
+  { ch: 'Y', label: 'ไผ่',           walkable: false, hint: 'ต้นไม้ — หลายลำ ใบเรียวไหวลม' },
+  { ch: 'L', label: 'ไทรใบสัก',      walkable: false, hint: 'ต้นไม้ — ใบใหญ่ซ้อนเป็นชั้น' },
+  { ch: 'R', label: 'เฟื่องฟ้า',      walkable: false, hint: 'ต้นไม้ — พุ่มกลม ดอกชมพูเต็มต้น' },
+  { ch: 'U', label: 'กระบองเพชรยักษ์', walkable: false, hint: 'ต้นไม้ — ลำสูงมีแขน' },
+  { ch: 'Z', label: 'บอนไซ',         walkable: false, hint: 'ต้นไม้ — ลำต้นบิด พุ่มเป็นแพ' },
+  { ch: 'N', label: 'สน',            walkable: false, hint: 'ต้นไม้ — ชั้นใบสามเหลี่ยม' },
+  { ch: 'J', label: 'ลีลาวดี',        walkable: false, hint: 'ต้นไม้ — กิ่งอวบ ดอกขาวเหลือง' },
   { ch: 'K', label: 'เครื่องกาแฟ',   walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
   { ch: 'W', label: 'ไวท์บอร์ด',     walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
 ]

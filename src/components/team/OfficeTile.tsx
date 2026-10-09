@@ -1,3 +1,5 @@
+import { FURNITURE_TILES as FURNITURE, PLANT_TILES } from '../../utils/officeMap'
+import { PlantArt } from './PlantArt'
 import { memo } from 'react'
 
 // ── สไปรต์ของช่องบนแผนที่ออฟฟิศ — มุมมอง 3/4 แบบ Gather ──
@@ -10,7 +12,6 @@ export type At = (dx: number, dy: number) => string
 
 const FLOOR_OF = new Set(['.', 'M', 'F', 'C', 'S', 'E'])
 /** ช่องที่วาดล้นออกนอกขอบ (เก้าอี้/เงา) — ผู้ใช้ควรวางชั้นให้สูงกว่าพื้น */
-const FURNITURE = 'dTPKW'
 
 /** พื้นใต้เฟอร์นิเจอร์ = พื้นที่พบบ่อยที่สุดใน 4 ทิศ */
 function floorUnder(at: At): string {
@@ -159,23 +160,6 @@ function MeetingTable({ at, x, y }: { at: At; x: number; y: number }) {
   </g>)
 }
 
-function Plant() {
-  return (<g>
-    <Shadow cy={32} rx={10} ry={3.5} o={.25} />
-    {/* กระถาง */}
-    <path d="M11 22 h14 l-2 11 h-10 z" fill="#c2410c" />
-    <rect x="10" y="20.5" width="16" height="3" rx="1" fill="#ea580c" />
-    <path d="M13 24 h2 l-1 8 h-1.5z" fill="#fff" opacity=".18" />
-    {/* ใบ — หลายวง หลายเฉด ให้มีพุ่ม */}
-    <ellipse cx="18" cy="13" rx="9" ry="8" fill="#15803d" />
-    <ellipse cx="12" cy="15" rx="5.5" ry="5" fill="#16a34a" />
-    <ellipse cx="24" cy="14" rx="5.5" ry="5.2" fill="#16a34a" />
-    <ellipse cx="18" cy="8" rx="5" ry="5" fill="#22c55e" />
-    <ellipse cx="15" cy="10" rx="2.6" ry="2" fill="#86efac" opacity=".7" />
-    <ellipse cx="22" cy="12" rx="1.8" ry="1.4" fill="#86efac" opacity=".55" />
-  </g>)
-}
-
 function Coffee() {
   return (<g>
     {/* เคาน์เตอร์ */}
@@ -304,7 +288,7 @@ export const OfficeTile = memo(function OfficeTile({ rows, x, y, size }: Props) 
       {ch === '#' && <Wall at={at} />}
       {ch === 'd' && <Desk at={at} />}
       {ch === 'T' && <MeetingTable at={at} x={x} y={y} />}
-      {ch === 'P' && <Plant />}
+      {PLANT_TILES.includes(ch) && <PlantArt ch={ch} />}
       {ch === 'K' && <Coffee />}
       {ch === 'W' && <Whiteboard />}
       {ch === 'E' && <Door />}

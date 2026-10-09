@@ -25,7 +25,7 @@ import { isTicketRequester, requesterActions, isIncidentRequester, incidentReque
 import { buildGraphMessage, isSendAsDenied, sendAsFallbackText, mailDetailText } from '../src/utils/mailSender'
 import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames, lotCostGap } from '../src/utils/assetLots'
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
-import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
+import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
@@ -2292,6 +2292,15 @@ eq(parseDecor(JSON.stringify({ items: Array.from({ length: 40 }, () => ({ kind: 
 eq(parseDecor(JSON.stringify({ desk: { x: 1, y: 1, style: 'spaceship', rot: 33 } })).desk!.style, 'classic', 'bad desk style falls back to classic')
 eq(new Set(CATALOG.map(c => c.kind)).size, CATALOG.length, 'catalog kinds are unique')
 eq(CATALOG.length >= 25, true, 'at least 25 items to choose from')
+
+
+// -- ต้นไม้หลายชนิดในผัง --
+eq(PLANT_TILES.length, 9, 'nine plant species')
+eq([...PLANT_TILES].every(ch => TILE_PALETTE.some(t => t.ch === ch)), true, 'every species is paintable from the admin palette')
+eq([...PLANT_TILES].every(ch => isFurnitureTile(ch) && !isWalkable(parseMap(['###', `#${ch}#`, '###']), 1, 1)), true, 'plants are furniture: drawn above floor and not walkable')
+eq(new Set(TILE_PALETTE.map(t => t.ch)).size, TILE_PALETTE.length, 'palette characters are unique')
+eq([...PLANT_TILES].filter(ch => DEFAULT_MAP.some(r => r.includes(ch))).length >= 7, true, 'the standard office shows off most species')
+eq(validateMap(blankMap(10, 8).map((r, y) => (y === 3 ? '#.GYLRUZN#' : r))).filter(i => i.level === 'error').length, 0, 'a map using the new species validates')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

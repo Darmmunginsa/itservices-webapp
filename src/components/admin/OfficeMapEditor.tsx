@@ -4,8 +4,9 @@ import { Card } from '../common/Card'
 import { Button } from '../common/Button'
 import { useAppStore } from '../../store/useAppStore'
 import { getOfficeMapRows, saveOfficeMap, resetOfficeMap } from '../../services/office'
-import { DEFAULT_MAP, TILE_PALETTE, setTile, resizeMap, blankMap, validateMap, parseMap, spawnPoint } from '../../utils/officeMap'
+import { DEFAULT_MAP, TILE_PALETTE, PLANT_TILES, isFurnitureTile, setTile, resizeMap, blankMap, validateMap, parseMap, spawnPoint } from '../../utils/officeMap'
 import { OfficeTile, OfficeDefs } from '../team/OfficeTile'
+import { PlantArt } from '../team/PlantArt'
 
 // ── Admin: ตัวแก้ผังออฟฟิศ 2D — ระบายสีช่องด้วยเมาส์ ไม่ต้องพิมพ์ตัวอักษรเอง ──
 //
@@ -18,7 +19,7 @@ const TILE = 24
 const PALETTE_ROWS: Record<string, string[]> = Object.fromEntries(
   TILE_PALETTE.map(t => [t.ch,
     t.ch === '#' ? ['###', '###', '...']
-      : 'dTPKW'.includes(t.ch) ? ['...', `.${t.ch}.`, '...']
+      : isFurnitureTile(t.ch) ? ['...', `.${t.ch}.`, '...']
         : [t.ch.repeat(3), t.ch.repeat(3), t.ch.repeat(3)]]),
 )
 
@@ -126,7 +127,11 @@ export function OfficeMapEditor() {
           return (
             <button key={t.ch} onClick={() => setBrush(t.ch)} title={t.hint}
               className={`flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-lg border text-xs ${on ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-              <span className="inline-flex rounded overflow-hidden"><OfficeTile rows={PALETTE_ROWS[t.ch]} x={1} y={1} size={22} /></span>
+              {PLANT_TILES.includes(t.ch) ? (
+                <svg width="22" height="34" viewBox="0 -34 36 70" aria-hidden="true" className="rounded bg-amber-50"><PlantArt ch={t.ch} /></svg>
+              ) : (
+                <span className="inline-flex rounded overflow-hidden"><OfficeTile rows={PALETTE_ROWS[t.ch]} x={1} y={1} size={22} /></span>
+              )}
               {t.label}
               <span className="font-mono text-[10px] text-gray-400">{t.ch}</span>
             </button>
@@ -159,7 +164,7 @@ export function OfficeMapEditor() {
                   onMouseEnter={() => paint(x, y)}
                   title={`(${x},${y}) ${TILE_PALETTE.find(t => t.ch === ch)?.label ?? ch}`}
                   className="absolute cursor-crosshair hover:brightness-110"
-                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: 'dTPKW'.includes(ch) ? 1 : undefined }}>
+                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: isFurnitureTile(ch) ? 1 : undefined }}>
                   <OfficeTile rows={rows} x={x} y={y} size={TILE} />
                   {isSpawn && <span title="จุดเกิดของคนใหม่" className="absolute inset-0 m-auto w-2.5 h-2.5 rounded-full bg-primary-600 ring-2 ring-white" />}
                 </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
-  parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap,
+  parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
 } from '../../utils/officeMap'
 import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, type PresenceRow, type ChatRow } from '../../services/office'
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
@@ -531,7 +531,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                     if (walk) { e.stopPropagation(); boardRef.current?.focus(); walkTo({ x, y }) }
                   }}
                   className={`absolute ${decor.decorating ? 'cursor-crosshair' : walk ? 'cursor-pointer hd-tile-walk' : ''}`}
-                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: 'dTPKW'.includes(ch) ? 1 : undefined }}>
+                  style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: isFurnitureTile(ch) ? 1 : undefined }}>
                   <OfficeTile rows={map.rows} x={x} y={y} size={TILE} />
                 </div>
               )
