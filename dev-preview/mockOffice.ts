@@ -20,7 +20,11 @@ let chat: ChatRow[] = [
   { id: 3, Title: 'ข้อความเฉพาะห้องประชุม', UserEmail: 'aree@x', UserName: 'อารีย์ สุขใจ', Room: 'meeting', Created: now() },
 ]
 let nextId = 100
-let me: PresenceRow | null = null
+// หลายคนในหน้าเดียว (หน้าทดสอบ theater) — แถวต่ออีเมล
+const mine = new Map<string, PresenceRow>()
+let nextMe = 1000
+/** ตั้งตำแหน่งเริ่มของคนในหน้าทดสอบ ก่อน mount */
+export function preseed(email: string, name: string, x: number, y: number) { mine.set(email, { id: nextMe++, Title: email, UserEmail: email, UserName: name, X: x, Y: y, Room: 'meeting', LastSeen: now() }) }
 
 // คนอื่นเดินสุ่มทุกครั้งที่ poll — ไว้ดู tween
 function wander(r: PresenceRow) {
@@ -32,13 +36,15 @@ function wander(r: PresenceRow) {
 
 export async function getPresence(): Promise<PresenceRow[]> {
   rows.slice(0, 3).forEach(wander)
-  return [...rows, ...(me ? [me] : [])]
+  for (const r of mine.values()) r.LastSeen = now()
+  return [...rows, ...mine.values()]
 }
 export async function ensureMyPresence(email: string, name: string, spawn: { x: number; y: number }): Promise<PresenceRow> {
-  me = me ?? { id: 1, Title: email, UserEmail: email, UserName: name, X: spawn.x, Y: spawn.y, Room: 'desk', LastSeen: now() }
-  return me
+  if (!mine.has(email)) mine.set(email, { id: nextMe++, Title: email, UserEmail: email, UserName: name, X: spawn.x, Y: spawn.y, Room: 'desk', LastSeen: now() })
+  return { ...mine.get(email)! }
 }
-export async function savePresence(_id: number, p: { x: number; y: number; room: string }): Promise<void> {
+export async function savePresence(id: number, p: { x: number; y: number; room: string }): Promise<void> {
+  const me = [...mine.values()].find(r => r.id === id)
   if (me) { me.X = p.x; me.Y = p.y; me.Room = p.room; me.LastSeen = now() }
   console.log('[mock] savePresence', p)
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2 } from 'lucide-react'
+import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
@@ -322,6 +322,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [watching, setWatching] = useState<string | null>(null)
   const shown = screens.find(p => p.email === watching) ?? screens[0] ?? null
   const stageRef = useRef<HTMLDivElement>(null)
+  // โหมดโรงหนัง: มีคนแชร์ = จอที่แชร์กินพื้นที่หลักแทนแผนที่ (แบบ Teams/Gather) · ผู้ใช้กดกลับไปดูแผนที่ได้
+  // จำว่า "ปิดโรงหนังให้จอของใคร" — คนใหม่เริ่มแชร์ หรือคนเดิมแชร์รอบใหม่ = ขยายให้อีกครั้งเอง
+  const [theaterOffFor, setTheaterOffFor] = useState<MediaStream | null>(null)
+  const theaterOn = !!shown?.screen && theaterOffFor !== shown.screen
+  const fullscreen = () => stageRef.current?.requestFullscreen?.().catch(() => {})
   const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
   const connected = voice.peers.filter(p => p.state === 'connected')
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
@@ -380,9 +385,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         </div>
         {/* จอที่แชร์ — ของคนอื่น (เลือกดูได้) + ตัวอย่างของเราเองว่ากำลังส่งอะไรอยู่ */}
         {(shown || voice.myScreen) && (
-          <div ref={stageRef} className="mb-2 rounded-xl overflow-hidden border border-gray-800 bg-gray-950 relative">
+          <div ref={stageRef}
+            className={`mb-2 rounded-xl overflow-hidden border border-gray-800 bg-black relative ${theaterOn ? 'flex items-center justify-center' : ''}`}
+            style={theaterOn ? { height: 'calc(100vh - 12rem)', minHeight: 420 } : undefined}>
             {shown?.screen ? (
-              <ScreenVideo stream={shown.screen} className="w-full max-h-[60vh] object-contain bg-black" />
+              <div onDoubleClick={fullscreen} title="ดับเบิลคลิก = เต็มจอ" className={theaterOn ? 'w-full h-full' : ''}>
+                <ScreenVideo stream={shown.screen} className={theaterOn ? 'w-full h-full object-contain' : 'w-full max-h-[45vh] object-contain'} />
+              </div>
             ) : (
               <div className="py-8 pr-44 pl-4 text-xs text-gray-300">
                 {connected.length > 0
@@ -399,8 +408,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               ))}
             </div>
             <div className="absolute top-2 right-2 flex gap-1">
+              {shown?.screen && (theaterOn ? (
+                <button onClick={() => setTheaterOffFor(shown.screen)} title="ย่อจอ — กลับไปเห็นแผนที่ออฟฟิศ"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><MapIcon size={12} /> แผนที่</button>
+              ) : (
+                <button onClick={() => setTheaterOffFor(null)} title="ขยายจอที่แชร์เต็มพื้นที่"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><Expand size={12} /> ขยาย</button>
+              ))}
               {shown?.screen && (
-                <button onClick={() => stageRef.current?.requestFullscreen?.().catch(() => {})} title="เต็มจอ"
+                <button onClick={fullscreen} title="เต็มจอ (หรือดับเบิลคลิกที่ภาพ) — Esc เพื่อออก"
                   className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"><Maximize2 size={13} /></button>
               )}
             </div>
@@ -451,7 +467,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         )}
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onClick={() => boardRef.current?.focus()}
-          className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
+          className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${theaterOn ? 'hidden' : ''} ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
           style={{ maxHeight: '70vh' }}>
           {!focused && pos && (
             <div className="absolute z-20 top-2 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white pointer-events-none">คลิกที่แผนที่แล้วใช้ลูกศรเดิน</div>
@@ -519,7 +535,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       </div>
 
       {/* ── แชท ── */}
-      <div className="lg:w-80 flex flex-col border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden" style={{ minHeight: 320, maxHeight: '70vh' }}>
+      <div className="lg:w-80 flex flex-col border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden" style={{ minHeight: 320, maxHeight: theaterOn ? 'calc(100vh - 8rem)' : '70vh' }}>
         <div className="flex text-xs border-b border-gray-200 dark:border-gray-800 items-stretch">
           <button onClick={() => setTab('all')} className={`flex-1 py-2 ${tab === 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>ทั้งออฟฟิศ</button>
           <button onClick={() => setTab(myZone)} className={`flex-1 py-2 ${tab !== 'all' && tab !== 'dm' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>
