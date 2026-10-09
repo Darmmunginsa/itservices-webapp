@@ -27,6 +27,7 @@ import { assetsInLot, unlottedAssets, lotSummary, nextLotNo, lotLabel, bulkNames
 import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } from '../src/utils/virtualOffice'
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
+import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, MAX_PEERS } from '../src/utils/voiceProximity'
 import { findTemplate, isOn, templateProblem, renderTemplate, renderSubject, escapeHtml, textToHtml, html, isHtmlVar, placeholdersOf, appLink, mailFailText, EVENT_VARS, KNOWN_EVENTS } from '../src/utils/emailTemplate'
 import { idleStatus, countdown, shouldBump, readLastActivity, IDLE_LIMIT_MS, WARN_BEFORE_MS } from '../src/utils/idleSession'
 import { membersOf, buildRoleMatrix, roleTally, filterPeople, projectsWithoutManager, roleRank, UNASSIGNED_ROLE } from '../src/utils/projectRoles'
@@ -2138,6 +2139,32 @@ eq(popoutFeatures(3840, 1600).includes('width=1180'), true, 'never wider than 11
 eq(unreadTitle('สถานะทีม', 0), 'สถานะทีม', 'no unread = plain title')
 eq(unreadTitle('สถานะทีม', 3), '(3) สถานะทีม', 'unread count leads the title')
 eq(unreadTitle('x', 250), '(99+) x', 'large counts are capped')
+
+
+// -- เสียงตามระยะ (utils/voiceProximity) — ผิดแล้วมีคน "แอบได้ยิน" ห้องประชุม --
+const VM = parseMap(DEFAULT_MAP)
+const inMeeting = { email: 'a@x', x: 13, y: 1 }, inMeeting2 = { email: 'b@x', x: 21, y: 4 }
+const atDoor = { email: 'c@x', x: 15, y: 5 }   // ช่องทางเข้าห้องประชุม (พื้นโต๊ะทำงาน)
+eq(zoneAt(VM, 13, 1), 'meeting', 'fixture: a is in the meeting room')
+eq(canHear(VM, inMeeting, inMeeting2), true, 'everyone in a closed room hears each other, however far apart')
+eq(volumeFor(VM, inMeeting, inMeeting2), 1, '…at full volume')
+eq(canHear(VM, inMeeting, atDoor), false, 'someone just outside the meeting room hears nothing')
+const d1 = { email: 'd@x', x: 1, y: 1 }, d2 = { email: 'e@x', x: 2, y: 1 }, d3 = { email: 'f@x', x: 3, y: 1 }, d4 = { email: 'g@x', x: 4, y: 1 }, d5 = { email: 'h@x', x: 5, y: 1 }
+eq(tileDistance(d1, { email: 'z', x: 3, y: 3 }), 2, 'diagonal steps count as one')
+eq(volumeFor(VM, d1, d2), 1, 'open floor: neighbours at full volume')
+eq(volumeFor(VM, d1, d3), 0.6, '…two tiles away is quieter')
+eq(volumeFor(VM, d1, d4), 0.3, '…three tiles is faint')
+eq(canHear(VM, d1, d5), false, '…four tiles is out of earshot')
+eq(peersToConnect(VM, d1, [d4, d2, d5, d3]).join(','), 'e@x,f@x,g@x', 'only people in earshot, nearest first')
+const crowd = Array.from({ length: 10 }, (_, i) => ({ email: `p${i}@x`, x: 13 + (i % 5), y: 1 + Math.floor(i / 5) }))
+eq(peersToConnect(VM, inMeeting, crowd).length, MAX_PEERS, 'a crowded room is capped at MAX_PEERS calls')
+eq(peersToConnect(VM, inMeeting, [{ ...inMeeting, email: 'A@X' }]).length, 0, 'never calls yourself (case-insensitive)')
+eq(isCaller('a@x', 'b@x') !== isCaller('b@x', 'a@x'), true, 'exactly one side of every pair places the call')
+eq(isCaller('B@x', 'a@x'), false, 'caller choice ignores case')
+eq(encodeRoom('desk', true), 'desk:mic', 'mic flag rides in the Room field')
+eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true}', '…and decodes back')
+eq(decodeRoom('desk').mic, false, 'no suffix = mic off')
+eq(decodeRoom(undefined).mic, false, 'missing Room = mic off')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

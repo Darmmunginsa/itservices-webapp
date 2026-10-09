@@ -288,3 +288,8 @@ html[data-fx='on'] .urgent-badge {
 @keyframes hd-bob { 0% { transform: translateY(0) } 45% { transform: translateY(-3px) } 100% { transform: translateY(0) } }
 @media (prefers-reduced-motion: reduce) { .hd-step { animation: none } }
 .dark .hd-office-map svg { filter: brightness(.82) saturate(.9); }
+
+/* กำลังพูด — วงแหวนเขียวกระเพื่อม */
+.hd-speaking { animation: hd-talk 1s ease-out infinite; }
+@keyframes hd-talk { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.7) } 100% { box-shadow: 0 0 0 9px rgba(34,197,94,0) } }
+@media (prefers-reduced-motion: reduce) { .hd-speaking { animation: none; box-shadow: 0 0 0 3px rgba(34,197,94,.8) } }

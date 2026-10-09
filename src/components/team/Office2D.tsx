@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard, Bell, BellOff } from 'lucide-react'
+import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
@@ -10,6 +10,8 @@ import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/t
 import { teamsChatLink } from '../../utils/virtualOffice'
 import { unreadTitle } from '../../utils/popout'
 import { OfficeTile, OfficeDefs } from './OfficeTile'
+import { useOfficeVoice } from '../../hooks/useOfficeVoice'
+import { decodeRoom, encodeRoom, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
 //
@@ -70,6 +72,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const baseTitle = useRef(document.title)
   const dirty = useRef(false)
   const posRef = useRef<Pos | null>(null)
+  // ไมค์เปิดอยู่ไหม — ฝากไปกับตำแหน่ง (ช่อง Room = "desk:mic") ให้คนอื่นรู้ว่าต่อสายได้
+  const micRef = useRef(false)
   const zoneRef = useRef<Zone | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -148,7 +152,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       if (!dirty.current || !posRef.current) return
       dirty.current = false
       const p = posRef.current
-      savePresence(rowId, { x: p.x, y: p.y, room: zoneAt(map, p.x, p.y) }).catch(() => { dirty.current = true })
+      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current) }).catch(() => { dirty.current = true })
     }
     const f = setInterval(flush, FLUSH_MS)
     const h = setInterval(() => { if (!dirty.current) heartbeat(rowId).catch(() => {}) }, HEARTBEAT_MS)
@@ -248,7 +252,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
-  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y }))
+  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic }))
+
+  // ── เสียงตามระยะ ──
+  const onMicChange = useCallback((on: boolean) => { micRef.current = on; dirty.current = true }, [])
+  const onVoiceError = useCallback((msg: string) => cb.current.onError(msg), [])
+  const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange })
+  const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
+  const connected = voice.peers.filter(p => p.state === 'connected')
+  const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? email.split('@')[0]
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
   const visibleChat = chat.filter(c => chatVisible(c, tab))
 
@@ -276,8 +288,35 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
           <span className="inline-flex items-center gap-1"><Keyboard size={12} /> ลูกศร / WASD เดิน · คลิกช่องว่างเพื่อเดินไป</span>
           <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
+          {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
+          {!voice.micOn ? (
+            <button onClick={voice.start} title={`เปิดไมค์ — คุยกับคนในห้องเดียวกัน หรือโต๊ะในระยะ ${HEAR_RADIUS} ช่อง (เฉพาะคนที่เปิดไมค์)`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700">
+              <Headphones size={12} /> เข้าร่วมเสียง
+            </button>
+          ) : (<>
+            <button onClick={voice.toggleMute} title={voice.muted ? 'เปิดเสียงไมค์' : 'ปิดเสียงไมค์ (ยังได้ยินคนอื่น)'}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${voice.muted ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20' : voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+              {voice.muted ? <MicOff size={12} /> : <Mic size={12} />} {voice.muted ? 'ปิดไมค์อยู่' : 'ไมค์เปิด'}
+            </button>
+            <button onClick={voice.stop} title="ออกจากเสียง — วางทุกสาย คืนไมค์" className="p-1.5 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><PhoneOff size={13} /></button>
+          </>)}
           <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
         </div>
+        {voice.micOn && (
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
+            {voice.peers.length === 0
+              ? <span className="text-gray-400">🎧 ยังไม่มีใครใกล้ ๆ ที่เปิดไมค์ — เดินเข้าห้องเดียวกัน หรือไปยืนข้างโต๊ะเพื่อน</span>
+              : voice.peers.map(p => (
+                <span key={p.email} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${p.state === 'connected' ? (p.speaking ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300') : 'border-dashed border-gray-300 text-gray-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${p.state === 'connected' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`} />
+                  {nameOf(p.email)}
+                  {p.state === 'connected' ? (p.volume < 1 ? <span className="text-gray-400">· {Math.round(p.volume * 100)}%</span> : null) : <span>· กำลังต่อ…</span>}
+                </span>
+              ))}
+            {connected.length > 0 && <span className="text-gray-400 ml-1">เดินออกห่าง = เสียงเบาลง / วางสายเอง</span>}
+          </div>
+        )}
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onClick={() => boardRef.current?.focus()}
           className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
@@ -317,8 +356,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                   className="absolute z-10 flex flex-col items-center hd-avatar"
                   style={{ left: p.x * TILE, top: p.y * TILE - 8, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
                   <span className="hd-avatar-shadow" />
-                  <span className="rounded-full ring-2 shadow-md" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
+                  <span className={`relative rounded-full ring-2 shadow-md ${speakingSet.has(r.email.toLowerCase()) ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={r.UserName} size={28} />
+                    {r.mic && <span className="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title="เปิดไมค์อยู่"><Mic size={8} className="text-green-600" /></span>}
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.UserName.split(/\s+/)[0]}</span>
                 </a>
@@ -332,7 +372,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                   style={{ left: pos.x * TILE, top: pos.y * TILE - 8, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
                   <span className="hd-avatar-shadow" />
                   {/* key ตามตำแหน่ง = เล่นแอนิเมชันเด้ง 1 ครั้งทุกก้าว */}
-                  <span key={`${pos.x},${pos.y}`} className="hd-step rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 shadow-md" style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
+                  <span key={`${pos.x},${pos.y}`} className={`hd-step rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 shadow-md ${voice.meSpeaking ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
                     <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={meName} size={28} />
                   </span>
                   <span className="text-[9px] leading-tight px-1 rounded bg-primary-600 text-white whitespace-nowrap">ฉัน</span>

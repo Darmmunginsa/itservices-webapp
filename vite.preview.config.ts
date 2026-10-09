@@ -10,6 +10,7 @@ export default mergeConfig(base, defineConfig({
     alias: [
       { find: /^(.*)\/services\/office$/, replacement: abs('./dev-preview/mockOffice.ts') },
       { find: /^(.*)\/services\/sharepoint$/, replacement: abs('./dev-preview/mockSharepoint.ts') },
+      { find: /^(.*)\/services\/voiceSignal$/, replacement: abs('./dev-preview/mockVoiceSignal.ts') },
     ],
   },
   server: { port: 5179 },
