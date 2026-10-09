@@ -17,10 +17,13 @@ const RETRY_AFTER = 30_000
 const GRACE_MS = 8_000            // ตำแหน่งคนอื่นมาช้า ~3 วิ — อย่าวางสายเร็วเกินจนสายเพิ่งต่อหลุด
 const ICE_WAIT = 2500
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+/** ภาพหน้าจอ: ตัวหนังสือคมสำคัญกว่าความลื่น — ส่งได้หลายคน (mesh) จึงจำกัดบิตเรตต่อคน */
+const SCREEN_MAX_BITRATE = 1_500_000
+const SCREEN_FPS = 15
 
 export type PeerState = 'connecting' | 'connected' | 'failed'
 
-export interface PeerView { email: string; state: PeerState; speaking: boolean; volume: number }
+export interface PeerView { email: string; state: PeerState; speaking: boolean; volume: number; screen: MediaStream | null }
 
 interface Peer {
   pc: RTCPeerConnection
@@ -30,6 +33,10 @@ interface Peer {
   analyser?: AnalyserNode
   speaking: boolean
   volume: number
+  /** ภาพหน้าจอที่อีกฝั่งแชร์มา */
+  screen: MediaStream | null
+  /** ตัวส่งภาพหน้าจอของเราไปหาคนนี้ (มี = กำลังส่งอยู่) */
+  screenSender?: RTCRtpSender
 }
 
 export interface VoiceOther extends Pos { email: string; mic: boolean }
@@ -70,6 +77,10 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
   const [muted, setMuted] = useState(false)
   const [meSpeaking, setMeSpeaking] = useState(false)
   const [view, setView] = useState<PeerView[]>([])
+  const [sharing, setSharing] = useState(false)
+  // ตัวอย่างจอของเราเอง — เก็บเป็น state (render อ่าน ref ไม่ได้)
+  const [myScreen, setMyScreen] = useState<MediaStream | null>(null)
+  const screenStream = useRef<MediaStream | null>(null)
 
   const stream = useRef<MediaStream | null>(null)
   const peers = useRef(new Map<string, Peer>())
@@ -82,7 +93,7 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
   useEffect(() => { live.current = { map, mePos, others, onError, privatePeer } }, [map, mePos, others, onError, privatePeer])
 
   const publish = useCallback(() => {
-    setView([...peers.current.entries()].map(([email, p]) => ({ email, state: p.state, speaking: p.speaking, volume: p.volume })))
+    setView([...peers.current.entries()].map(([email, p]) => ({ email, state: p.state, speaking: p.speaking, volume: p.volume, screen: p.screen })))
   }, [])
 
   const closePeer = useCallback((email: string, notify: boolean) => {
@@ -101,9 +112,20 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     audio.autoplay = true
     audio.style.display = 'none'
     document.body.appendChild(audio)
-    const peer: Peer = { pc, audio, startedAt: Date.now(), state: 'connecting', speaking: false, volume: 1 }
+    const peer: Peer = { pc, audio, startedAt: Date.now(), state: 'connecting', speaking: false, volume: 1, screen: null }
     stream.current?.getTracks().forEach(t => pc.addTrack(t, stream.current!))
     pc.ontrack = ev => {
+      // ภาพหน้าจอ — โชว์เมื่อมีภาพไหลมาจริง (unmute) ซ่อนเมื่ออีกฝั่งหยุดแชร์ (mute / ended)
+      if (ev.track.kind === 'video') {
+        const v = ev.track
+        const show = () => { peer.screen = new MediaStream([v]); publish() }
+        const hide = () => { peer.screen = null; publish() }
+        v.onunmute = show
+        v.onmute = hide
+        v.onended = hide
+        if (!v.muted) show()
+        return
+      }
       const s = ev.streams[0] ?? new MediaStream([ev.track])
       audio.srcObject = s
       audio.play().catch(() => { /* autoplay — ผู้ใช้กดไมค์แล้ว จึงมี gesture */ })
@@ -141,6 +163,23 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     await sendSignal(me, email, 'answer', JSON.stringify(p.pc.localDescription))
   }, [me, newPeer, closePeer])
 
+  /** ตกลงเงื่อนไขใหม่บนสายเดิม (เพิ่ม/ถอดภาพหน้าจอ) — ไม่ต้องวางสายแล้วต่อใหม่ */
+  const renegotiate = useCallback(async (email: string, p: Peer) => {
+    const offer = await p.pc.createOffer()
+    await p.pc.setLocalDescription(offer)
+    await gatherComplete(p.pc)
+    await sendSignal(me, email, 'reoffer', JSON.stringify(p.pc.localDescription))
+  }, [me])
+
+  const reanswer = useCallback(async (email: string, p: Peer, sdp: string) => {
+    // ชนกันพอดี (ต่างฝั่งต่างเริ่มแชร์) — setRemoteDescription จะ rollback ของเราเองให้ แล้วรอบหน้าเราค่อยส่งใหม่
+    await p.pc.setRemoteDescription(JSON.parse(sdp))
+    const ans = await p.pc.createAnswer()
+    await p.pc.setLocalDescription(ans)
+    await gatherComplete(p.pc)
+    await sendSignal(me, email, 'reanswer', JSON.stringify(p.pc.localDescription))
+  }, [me])
+
   const tick = useCallback(async () => {
     if (busy.current || !stream.current) return
     busy.current = true
@@ -157,6 +196,12 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
           if (s.Title === 'offer' && privEmail && from !== privEmail) { sendSignal(me, from, 'bye').catch(() => {}); continue }
           if (s.Title === 'offer' && s.Payload) await answer(from, s.Payload)
           else if (s.Title === 'answer' && s.Payload) {
+            const p = peers.current.get(from)
+            if (p && p.pc.signalingState === 'have-local-offer') await p.pc.setRemoteDescription(JSON.parse(s.Payload))
+          } else if (s.Title === 'reoffer' && s.Payload) {
+            const p = peers.current.get(from)
+            if (p) await reanswer(from, p, s.Payload)
+          } else if (s.Title === 'reanswer' && s.Payload) {
             const p = peers.current.get(from)
             if (p && p.pc.signalingState === 'have-local-offer') await p.pc.setRemoteDescription(JSON.parse(s.Payload))
           } else if (s.Title === 'bye') closePeer(from, false)
@@ -187,12 +232,52 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
         const v = email === privEmail ? 1 : o ? volumeFor(m, meP, o) : 0
         p.volume = v
         p.audio.volume = Math.max(0, Math.min(1, v))
+        // 4. ภาพหน้าจอ — ใส่ให้คนที่ต่อสายแล้ว (รวมคนที่เพิ่งเข้ามาระหว่างแชร์) / ถอดเมื่อหยุด · ทำตอนสายนิ่งเท่านั้น
+        if (p.state === 'connected' && p.pc.signalingState === 'stable') {
+          const vt = screenStream.current?.getVideoTracks()[0]
+          if (vt && !p.screenSender) {
+            p.screenSender = p.pc.addTrack(vt, screenStream.current!)
+            const prm = p.screenSender.getParameters()
+            if (prm.encodings?.length) { prm.encodings[0].maxBitrate = SCREEN_MAX_BITRATE; p.screenSender.setParameters(prm).catch(() => {}) }
+            renegotiate(email, p).catch(() => {})
+          } else if (!vt && p.screenSender) {
+            try { p.pc.removeTrack(p.screenSender) } catch { /* สายปิดไปแล้ว */ }
+            p.screenSender = undefined
+            renegotiate(email, p).catch(() => {})
+          }
+        }
       }
       publish()
     } finally { busy.current = false }
-  }, [me, answer, call, closePeer, publish])
+  }, [me, answer, call, closePeer, publish, renegotiate, reanswer])
+
+  const stopShare = useCallback(() => {
+    screenStream.current?.getTracks().forEach(t => t.stop())
+    screenStream.current = null
+    setSharing(false); setMyScreen(null)   // รอบถัดไปของ loop จะถอดภาพออกจากทุกสาย
+  }, [])
+
+  const canShare = typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia
+
+  const startShare = useCallback(async () => {
+    if (!canShare) { onError('เบราว์เซอร์นี้แชร์หน้าจอไม่ได้ (มือถือส่วนใหญ่ไม่รองรับ)'); return }
+    try {
+      const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: SCREEN_FPS }, audio: false })
+      const vt = s.getVideoTracks()[0]
+      if (vt) {
+        vt.contentHint = 'detail'           // ตัวหนังสือ/โค้ดคม ดีกว่าลื่น
+        vt.onended = () => stopShare()      // กด "หยุดแชร์" ที่แถบของเบราว์เซอร์
+      }
+      screenStream.current = s
+      setSharing(true); setMyScreen(s)
+      tick()
+    } catch { /* ผู้ใช้กดยกเลิกในหน้าต่างเลือกจอ — ไม่ใช่ error */ }
+  }, [canShare, onError, stopShare, tick])
 
   const stop = useCallback(() => {
+    screenStream.current?.getTracks().forEach(t => t.stop())
+    screenStream.current = null
+    setSharing(false); setMyScreen(null)
     for (const email of [...peers.current.keys()]) closePeer(email, true)
     stream.current?.getTracks().forEach(t => t.stop())
     stream.current = null
@@ -256,8 +341,9 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     for (const p of peers.current.values()) { try { p.pc.close() } catch { /* */ } p.audio.remove() }
     peers.current.clear()
     stream.current?.getTracks().forEach(t => t.stop())
+    screenStream.current?.getTracks().forEach(t => t.stop())
     ctx.current?.close().catch(() => {})
   }, [])
 
-  return { micOn, muted, meSpeaking, peers: view, start, stop, toggleMute, privatePeer }
+  return { micOn, muted, meSpeaking, peers: view, start, stop, toggleMute, privatePeer, sharing, canShare, startShare, stopShare, myScreen }
 }

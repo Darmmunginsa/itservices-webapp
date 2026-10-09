@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock } from 'lucide-react'
+import { Send, Users, Keyboard, Bell, BellOff, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2 } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath,
@@ -12,6 +12,7 @@ import { OfficeTile, OfficeDefs } from './OfficeTile'
 import { useOfficeVoice } from '../../hooks/useOfficeVoice'
 import { useOfficeDM, dmNotice } from '../../hooks/useOfficeDM'
 import { OfficeDMPanel } from './OfficeDMPanel'
+import { ScreenVideo } from './ScreenVideo'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, HEAR_RADIUS } from '../../utils/voiceProximity'
 
@@ -287,6 +288,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     if (!dm.callWith && micForCall.current) { micForCall.current = false; if (micOn) stopMic() }
   }, [dm.callWith, micOn, startMic, stopMic])
   const dmUnread = totalUnread(dm.convs)
+  // ภาพหน้าจอที่คนอื่นแชร์มา — เลือกดูทีละคน (ค่าเริ่มต้น = คนแรกที่แชร์)
+  const screens = voice.peers.filter(p => p.screen)
+  const [watching, setWatching] = useState<string | null>(null)
+  const shown = screens.find(p => p.email === watching) ?? screens[0] ?? null
+  const stageRef = useRef<HTMLDivElement>(null)
   const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
   const connected = voice.peers.filter(p => p.state === 'connected')
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
@@ -328,10 +334,50 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${voice.muted ? 'border-red-300 text-red-600 bg-red-50 dark:bg-red-900/20' : voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
               {voice.muted ? <MicOff size={12} /> : <Mic size={12} />} {voice.muted ? 'ปิดไมค์อยู่' : 'ไมค์เปิด'}
             </button>
+            {voice.canShare && (voice.sharing ? (
+              <button onClick={voice.stopShare} title="หยุดแชร์หน้าจอ" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><MonitorX size={12} /> หยุดแชร์</button>
+            ) : (
+              <button onClick={voice.startShare} title="แชร์หน้าจอให้คนที่กำลังคุยด้วย (ห้องเดียวกัน / สายส่วนตัว)"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600"><MonitorUp size={12} /> แชร์จอ</button>
+            ))}
             <button onClick={voice.stop} title="ออกจากเสียง — วางทุกสาย คืนไมค์" className="p-1.5 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><PhoneOff size={13} /></button>
           </>)}
           <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
         </div>
+        {/* จอที่แชร์ — ของคนอื่น (เลือกดูได้) + ตัวอย่างของเราเองว่ากำลังส่งอะไรอยู่ */}
+        {(shown || voice.myScreen) && (
+          <div ref={stageRef} className="mb-2 rounded-xl overflow-hidden border border-gray-800 bg-gray-950 relative">
+            {shown?.screen ? (
+              <ScreenVideo stream={shown.screen} className="w-full max-h-[60vh] object-contain bg-black" />
+            ) : (
+              <div className="py-8 pr-44 pl-4 text-xs text-gray-300">
+                {connected.length > 0
+                  ? <>กำลังแชร์หน้าจอให้ <b>{connected.map(p => nameOf(p.email).split(/\s+/)[0]).join(', ')}</b></>
+                  : <>ยังไม่มีใครเห็นจอคุณ — เดินเข้าห้องเดียวกับคนที่เปิดไมค์ หรือขอคุยเสียงในแชทส่วนตัว แล้วเขาจะเห็นเอง</>}
+              </div>
+            )}
+            <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+              {screens.map(p => (
+                <button key={p.email} onClick={() => setWatching(p.email)}
+                  className={`text-[11px] px-2 py-0.5 rounded-full ${shown?.email === p.email ? 'bg-primary-600 text-white' : 'bg-black/60 text-white hover:bg-black/80'}`}>
+                  🖥️ {nameOf(p.email)}
+                </button>
+              ))}
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1">
+              {shown?.screen && (
+                <button onClick={() => stageRef.current?.requestFullscreen?.().catch(() => {})} title="เต็มจอ"
+                  className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"><Maximize2 size={13} /></button>
+              )}
+            </div>
+            {voice.myScreen && (
+              <div className="absolute bottom-2 right-2 w-40 rounded-lg overflow-hidden ring-2 ring-red-500 shadow-lg bg-black">
+                <ScreenVideo stream={voice.myScreen} className="w-full" />
+                <span className="absolute top-1 left-1 text-[10px] px-1.5 rounded bg-red-600 text-white">● กำลังแชร์</span>
+              </div>
+            )}
+          </div>
+        )}
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
@@ -358,6 +404,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 <span key={p.email} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${p.state === 'connected' ? (p.speaking ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300') : 'border-dashed border-gray-300 text-gray-400'}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${p.state === 'connected' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`} />
                   {nameOf(p.email)}
+                  {p.screen && <span title="กำลังแชร์หน้าจอ">🖥️</span>}
                   {p.state === 'connected' ? (p.volume < 1 ? <span className="text-gray-400">· {Math.round(p.volume * 100)}%</span> : null) : <span>· กำลังต่อ…</span>}
                 </span>
               ))}

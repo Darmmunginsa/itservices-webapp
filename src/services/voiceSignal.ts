@@ -9,7 +9,7 @@ import { spGet, spCreate, spDelete } from './sharepoint'
 
 export const SIGNAL_LIST = 'HD_OfficeSignal'
 
-export type SignalKind = 'offer' | 'answer' | 'bye'
+export type SignalKind = 'offer' | 'answer' | 'bye' | 'reoffer' | 'reanswer'
 
 export interface SignalRow {
   id: number
