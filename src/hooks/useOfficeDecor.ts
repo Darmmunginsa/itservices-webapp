@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getAllDecor, saveMyDecor, type DecorRow } from '../services/officeDecor'
 import {
-  canPlace, claimDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
+  canPlace, placeDesk, setDeskStyle, rotateDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
   type MyDecor, type OthersDecor,
 } from '../utils/officeDecor'
-import { tileAt, type OfficeMap, type Pos } from '../utils/officeMap'
+import type { OfficeMap, Pos } from '../utils/officeMap'
 
 // ── โหมดตกแต่งโต๊ะ: ร่างในเครื่อง → บันทึกทีเดียว (ยกเลิกได้ ไม่เขียน SharePoint ทุกคลิก) ──
 
@@ -20,6 +20,8 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
   const [kind, setKind] = useState<string | null>(null)          // ของที่เลือกจากแคตตาล็อก (กำลังจะวาง)
   const [selected, setSelected] = useState<string | null>(null)  // ของที่วางแล้ว ที่เลือกอยู่
   const [movingDesk, setMovingDesk] = useState(false)
+  // แบบโต๊ะที่เลือกไว้ก่อนวางโต๊ะครั้งแรก
+  const [pendingStyle, setPendingStyle] = useState('classic')
   const [saving, setSaving] = useState(false)
   const warned = useRef(false)
   const cb = useRef({ onError, onInfo })
@@ -68,10 +70,9 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
   /** คลิกช่องบนแผนที่ระหว่างตกแต่ง */
   const onTileClick = useCallback((p: Pos) => {
     const err = (m: string) => cb.current.onError(m)
-    // 1. จอง / ย้ายโต๊ะ
+    // 1. วาง / ย้ายโต๊ะ — ตรงไหนก็ได้บนพื้นโซนทำงาน/ห้องโฟกัส ที่ไม่ชิดโต๊ะคนอื่น
     if (movingDesk || !draft.desk) {
-      if (tileAt(map, p.x, p.y) !== 'd') { err('คลิกที่โต๊ะ (โต๊ะ+คอม) ที่ยังว่าง เพื่อจองเป็นโต๊ะของคุณ'); return }
-      const r = claimDesk(map, draft, others, p)
+      const r = placeDesk(map, draft, others, p, draft.desk ? undefined : pendingStyle)
       if ('error' in r) { err(r.error); return }
       setDraft(r.decor); setMovingDesk(false)
       if (r.dropped) cb.current.onInfo(`ย้ายโต๊ะแล้ว — ของ ${r.dropped} ชิ้นวางที่ใหม่ไม่ได้จึงเอาออก`)
@@ -103,7 +104,7 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
       return
     }
     setSelected(null)
-  }, [movingDesk, draft, others, map, kind, selected])
+  }, [movingDesk, draft, others, map, kind, selected, pendingStyle])
 
   const act = useCallback((what: 'rotate' | 'flip' | 'remove') => {
     if (!selected) return
@@ -135,6 +136,9 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
   return {
     rows, others, mine, saved, decorating, draft, dirty, saving, kind, selected, selectedItem, movingDesk,
     begin, cancel, save, onTileClick, act, releaseDesk,
+    deskStyle: draft.desk?.style ?? pendingStyle,
+    pickDeskStyle: (st: string) => { if (draft.desk) setDraft(d => setDeskStyle(d, st)); else setPendingStyle(st) },
+    turnDesk: () => setDraft(d => rotateDesk(d)),
     pickKind: (k: string | null) => { setKind(k); setSelected(null) },
     startMoveDesk: () => { setMovingDesk(true); setKind(null); setSelected(null) },
     selectedLabel: selectedItem ? defOf(selectedItem.kind)?.label ?? '' : '',

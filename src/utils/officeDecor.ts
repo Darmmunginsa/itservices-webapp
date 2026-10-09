@@ -1,6 +1,8 @@
 // ตกแต่งโต๊ะของตัวเองในออฟฟิศ 2D
 //
-// แต่ละคน "จอง" โต๊ะ 1 ตัว แล้ววางของแต่งได้ในรัศมี DECOR_RADIUS ช่องรอบโต๊ะ (รวมบนโต๊ะเอง)
+// แต่ละคน "วางโต๊ะของตัวเอง" ตรงไหนก็ได้บนพื้นโซนทำงาน/ห้องโฟกัส เลือกแบบโต๊ะ + ทิศได้
+// (โต๊ะที่อยู่ในผังเดิม = โต๊ะส่วนกลาง hot desk ใช้ร่วมกัน ไม่มีเจ้าของ)
+// แล้ววางของแต่งได้ในรัศมี DECOR_RADIUS ช่องรอบโต๊ะ (รวมบนโต๊ะเอง)
 // ของแต่งเป็นของประดับ — เดินผ่านได้ ไม่ขวางทาง (ไม่งั้นแต่งจนปิดทางเดินคนอื่น หรือขังตัวเองไว้ได้)
 // เก็บ 1 แถว/คน ใน HD_OfficeDecor (JSON) — โหลดทั้งทีมทีเดียว ทีมไม่กี่สิบคนเบามาก
 
@@ -48,15 +50,38 @@ const DEF = new Map(CATALOG.map(d => [d.kind, d]))
 export const defOf = (kind: string): DecorDef | undefined => DEF.get(kind)
 
 export interface DecorItem { id: string; kind: string; x: number; y: number; rot: Rot; flip: boolean }
-export interface MyDecor { desk: Pos | null; items: DecorItem[] }
+
+// ── แบบโต๊ะ ──
+export interface DeskStyle { style: string; label: string; hint: string }
+export const DESK_STYLES: DeskStyle[] = [
+  { style: 'classic',   label: 'ไม้คลาสสิก',     hint: 'โต๊ะไม้อบอุ่น เก้าอี้สำนักงาน' },
+  { style: 'white',     label: 'มินิมอลขาว',      hint: 'ท็อปขาว ขาเหล็กบาง จอ all-in-one' },
+  { style: 'standing',  label: 'โต๊ะยืน',         hint: 'ปรับระดับไฟฟ้า มีแผ่นรองยืน' },
+  { style: 'gaming',    label: 'เกมมิ่ง RGB',      hint: 'ไฟ RGB วิ่ง จอโค้ง เก้าอี้เกมมิ่ง' },
+  { style: 'executive', label: 'ผู้บริหาร',        hint: 'ไม้มะฮอกกานีเข้ม เก้าอี้หนัง โคมเขียว' },
+  { style: 'lshape',    label: 'ตัว L',           hint: 'โต๊ะเข้ามุม จอสองจอ' },
+  { style: 'glass',     label: 'กระจก',           hint: 'ท็อปกระจกใส ขาโครเมียม' },
+  { style: 'drafting',  label: 'โต๊ะเขียนแบบ',     hint: 'ท็อปเอียง กระดาษแบบ เก้าอี้สูง' },
+  { style: 'cafe',      label: 'โต๊ะกลมคาเฟ่',     hint: 'แนวฟรีแลนซ์ โน้ตบุ๊ก + กาแฟ' },
+]
+const STYLE_SET = new Set(DESK_STYLES.map(d => d.style))
+
+export interface Desk extends Pos { style: string; rot: Rot }
+export interface MyDecor { desk: Desk | null; items: DecorItem[] }
 export const emptyDecor = (): MyDecor => ({ desk: null, items: [] })
 
 /** อ่าน JSON จาก SharePoint แบบไม่เชื่อ — ของเสีย/ชนิดที่ไม่รู้จักทิ้ง ไม่ให้ทั้งแผนที่พัง */
 export function parseDecor(raw?: string): MyDecor {
   try {
     const j = JSON.parse(raw || '{}') as { desk?: unknown; items?: unknown }
-    const desk = j.desk && typeof j.desk === 'object' && Number.isInteger((j.desk as Pos).x) && Number.isInteger((j.desk as Pos).y)
-      ? { x: (j.desk as Pos).x, y: (j.desk as Pos).y } : null
+    const jd = j.desk as Partial<Desk> | undefined
+    const desk: Desk | null = jd && typeof jd === 'object' && Number.isInteger(jd.x) && Number.isInteger(jd.y)
+      ? {
+          x: jd.x!, y: jd.y!,
+          style: typeof jd.style === 'string' && STYLE_SET.has(jd.style) ? jd.style : 'classic',
+          rot: ([0, 90, 180, 270] as const).includes(jd.rot as Rot) ? jd.rot as Rot : 0,
+        }
+      : null
     const items: DecorItem[] = Array.isArray(j.items) ? (j.items as Partial<DecorItem>[])
       .filter(i => i && typeof i.kind === 'string' && DEF.has(i.kind) && Number.isInteger(i.x) && Number.isInteger(i.y))
       .slice(0, MAX_ITEMS)
@@ -74,16 +99,26 @@ export const serializeDecor = (d: MyDecor): string => JSON.stringify(d)
 
 export interface OthersDecor { email: string; name: string; decor: MyDecor }
 
-const key = (p: Pos) => `${p.x},${p.y}`
 const dist = (a: Pos, b: Pos) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y))
 
-/** โต๊ะ (ช่อง d) ที่ยังไม่มีใครจอง */
-export function freeDesks(m: OfficeMap, others: OthersDecor[]): Pos[] {
-  const taken = new Set(others.filter(o => o.decor.desk).map(o => key(o.decor.desk!)))
+/** พื้นที่วางโต๊ะส่วนตัวได้: โซนโต๊ะทำงาน (.) และห้องโฟกัส (F) — ไม่วางกลางห้องประชุม/มุมกาแฟ/ทางออก */
+const DESK_FLOORS = new Set(['.', 'F'])
+
+/** วางโต๊ะของฉันที่ช่องนี้ได้ไหม */
+export function canPlaceDesk(m: OfficeMap, mine: MyDecor, others: OthersDecor[], at: Pos): PlaceCheck {
+  if (!DESK_FLOORS.has(tileAt(m, at.x, at.y))) return { ok: false, reason: 'วางโต๊ะได้บนพื้นโซนโต๊ะทำงาน หรือห้องโฟกัส' }
+  if (others.some(o => o.decor.desk && o.decor.desk.x === at.x && o.decor.desk.y === at.y)) return { ok: false, reason: 'มีโต๊ะของคนอื่นอยู่แล้ว' }
+  if (others.some(o => o.decor.items.some(i => i.x === at.x && i.y === at.y))) return { ok: false, reason: 'ตรงนี้เป็นของแต่งของคนอื่น' }
+  // ชิดโต๊ะคนอื่นเกินไป = ของแต่งรอบโต๊ะจะทับกันหมด — เว้นอย่างน้อย 1 ช่อง
+  if (others.some(o => o.decor.desk && dist(o.decor.desk, at) < 2)) return { ok: false, reason: 'ชิดโต๊ะคนอื่นเกินไป — เว้นอย่างน้อย 1 ช่อง' }
+  if (mine.items.some(i => defOf(i.kind)?.surface === 'floor' && i.x === at.x && i.y === at.y)) return { ok: false, reason: 'มีของแต่งของคุณวางอยู่ — ย้ายออกก่อน' }
+  return { ok: true }
+}
+
+/** ทุกช่องที่วางโต๊ะได้ — ไฮไลต์ตอนเลือกจุดวางโต๊ะ */
+export function deskSpots(m: OfficeMap, mine: MyDecor, others: OthersDecor[]): Pos[] {
   const out: Pos[] = []
-  for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
-    if (tileAt(m, x, y) === 'd' && !taken.has(`${x},${y}`)) out.push({ x, y })
-  }
+  for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) if (canPlaceDesk(m, mine, others, { x, y }).ok) out.push({ x, y })
   return out
 }
 
@@ -97,6 +132,8 @@ export function canPlace(m: OfficeMap, mine: MyDecor, others: OthersDecor[], kin
   if (dist(mine.desk, at) > DECOR_RADIUS) return { ok: false, reason: `วางได้เฉพาะรอบโต๊ะตัวเอง ${DECOR_RADIUS} ช่อง` }
   const onMyDesk = at.x === mine.desk.x && at.y === mine.desk.y
   if (def.surface === 'desk' && !onMyDesk) return { ok: false, reason: `${def.label} วางได้บนโต๊ะของคุณเท่านั้น` }
+  // โต๊ะส่วนตัววางบนพื้น ช่องโต๊ะจึงเป็นพื้นที่เดินได้ — ต้องกันของวางพื้นไม่ให้ทับโต๊ะตัวเอง
+  if (def.surface === 'floor' && onMyDesk) return { ok: false, reason: `${def.label} วางบนพื้นรอบโต๊ะ ไม่ใช่บนโต๊ะ` }
   if (def.surface === 'floor' && !isWalkable(m, at.x, at.y)) return { ok: false, reason: `${def.label} ต้องวางบนพื้น` }
   const here = mine.items.filter(i => i.id !== ignoreId && i.x === at.x && i.y === at.y)
   if (onMyDesk ? here.length >= DESK_SLOTS : here.length > 0) return { ok: false, reason: onMyDesk ? `บนโต๊ะวางได้ ${DESK_SLOTS} ชิ้น` : 'ช่องนี้มีของอยู่แล้ว' }
@@ -134,21 +171,27 @@ export const moveItem = (mine: MyDecor, id: string, at: Pos): MyDecor => ({
   ...mine, items: mine.items.map(i => (i.id === id ? { ...i, x: at.x, y: at.y } : i)),
 })
 
-/** จองโต๊ะ — ย้ายโต๊ะ = ของแต่งเดิมย้ายตามโดยรักษาตำแหน่งสัมพัทธ์ ตัวที่ย้ายไปแล้ววางไม่ได้ทิ้ง */
-export function claimDesk(m: OfficeMap, mine: MyDecor, others: OthersDecor[], desk: Pos): { decor: MyDecor; dropped: number } | { error: string } {
-  if (tileAt(m, desk.x, desk.y) !== 'd') return { error: 'จองได้เฉพาะช่องที่เป็นโต๊ะ' }
-  if (others.some(o => o.decor.desk && o.decor.desk.x === desk.x && o.decor.desk.y === desk.y)) return { error: 'โต๊ะนี้มีคนจองแล้ว' }
+/** วาง / ย้ายโต๊ะ — ของแต่งเดิมย้ายตามโดยรักษาตำแหน่งสัมพัทธ์ ตัวที่ที่ใหม่วางไม่ได้ทิ้ง (บอกจำนวน) */
+export function placeDesk(m: OfficeMap, mine: MyDecor, others: OthersDecor[], at: Pos, style?: string): { decor: MyDecor; dropped: number } | { error: string } {
+  const c = canPlaceDesk(m, { ...mine, items: [] }, others, at)
+  if (!c.ok) return { error: c.reason }
+  const desk: Desk = { x: at.x, y: at.y, style: style ?? mine.desk?.style ?? 'classic', rot: mine.desk?.rot ?? 0 }
   if (!mine.desk) return { decor: { desk, items: [] }, dropped: 0 }
-  const dx = desk.x - mine.desk.x, dy = desk.y - mine.desk.y
+  const dx = at.x - mine.desk.x, dy = at.y - mine.desk.y
   let next: MyDecor = { desk, items: [] }
   let dropped = 0
   for (const i of mine.items) {
-    const at = { x: i.x + dx, y: i.y + dy }
-    if (canPlace(m, next, others, i.kind, at).ok) next = { ...next, items: [...next.items, { ...i, ...at }] }
+    const to = { x: i.x + dx, y: i.y + dy }
+    if (canPlace(m, next, others, i.kind, to).ok) next = { ...next, items: [...next.items, { ...i, ...to }] }
     else dropped++
   }
   return { decor: next, dropped }
 }
+
+export const setDeskStyle = (mine: MyDecor, style: string): MyDecor =>
+  mine.desk && STYLE_SET.has(style) ? { ...mine, desk: { ...mine.desk, style } } : mine
+export const rotateDesk = (mine: MyDecor): MyDecor =>
+  mine.desk ? { ...mine, desk: { ...mine.desk, rot: ((mine.desk.rot + 90) % 360) as Rot } } : mine
 
 /** ตำแหน่งของชิ้นบนโต๊ะ (0 ซ้าย · 1 ขวา · 2 หน้า) ตามลำดับที่วาง */
 export function deskSlot(mine: MyDecor, item: DecorItem): number {

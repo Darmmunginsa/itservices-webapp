@@ -15,8 +15,9 @@ import { OfficeDMPanel } from './OfficeDMPanel'
 import { ScreenVideo } from './ScreenVideo'
 import { DecorSprite } from './DecorSprite'
 import { DecorPanel } from './DecorPanel'
+import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
-import { freeDesks, placeableTiles, deskSlot, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
+import { deskSpots, placeableTiles, deskSlot, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, joinMuted, HEAR_RADIUS } from '../../utils/voiceProximity'
 
@@ -343,7 +344,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     { email: me, name: meName, decor: decor.mine },
   ]
   const hiTiles = decor.decorating
-    ? (decor.movingDesk || !decor.draft.desk ? freeDesks(map, decor.others) : decor.kind ? placeableTiles(map, decor.draft, decor.others, decor.kind) : [])
+    ? (decor.movingDesk || !decor.draft.desk ? deskSpots(map, decor.draft, decor.others) : decor.kind ? placeableTiles(map, decor.draft, decor.others, decor.kind) : [])
     : []
   const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
   const connected = voice.peers.filter(p => p.state === 'connected')
@@ -376,9 +377,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           <span className="inline-flex items-center gap-1"><Keyboard size={12} /> ลูกศร / WASD เดิน · คลิกช่องว่างเพื่อเดินไป</span>
           <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
           {!decor.decorating && (
-            <button onClick={decor.begin} title="จองโต๊ะของคุณ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
+            <button onClick={decor.begin} title="วางโต๊ะของคุณตรงไหนก็ได้ เลือกแบบโต๊ะ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
-              🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'จองโต๊ะ'}
+              🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'วางโต๊ะของฉัน'}
             </button>
           )}
           {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
@@ -514,6 +515,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             }))}
             {/* ── ของแต่งของทุกคน + ป้ายชื่อโต๊ะ ── (ไม่ขวางการคลิก — คลิกตกลงที่ช่องข้างใต้) */}
             {allDecor.map(d => (<div key={d.email} className="contents">
+              {d.decor.desk && (
+                <div className="absolute pointer-events-none" style={{ left: d.decor.desk.x * TILE, top: d.decor.desk.y * TILE, width: TILE, height: TILE, zIndex: 2 }}>
+                  <DeskSprite style={d.decor.desk.style} rot={d.decor.desk.rot} size={TILE} />
+                </div>
+              )}
               {d.decor.items.map(it => {
                 const slot = deskSlot(d.decor, it)
                 // ของบนโต๊ะ: ย่อลงครึ่งหนึ่ง วางซ้าย / ขวา / หน้าจอ — จอกลางโต๊ะยังเห็น
@@ -528,7 +534,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 )
               })}
               {d.decor.desk && (
-                <div className="absolute pointer-events-none z-[4] flex justify-center" style={{ left: d.decor.desk.x * TILE - 8, top: d.decor.desk.y * TILE + TILE - 9, width: TILE + 16 }}>
+                <div className="absolute pointer-events-none z-[4] flex justify-center" style={{ left: d.decor.desk.x * TILE - 8, top: d.decor.desk.y * TILE - 7, width: TILE + 16 }}>
                   <span className={`text-[8px] leading-none px-1 py-0.5 rounded shadow-sm truncate max-w-full ${d.email === me ? 'bg-primary-600 text-white' : 'bg-amber-900/85 text-amber-50'}`}>
                     {d.email === me ? 'โต๊ะฉัน' : d.name.split(/\s+/)[0]}
                   </span>
@@ -597,7 +603,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         {decor.decorating ? (
           <DecorPanel draft={decor.draft} kind={decor.kind} pickKind={decor.pickKind} selectedLabel={decor.selectedLabel}
             hasSelection={!!decor.selectedItem} act={decor.act} movingDesk={decor.movingDesk} startMoveDesk={decor.startMoveDesk}
-            releaseDesk={decor.releaseDesk} dirty={decor.dirty} saving={decor.saving} save={decor.save} cancel={decor.cancel} />
+            releaseDesk={decor.releaseDesk} dirty={decor.dirty} saving={decor.saving} save={decor.save} cancel={decor.cancel}
+            deskStyle={decor.deskStyle} pickDeskStyle={decor.pickDeskStyle} turnDesk={decor.turnDesk} />
         ) : (<>
         <div className="flex text-xs border-b border-gray-200 dark:border-gray-800 items-stretch">
           <button onClick={() => setTab('all')} className={`flex-1 py-2 ${tab === 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>ทั้งออฟฟิศ</button>

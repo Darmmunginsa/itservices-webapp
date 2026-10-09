@@ -1,6 +1,7 @@
-import { RotateCw, FlipHorizontal2, Trash2, Save, X, MoveRight, LogOut } from 'lucide-react'
-import { CATALOG, MAX_ITEMS, DECOR_RADIUS, DESK_SLOTS, type MyDecor } from '../../utils/officeDecor'
+import { RotateCw, FlipHorizontal2, Trash2, Save, X, MoveRight, LogOut, RotateCcwSquare } from 'lucide-react'
+import { CATALOG, DESK_STYLES, MAX_ITEMS, DECOR_RADIUS, DESK_SLOTS, type MyDecor } from '../../utils/officeDecor'
 import { DecorSprite } from './DecorSprite'
+import { DeskSprite } from './DeskSprite'
 
 // ── แผงตกแต่งโต๊ะ (แทนช่องแชทระหว่างตกแต่ง): แคตตาล็อก + เครื่องมือของชิ้นที่เลือก + บันทึก ──
 
@@ -18,6 +19,9 @@ interface Props {
   saving: boolean
   save: () => void
   cancel: () => void
+  deskStyle: string
+  pickDeskStyle: (style: string) => void
+  turnDesk: () => void
 }
 
 const GROUPS = [...new Set(CATALOG.map(c => c.group))]
@@ -29,8 +33,9 @@ export function DecorPanel(p: Props) {
       <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-primary-50/60 dark:bg-primary-900/10">
         <p className="text-xs font-semibold">🎨 ตกแต่งโต๊ะของฉัน</p>
         <p className="text-[10px] text-gray-500 mt-0.5">
-          {p.movingDesk || !p.draft.desk
-            ? 'คลิกโต๊ะว่างบนแผนที่ (มีกรอบเขียว) เพื่อจองเป็นโต๊ะของคุณ'
+          {!p.draft.desk
+            ? 'เลือกแบบโต๊ะด้านล่าง แล้วคลิกช่องเขียวบนแผนที่ เพื่อวางโต๊ะตรงไหนก็ได้ในโซนทำงาน / ห้องโฟกัส'
+            : p.movingDesk ? 'คลิกช่องเขียวเพื่อย้ายโต๊ะไปที่นั่น — ของแต่งย้ายตาม'
             : `เลือกของแล้วคลิกช่องสีเขียวรอบโต๊ะ (${DECOR_RADIUS} ช่อง) · บนโต๊ะวางได้ ${DESK_SLOTS} ชิ้น · ${p.draft.items.length}/${MAX_ITEMS} ชิ้น`}
         </p>
       </div>
@@ -48,6 +53,25 @@ export function DecorPanel(p: Props) {
 
       {/* แคตตาล็อก */}
       <div className="flex-1 overflow-y-auto p-2 space-y-3 bg-gray-50/60 dark:bg-gray-900/40">
+        {/* แบบโต๊ะ — เปลี่ยนได้ตลอด ของบนโต๊ะไม่หาย */}
+        <div>
+          <div className="flex items-center gap-1 mb-1 px-1">
+            <p className="text-[10px] font-semibold text-gray-500 flex-1">แบบโต๊ะ</p>
+            {p.draft.desk && <button onClick={p.turnDesk} className="inline-flex items-center gap-1 text-[10px] text-primary-600 hover:underline" title="หมุนโต๊ะ 90° (หันเก้าอี้ไปทิศอื่น)"><RotateCcwSquare size={11} /> หมุนโต๊ะ</button>}
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {DESK_STYLES.map(d => {
+              const on = p.deskStyle === d.style
+              return (
+                <button key={d.style} onClick={() => p.pickDeskStyle(d.style)} title={d.hint}
+                  className={`flex flex-col items-center gap-0.5 pt-1.5 pb-1 rounded-lg border bg-amber-50/60 dark:bg-gray-900 ${on ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-700 hover:border-primary-300'}`}>
+                  <DeskSprite style={d.style} size={44} />
+                  <span className="text-[9px] leading-tight mt-1.5 text-gray-600 dark:text-gray-300">{d.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
         {GROUPS.map(g => (
           <div key={g}>
             <p className="text-[10px] font-semibold text-gray-500 mb-1 px-1">{g}</p>

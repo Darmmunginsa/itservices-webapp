@@ -271,6 +271,11 @@ export function OfficeDefs() {
           <stop offset="0" stopColor="#000" stopOpacity=".1" /><stop offset=".25" stopColor="#000" stopOpacity="0" />
           <stop offset="1" stopColor="#000" stopOpacity=".06" />
         </linearGradient>
+        <linearGradient id="hd-rgb" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="36" y2="0" spreadMethod="reflect">
+          <stop offset="0" stopColor="#ef4444" /><stop offset=".2" stopColor="#f59e0b" /><stop offset=".4" stopColor="#22c55e" />
+          <stop offset=".6" stopColor="#06b6d4" /><stop offset=".8" stopColor="#6366f1" /><stop offset="1" stopColor="#d946ef" />
+          <animateTransform attributeName="gradientTransform" type="translate" values="0 0;36 0" dur="3s" repeatCount="indefinite" />
+        </linearGradient>
         <linearGradient id="hd-screen" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#38bdf8" /><stop offset=".6" stopColor="#2563eb" /><stop offset="1" stopColor="#1e3a8a" />
         </linearGradient>
