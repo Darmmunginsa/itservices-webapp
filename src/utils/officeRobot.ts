@@ -92,27 +92,48 @@ export function robotPlan(m: OfficeMap): { dock: Pos | null; route: Pos[] } {
   return p
 }
 
-// ── Request Cleaning: เรียกหุ่นมากวาดตรงที่เรายืน ──
+// ── Request Cleaning / Request Coffee: เรียกหุ่นมาช่วย ──
 // คำขอส่งผ่าน HD_OfficeChat (Room = 'robot' — ไม่โผล่ในแท็บแชท) ทุกเครื่องอ่านคำขอชุดเดียวกัน
-// แล้วคำนวณภารกิจแบบเดียวกัน: เดินไปหา → กวาดรอบ ๆ → เดินกลับจุดเดิม → วิ่งเส้นทางปกติต่อ (ไม่วาร์ป)
+// แล้วคำนวณภารกิจแบบเดียวกัน → ทุกคนเห็นหุ่นทำงานพร้อมกัน แล้วกลับไปวิ่งเส้นทางปกติต่อจากจุดเดิม (ไม่วาร์ป)
+//   กวาด: เดินไปหา → กวาดรอบตัว → เดินกลับ
+//   กาแฟ: เดินไปเครื่องกาแฟ → กดชง → ถือแก้วมาส่ง → ยื่นให้ → เดินกลับ
 
 export const ROBOT_ROOM = 'robot'
 export const SWEEP_STEPS = 12
+export const BREW_STEPS = 6
+export const GIVE_STEPS = 4
 const MAX_PATH = 90
 
-export interface CleanRequest { at: number; x: number; y: number; by: string }
-export interface Mission { start: number; steps: Pos[]; by: string; target: Pos; sweepFrom: number; sweepTo: number }
+export type RobotJob = 'clean' | 'coffee'
+export type RobotPhase = 'go' | 'sweep' | 'fetch' | 'brew' | 'carry' | 'give' | 'back'
+export interface CleanRequest { at: number; x: number; y: number; by: string; kind: RobotJob }
+export interface Mission {
+  start: number; steps: Pos[]; by: string; target: Pos; kind: RobotJob
+  /** ช่วงของแต่ละขั้น (ก้าวที่ < end) */
+  phases: { phase: RobotPhase; end: number }[]
+  /** ช่วงที่ทำงานอยู่ตรงหน้าคนเรียก (กวาด / ยื่นกาแฟ) */
+  sweepFrom: number; sweepTo: number
+}
 
-/** อ่านคำขอจากแถวแชท — "clean:x,y" */
+/** อ่านคำขอจากแถวแชท — "clean:x,y" หรือ "coffee:x,y" */
 export function parseCleanRequests(rows: { Title: string; UserName: string; Room?: string; Created: string }[]): CleanRequest[] {
   const out: CleanRequest[] = []
   for (const r of rows) {
     if ((r.Room ?? '') !== ROBOT_ROOM) continue
-    const m = /^clean:(\d+),(\d+)$/.exec((r.Title || '').trim())
+    const m = /^(clean|coffee):(\d+),(\d+)$/.exec((r.Title || '').trim())
     const at = new Date(r.Created).getTime()
-    if (m && Number.isFinite(at)) out.push({ at, x: +m[1], y: +m[2], by: r.UserName || '' })
+    if (m && Number.isFinite(at)) out.push({ at, x: +m[2], y: +m[3], by: r.UserName || '', kind: m[1] as RobotJob })
   }
   return out.sort((a, b) => a.at - b.at)
+}
+
+/** จุดยืนกดเครื่องกาแฟ — ช่องเดินได้ข้างเครื่อง K (เครื่องแรกที่เจอ) */
+export function coffeeSpot(m: OfficeMap): Pos | null {
+  for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) {
+    if (tileAt(m, x, y) !== 'K') continue
+    for (const d of DIRS) if (isWalkable(m, x + d.x, y + d.y)) return { x: x + d.x, y: y + d.y }
+  }
+  return null
 }
 
 /** กวาดไปมารอบปลายทาง (ช่องที่เดินได้รอบตัว) แล้วจบที่ปลายทาง */
@@ -124,22 +145,46 @@ function sweepAround(m: OfficeMap, t: Pos): Pos[] {
   return out
 }
 
+const same = (a: Pos, b: Pos) => a.x === b.x && a.y === b.y
+/** ทางจาก a → b (รวมช่องปลาย) · ไปไม่ได้ = null */
+function leg(m: OfficeMap, a: Pos, b: Pos): Pos[] | null {
+  if (same(a, b)) return []
+  const p = findPath(m, a, b)
+  return p.length && p.length <= MAX_PATH ? p : null
+}
+const stay = (p: Pos, k: number): Pos[] => Array.from({ length: k }, () => p)
+
 /** ภารกิจทั้งหมดตามลำดับ — คิวต่อกัน (คำขอระหว่างหุ่นไม่ว่าง = ทำต่อจากงานก่อน) */
 export function planMissions(m: OfficeMap, route: Pos[], reqs: CleanRequest[]): Mission[] {
   if (!route.length) return []
   const n = route.length
+  const spot = coffeeSpot(m)
   const out: Mission[] = []
   let shift = 0, busyUntil = -Infinity
   for (const r of reqs) {
     const start = Math.max(Math.floor(r.at / ROBOT_STEP_MS) + 1, busyUntil)
     const from = route[(((start - shift) % n) + n) % n]
     const target = { x: r.x, y: r.y }
-    const go = (from.x === target.x && from.y === target.y) ? [] : findPath(m, from, target)
-    if ((!go.length && (from.x !== target.x || from.y !== target.y)) || go.length > MAX_PATH) continue
-    const sweep = sweepAround(m, target)
-    const back = go.slice(0, -1).reverse().concat([from])
-    const steps = [...go, ...sweep, ...back]
-    out.push({ start, steps, by: r.by, target, sweepFrom: go.length, sweepTo: go.length + sweep.length })
+    const parts: { phase: RobotPhase; steps: Pos[] }[] = []
+    if (r.kind === 'coffee') {
+      if (!spot) continue
+      const fetch = leg(m, from, spot), carry = leg(m, spot, target), back = leg(m, target, from)
+      if (!fetch || !carry || !back) continue
+      parts.push({ phase: 'fetch', steps: fetch }, { phase: 'brew', steps: stay(spot, BREW_STEPS) },
+        { phase: 'carry', steps: carry }, { phase: 'give', steps: stay(target, GIVE_STEPS) }, { phase: 'back', steps: back.length ? back : [from] })
+    } else {
+      const go = leg(m, from, target)
+      if (!go) continue
+      const back = go.slice(0, -1).reverse().concat([from])
+      parts.push({ phase: 'go', steps: go }, { phase: 'sweep', steps: sweepAround(m, target) }, { phase: 'back', steps: back })
+    }
+    const steps: Pos[] = []
+    const phases: Mission['phases'] = []
+    for (const pt of parts) { steps.push(...pt.steps); phases.push({ phase: pt.phase, end: steps.length }) }
+    const work = r.kind === 'coffee' ? 'give' : 'sweep'
+    const wi = phases.findIndex(p => p.phase === work)
+    const sweepFrom = wi > 0 ? phases[wi - 1].end : 0, sweepTo = phases[wi].end
+    out.push({ start, steps, by: r.by, target, kind: r.kind, phases, sweepFrom, sweepTo })
     shift += steps.length
     busyUntil = start + steps.length
   }
@@ -158,7 +203,7 @@ function posAtStep(route: Pos[], missions: Mission[], step: number): { pos: Pos;
   return { pos: route[(((step - shift) % n) + n) % n], mission: null, k: 0 }
 }
 
-export interface RobotNow { pos: Pos; left: boolean; mission: Mission | null; sweeping: boolean; returning: boolean }
+export interface RobotNow { pos: Pos; left: boolean; mission: Mission | null; phase: RobotPhase | null; sweeping: boolean; returning: boolean }
 export function robotNow(route: Pos[], missions: Mission[], now: number): RobotNow | null {
   if (!route.length) return null
   const step = Math.floor(now / ROBOT_STEP_MS)
@@ -168,7 +213,21 @@ export function robotNow(route: Pos[], missions: Mission[], now: number): RobotN
     const a = posAtStep(route, missions, step - k - 1).pos, b = posAtStep(route, missions, step - k).pos
     if (a.x !== b.x) { left = b.x < a.x; break }
   }
-  const sweeping = !!cur.mission && cur.k >= cur.mission.sweepFrom && cur.k < cur.mission.sweepTo
-  const returning = !!cur.mission && cur.k >= cur.mission.sweepTo
-  return { pos: cur.pos, left, mission: cur.mission, sweeping, returning }
+  const phase = cur.mission ? cur.mission.phases.find(p => cur.k < p.end)?.phase ?? 'back' : null
+  return { pos: cur.pos, left, mission: cur.mission, phase, sweeping: phase === 'sweep', returning: phase === 'back' }
+}
+
+/** ป้ายเหนือหัวหุ่น */
+export function robotLabel(r: RobotNow): string | null {
+  if (!r.mission) return null
+  const who = r.mission.by.split(/\s+/)[0]
+  switch (r.phase) {
+    case 'go': return `→ ไปกวาดให้ ${who}`
+    case 'sweep': return `🧹 กวาดให้ ${who}`
+    case 'fetch': return `☕ ไปชงกาแฟให้ ${who}`
+    case 'brew': return '☕ กำลังกดชง… ฟู่ววว'
+    case 'carry': return `☕ ถือกาแฟไปส่ง ${who}`
+    case 'give': return `☕ กาแฟมาแล้วครับ ${who}!`
+    default: return r.mission.kind === 'coffee' ? '😊 ส่งแล้ว กลับไปทำงานต่อ' : '✨ สะอาดแล้ว กลับไปทำงานต่อ'
+  }
 }

@@ -19,7 +19,7 @@ import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettin
 import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
-import { robotPlan, robotNow as robotStateAt, planMissions, parseCleanRequests, ROBOT_STEP_MS, ROBOT_LINES, ROBOT_ROOM } from '../../utils/officeRobot'
+import { robotPlan, robotNow as robotStateAt, planMissions, parseCleanRequests, robotLabel, coffeeSpot, ROBOT_STEP_MS, ROBOT_LINES, ROBOT_ROOM } from '../../utils/officeRobot'
 import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
@@ -383,14 +383,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const robot = robotStateAt(route, missions, robotNow)
   const myPending = missions.some(m2 => m2.by === meName && robotNow < (m2.start + m2.sweepTo) * ROBOT_STEP_MS)
   const [requesting, setRequesting] = useState(false)
-  async function requestCleaning() {
+  const hasCoffee = !!coffeeSpot(walkMap)
+  async function requestRobot(kind: 'clean' | 'coffee') {
     if (!pos || !meEmail || requesting) return
     setRequesting(true)
     try {
-      const t = `clean:${pos.x},${pos.y}`
+      const t = `${kind}:${pos.x},${pos.y}`
       const res = await sendChat({ email: meEmail, name: meName, text: t, room: ROBOT_ROOM })
       setChat(prev => [...prev, { id: res.id, Title: t, UserEmail: meEmail, UserName: meName, Room: ROBOT_ROOM, Created: new Date().toISOString() }])
-      onDecorInfo('🤖 รับทราบครับ! กำลังเดินไปกวาดให้')
+      onDecorInfo(kind === 'coffee' ? '🤖 รับทราบครับ! เดี๋ยวไปชงกาแฟมาให้ ☕' : '🤖 รับทราบครับ! กำลังเดินไปกวาดให้')
     } catch { cb.current.onError('เรียกหุ่นไม่สำเร็จ — ตรวจว่ามี list HD_OfficeChat') }
     finally { setRequesting(false) }
   }
@@ -489,11 +490,20 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             </button>
           )}
           {pos && !decor.decorating && (
-            <button onClick={requestCleaning} disabled={requesting || myPending}
-              title="เรียกหุ่นยนต์มากวาดตรงที่คุณยืนอยู่ — ทุกคนเห็นหุ่นเดินมา"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-600 disabled:opacity-50">
-              🧹 {myPending ? 'หุ่นกำลังมา…' : 'Request Cleaning'}
-            </button>
+            <>
+              <button onClick={() => requestRobot('clean')} disabled={requesting || myPending}
+                title="เรียกหุ่นยนต์มากวาดตรงที่คุณยืนอยู่ — ทุกคนเห็นหุ่นเดินมา"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-600 disabled:opacity-50">
+                🧹 {myPending ? 'หุ่นกำลังมา…' : 'Request Cleaning'}
+              </button>
+              {hasCoffee && (
+                <button onClick={() => requestRobot('coffee')} disabled={requesting || myPending}
+                  title="ให้หุ่นยนต์ไปกดกาแฟที่มุมกาแฟ แล้วถือมาส่งตรงที่คุณยืนอยู่"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-700 hover:text-amber-800 disabled:opacity-50">
+                  ☕ Request Coffee
+                </button>
+              )}
+            </>
           )}
           {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
           {!voice.micOn ? (
@@ -695,10 +705,10 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 className="absolute z-[9] flex items-center justify-center cursor-pointer"
                 style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE - 10, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
                 {/* หันตามก้าวแนวนอนล่าสุด */}
-                <span style={{ display: 'inline-flex', transform: robot.left ? 'scaleX(-1)' : undefined }}><RobotSprite /></span>
-                {robot.mission && (
+                <span style={{ display: 'inline-flex', transform: robot.left ? 'scaleX(-1)' : undefined }}><RobotSprite holding={robot.phase === 'carry' || robot.phase === 'give' ? 'cup' : robot.phase === 'brew' ? 'none' : robot.mission?.kind === 'coffee' && robot.phase === 'fetch' ? 'none' : 'broom'} /></span>
+                {robotLabel(robot) && (
                   <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 shadow-sm border border-amber-200 dark:border-amber-800">
-                    {robot.sweeping ? `🧹 กวาดให้ ${robot.mission.by.split(/\s+/)[0]}` : robot.returning ? '✨ สะอาดแล้ว กลับไปทำงานต่อ' : `→ ไปหา ${robot.mission.by.split(/\s+/)[0]}`}
+                    {robotLabel(robot)}
                   </span>
                 )}
               </button>

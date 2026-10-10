@@ -1,7 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
-import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow } from '../src/utils/officeRobot'
+import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
@@ -2441,6 +2441,24 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(robotNow(R, M, (m.start + m.sweepFrom) * STEP)!.sweeping, true, 'it sweeps when it arrives')
   const two = planMissions(OM, R, [...reqs, { ...reqs[0], by: 'Other', at: at + STEP }])
   eq(two.length === 2 && two[1].start >= two[0].start + two[0].steps.length, true, 'a second request waits its turn')
+}
+
+// -- Request Coffee --
+{
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  const R = robotRoute(OM), STEP = 900, at = 1_000_000 * STEP
+  const spot = coffeeSpot(OM)!
+  eq(!!spot && isWalkable(OM, spot.x, spot.y), true, 'the robot has a place to stand at the coffee machine')
+  const [cm] = planMissions(OM, R, parseCleanRequests([{ Title: 'coffee:5,1', UserName: 'Somchai', Room: 'robot', Created: new Date(at).toISOString() }]))
+  eq(cm?.phases.map(p => p.phase).join(','), 'fetch,brew,carry,give,back', 'coffee: fetch, brew, carry, hand over, go back')
+  const brewEnd = cm.phases[1].end
+  eq(JSON.stringify(cm.steps[brewEnd - 1]), JSON.stringify(spot), 'it brews standing at the machine')
+  eq(JSON.stringify(cm.steps[cm.phases[3].end - 1]), JSON.stringify({ x: 5, y: 1 }), 'it hands the coffee over where you stood')
+  eq(cm.steps.every((p, k) => k === 0 || Math.abs(p.x - cm.steps[k - 1].x) + Math.abs(p.y - cm.steps[k - 1].y) <= 1), true, 'the coffee run walks tile by tile')
+  const endT = (cm.start + cm.steps.length) * STEP
+  const a = robotNow(R, [cm], endT - STEP)!.pos, b = robotNow(R, [cm], endT)!.pos
+  eq(Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 1, true, 'after delivering it resumes its rounds without jumping')
+  eq(robotLabel(robotNow(R, [cm], (cm.start + brewEnd - 1) * STEP)!), '☕ กำลังกดชง… ฟู่ววว', 'the label says it is brewing')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
