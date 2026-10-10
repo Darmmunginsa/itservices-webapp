@@ -5,7 +5,7 @@ import { propDef } from '../../utils/officeProps'
 // มีเงาตกบนพื้น · แสงจากซ้ายบน · บางชิ้นขยับได้ (น้ำไหล ปลาว่าย เป็ดลอย ชิงช้าแกว่ง นาฬิกาเดิน)
 
 const sh = (cx: number, cy: number, rx: number, ry: number, o = 0.22) =>
-  <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#000" opacity={o} filter="url(#hd-blur)" />
+  <ellipse cx={cx} cy={cy} rx={rx + 1.6} ry={ry + 1.2} fill="url(#hd-shadow)" opacity={o} />
 
 const Bob = ({ dy = 1.2, dur = 3, children }: { dy?: number; dur?: number; children: ReactElement | ReactElement[] }) => (
   <g>{children}<animateTransform attributeName="transform" type="translate" values={`0 0;0 ${-dy};0 0`} dur={`${dur}s`} repeatCount="indefinite" additive="sum" /></g>

@@ -91,7 +91,7 @@ function Floor({ kind, x, y }: { kind: string; x: number; y: number }) {
 
 /** เงานุ่มใต้เฟอร์นิเจอร์ — ตกเฉียงลงขวานิดหน่อย ให้รู้สึกว่ามีแสงจากซ้ายบน */
 const Shadow = ({ cx = 19, cy = 30, rx = 14, ry = 4.5, o = 0.22 }) =>
-  <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#000" opacity={o} filter="url(#hd-blur)" />
+  <ellipse cx={cx} cy={cy} rx={rx + 1.6} ry={ry + 1.2} fill="url(#hd-shadow)" opacity={o} />
 
 // ── กำแพง ────────────────────────────────────────────
 function Wall({ at }: { at: At }) {
@@ -288,7 +288,7 @@ function Hedge({ at }: { at: At }) {
   const w = at(-1, 0) === 'h', e = at(1, 0) === 'h'
   const x0 = w ? 0 : 3, x1 = e ? 36 : 33
   return (<g>
-    <ellipse cx="18" cy="34" rx="18" ry="3" fill="#000" opacity=".2" filter="url(#hd-blur)" />
+    <ellipse cx="18" cy="34" rx="19.6" ry="4.2" fill="url(#hd-shadow)" opacity=".2" />
     <rect x={x0} y="6" width={x1 - x0} height="28" rx={w && e ? 0 : 7} fill="#166534" />
     <rect x={x0} y="-6" width={x1 - x0} height="20" rx={w && e ? 0 : 8} fill="#15803d" />
     {[6, 16, 26].map(cx => <circle key={cx} cx={cx} cy={-1 + (cx % 3)} r="5" fill="#16a34a" />)}
@@ -301,6 +301,8 @@ export function OfficeDefs() {
   return (
     <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
       <defs>
+        {/* เงานุ่มแบบไล่สีไว้ล่วงหน้า — แทน blur ที่ต้องคำนวณใหม่ทุกเฟรมในภาพที่ขยับ */}
+        <radialGradient id="hd-shadow"><stop offset="0" stopColor="#000" /><stop offset=".55" stopColor="#000" stopOpacity=".85" /><stop offset="1" stopColor="#000" stopOpacity="0" /></radialGradient>
         <filter id="hd-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.4" /></filter>
         <pattern id="hd-weave" width="4" height="4" patternUnits="userSpaceOnUse">
           <rect width="2" height="2" fill="#94a3b8" /><rect x="2" y="2" width="2" height="2" fill="#94a3b8" />

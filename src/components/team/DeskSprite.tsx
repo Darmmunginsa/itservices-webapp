@@ -5,7 +5,7 @@ import type { Rot } from '../../utils/officeDecor'
 // หมุนทั้งชุด (โต๊ะ + เก้าอี้) ตาม rot · ใช้ filter/gradient จาก <OfficeDefs />
 
 const sh = (cx: number, cy: number, rx: number, ry: number, o = 0.22) =>
-  <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#000" opacity={o} filter="url(#hd-blur)" />
+  <ellipse cx={cx} cy={cy} rx={rx + 1.6} ry={ry + 1.2} fill="url(#hd-shadow)" opacity={o} />
 
 /** เก้าอี้สำนักงานมองจากบน — พนักพิงอยู่ด้านล่าง (หันเข้าโต๊ะ) */
 const chair = (fill = '#334155', back = '#1e293b', y = 28) => (

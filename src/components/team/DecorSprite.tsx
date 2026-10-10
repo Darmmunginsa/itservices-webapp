@@ -2,10 +2,10 @@ import { memo, type ReactElement } from 'react'
 import type { Rot } from '../../utils/officeDecor'
 
 // ── ของแต่งโต๊ะ — สไปรต์ SVG มุมมองเดียวกับออฟฟิศ (viewBox 36×36 · แสงจากซ้ายบน · มีเงา) ──
-// ใช้ filter "hd-blur" จาก <OfficeDefs /> ที่วางไว้ครั้งเดียวต่อแผนที่
+// ใช้เงาไล่สี "hd-shadow" จาก <OfficeDefs /> ที่วางไว้ครั้งเดียวต่อแผนที่
 
 const sh = (cx: number, cy: number, rx: number, ry: number, o = 0.22) =>
-  <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="#000" opacity={o} filter="url(#hd-blur)" />
+  <ellipse cx={cx} cy={cy} rx={rx + 1.6} ry={ry + 1.2} fill="url(#hd-shadow)" opacity={o} />
 
 const ART: Record<string, ReactElement> = {
   // ── บนโต๊ะ ──

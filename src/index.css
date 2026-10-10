@@ -300,3 +300,5 @@ html[data-fx='on'] .urgent-badge {
 .hd-decor-sel { outline: 2px solid #3b82f6; outline-offset: 1px; border-radius: 6px; animation: hd-sel 1s ease-in-out infinite; }
 @keyframes hd-sel { 50% { outline-color: #93c5fd } }
 @media (prefers-reduced-motion: reduce) { .hd-decor-hi, .hd-decor-sel { animation: none } }
+/* หยุดลวดลายเคลื่อนไหวบนแผนที่ตอนไม่มีใครดู (ดู useMotionPause) */
+.hd-paused *, .hd-paused *::before, .hd-paused *::after { animation-play-state: paused !important; }

@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react'
 // วาดในกรอบ x 0..36 · โคนต้นอยู่ที่ y≈33 (พื้นของช่อง) · ยอดสูงสุด y≈-34
 // ใบไหวเบา ๆ ด้วย animateTransform (หมุนรอบโคน) — ให้ความรู้สึกมีลม มีชีวิต
 
-const shadow = <ellipse cx="19" cy="33.5" rx="13" ry="3" fill="#000" opacity=".22" filter="url(#hd-blur)" />
+const shadow = <ellipse cx="19" cy="33.5" rx="14.6" ry="4.2" fill="url(#hd-shadow)" opacity=".22" />
 
 /** กลุ่มใบไหว — หมุนไปมารอบจุด (cx,cy) */
 const Sway = ({ cx, cy, deg = 2, dur = 4, children }: { cx: number; cy: number; deg?: number; dur?: number; children: ReactNode }) => (

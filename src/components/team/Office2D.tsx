@@ -17,6 +17,7 @@ import { FocusMusicCard } from './FocusMusicCard'
 import { ambient } from '../../services/ambientAudio'
 import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettings, saveGardenSettings, soundFor, waterLevel, parseSound, serializeSound, type MusicSettings, type GardenSoundSettings } from '../../utils/focusMusic'
 import { GardenSoundCard } from './GardenSoundCard'
+import { useMotionPause } from '../../hooks/useMotionPause'
 import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
@@ -112,6 +113,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const mutedRef = useRef(false)
   const zoneRef = useRef<Zone | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
+  useMotionPause(boardRef)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const meRef = useRef<HTMLDivElement>(null)
   const errored = useRef(false)
