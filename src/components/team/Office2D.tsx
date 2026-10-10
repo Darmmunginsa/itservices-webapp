@@ -18,6 +18,8 @@ import { ambient } from '../../services/ambientAudio'
 import { loadMusicSettings, saveMusicSettings, shouldPlay, effectiveVolume, type MusicSettings } from '../../utils/focusMusic'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
+import { PropSprite } from './PropArt'
+import { propBlocked, propDef, type Prop } from '../../utils/officeProps'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
@@ -34,11 +36,14 @@ const TILE = 36
 
 // แผนที่สำหรับเดิน — คำนวณใหม่เฉพาะเมื่อผังหรือชุดโต๊ะเปลี่ยน (cache ค่าล่าสุดค่าเดียว)
 // ไม่ใช้ useMemo: React compiler ไม่ยอมให้ memo ที่อ่าน map.rows แต่ deps เป็น string ที่คำนวณต่อ render
-let _walkCache: { rows: string[]; key: string; map: OfficeMap } | null = null
+// เก็บหลายค่า (เรียก 2 แบบต่อ render: กันเฉพาะสิ่งของ / กันสิ่งของ+โต๊ะ) — ค่าเดียวจะสลับกันทับจนไม่เคยตรง
+const _walkCache = new Map<string, { rows: string[]; map: OfficeMap }>()
 function walkMapFor(rows: string[], key: string): OfficeMap {
-  if (_walkCache && _walkCache.rows === rows && _walkCache.key === key) return _walkCache.map
+  const hit = _walkCache.get(key)
+  if (hit && hit.rows === rows) return hit.map
   const m = parseMap(walkableRows(rows, new Set(key ? key.split(';') : [])))
-  _walkCache = { rows, key, map: m }
+  if (_walkCache.size > 8) _walkCache.clear()
+  _walkCache.set(key, { rows, map: m })
   return m
 }
 const POLL_MS = 3000
@@ -62,9 +67,11 @@ interface Props {
   onError: (msg: string) => void
   /** ข้อความแจ้งผลสำเร็จ (เช่น บันทึกการตกแต่งแล้ว) — ไม่ส่งมา = ใช้ช่องเดียวกับ onError */
   onInfo?: (msg: string) => void
+  /** สิ่งของชิ้นใหญ่บนผัง (น้ำตก ศาลา ...) */
+  mapProps?: Prop[]
 }
 
-const ZONE_CHAR: Record<Zone, string> = { desk: '.', meeting: 'M', focus: 'F', cafe: 'C', site: 'S' }
+const ZONE_CHAR: Record<Zone, string> = { desk: '.', meeting: 'M', focus: 'F', cafe: 'C', site: 'S', garden: 'g' }
 
 function hashIndex(s: string): number {
   let h = 0
@@ -77,7 +84,7 @@ const fmtClock = (iso: string) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onError, onInfo }: Props) {
+export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onError, onInfo, mapProps = [] }: Props) {
   const map = useMemo(() => parseMap(mapRows), [mapRows])
   const me = meEmail.toLowerCase()
   const [rowId, setRowId] = useState<number | null>(null)
@@ -344,14 +351,17 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   // ── ตกแต่งโต๊ะ ──
   const onDecorInfo = useCallback((msg: string) => (onInfo ?? cb.current.onError)(msg), [onInfo])
-  const decor = useOfficeDecor({ meEmail, meName, map, onError: onVoiceError, onInfo: onDecorInfo })
+  // ช่องที่สิ่งของชิ้นใหญ่ขวาง — โต๊ะส่วนตัววางทับไม่ได้ และเดินผ่านไม่ได้
+  const propKey = [...propBlocked(mapProps)].sort().join(';')
+  const propMap = walkMapFor(map.rows, propKey)
+  const decor = useOfficeDecor({ meEmail, meName, map: propMap, onError: onVoiceError, onInfo: onDecorInfo })
   // ของแต่งทุกคน: คนอื่นจากที่บันทึกไว้ · ของเรา = ร่างระหว่างแต่ง (เห็นผลทันที)
   const allDecor: { email: string; name: string; decor: MyDecor }[] = [
     ...decor.others,
     { email: me, name: meName, decor: decor.mine },
   ]
   // ตัวโต๊ะส่วนตัว (6 ช่อง/คน) ขวางทางเดิน — สร้างแผนที่เดินใหม่เมื่อชุดโต๊ะเปลี่ยนเท่านั้น
-  const blockedKey = [...blockedTiles(allDecor.map(d => d.decor.desk))].sort().join(';')
+  const blockedKey = [...new Set([...blockedTiles(allDecor.map(d => d.decor.desk)), ...(propKey ? propKey.split(';') : [])])].sort().join(';')
   const walkMap = walkMapFor(map.rows, blockedKey)
   useEffect(() => {
     walkRef.current = walkMap
@@ -531,7 +541,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {/* พื้น */}
             <OfficeDefs />
             {map.rows.map((row, y) => row.split('').map((ch, x) => {
-              const walk = 'MFCS.E'.includes(ch)
+              // ใช้กฎกลางของผัง — เดิมเขียนรายชื่อตัวอักษรตายตัว พอเพิ่มหญ้า/ทางเดินหิน คลิกเดินเข้าสวนจึงไม่ได้
+              const walk = isWalkable(propMap, x, y)
               return (
                 <div key={`${x},${y}`} onClick={e => {
                     if (decor.decorating) { e.stopPropagation(); decor.onTileClick({ x, y }); return }
@@ -543,6 +554,17 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 </div>
               )
             }))}
+            {/* ── สิ่งของชิ้นใหญ่ (น้ำตก ศาลา ม้านั่ง ...) — ภาพเดียวทั้งชิ้น · คลิกทะลุไปช่องข้างใต้ ── */}
+            {mapProps.map((pr, i) => {
+              const d = propDef(pr.kind)
+              if (!d) return null
+              return (
+                <div key={`prop${i}`} className="absolute pointer-events-none" title={d.label}
+                  style={{ left: pr.x * TILE, top: pr.y * TILE, width: d.w * TILE, height: d.h * TILE, zIndex: 1 }}>
+                  <PropSprite kind={pr.kind} size={TILE} />
+                </div>
+              )
+            })}
             {/* ── ของแต่งของทุกคน + ป้ายชื่อโต๊ะ ── (ไม่ขวางการคลิก — คลิกตกลงที่ช่องข้างใต้) */}
             {allDecor.map(d => (<div key={d.email} className="contents">
               {d.decor.desk && (

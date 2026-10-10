@@ -5,6 +5,7 @@
 
 import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 import { DEFAULT_MAP } from '../utils/officeMap'
+import { parseProps, serializeProp, DEFAULT_PROPS, type Prop } from '../utils/officeProps'
 
 export const PRESENCE_LIST = 'HD_OfficePresence'
 export const CHAT_LIST = 'HD_OfficeChat'
@@ -95,5 +96,31 @@ export async function saveOfficeMap(lines: string[]): Promise<void> {
 /** กลับไปใช้ผังในโค้ด */
 export async function resetOfficeMap(): Promise<void> {
   const old = await spGet<MapRow>('HD_Options', `Category eq '${MAP_CAT}'`, 'Id', undefined, 200)
+  for (const r of old) await spDelete('HD_Options', r.id)
+}
+
+// ── สิ่งของชิ้นใหญ่บนผัง (น้ำตก ศาลา ...) — Category='OfficeMapProps' 1 แถว/ชิ้น Title = "ชนิด,x,y" ──
+const PROPS_CAT = 'OfficeMapProps'
+
+/** ยังไม่เคยบันทึกผังเอง (ใช้ผังมาตรฐาน) = ใช้ของในสวนมาตรฐาน · บันทึกผังแล้วแต่ไม่มีของ = ไม่มีของจริง ๆ */
+export async function getOfficeProps(rows: string[]): Promise<Prop[]> {
+  try {
+    const got = await spGet<MapRow>('HD_Options', `Category eq '${PROPS_CAT}'`, 'Id,Title,SortOrder', 'SortOrder asc', 500)
+    if (got.length) return parseProps(got.map(r => r.Title), rows)
+    const usingDefaultMap = rows.join('\n') === DEFAULT_MAP.join('\n')
+    return usingDefaultMap ? DEFAULT_PROPS : []
+  } catch { return rows.join('\n') === DEFAULT_MAP.join('\n') ? DEFAULT_PROPS : [] }
+}
+
+/** บันทึกของทั้งชุด — ไม่มีของเลยก็เขียนแถว "none" 1 แถว ให้รู้ว่าตั้งใจลบหมด ไม่ใช่ยังไม่เคยบันทึก */
+export async function saveOfficeProps(props: Prop[]): Promise<void> {
+  const old = await spGet<MapRow>('HD_Options', `Category eq '${PROPS_CAT}'`, 'Id', undefined, 500)
+  const lines = props.length ? props.map(serializeProp) : ['none,0,0']
+  for (let i = 0; i < lines.length; i++) await spCreate('HD_Options', { Title: lines[i], Category: PROPS_CAT, SortOrder: i })
+  for (const r of old) await spDelete('HD_Options', r.id).catch(() => {})
+}
+
+export async function resetOfficeProps(): Promise<void> {
+  const old = await spGet<MapRow>('HD_Options', `Category eq '${PROPS_CAT}'`, 'Id', undefined, 500)
   for (const r of old) await spDelete('HD_Options', r.id)
 }

@@ -59,3 +59,8 @@ let mapRows: string[] = DEFAULT_MAP
 export async function getOfficeMapRows(): Promise<string[]> { return mapRows }
 export async function saveOfficeMap(lines: string[]): Promise<void> { mapRows = lines; console.log('[mock] saveOfficeMap', lines.length) }
 export async function resetOfficeMap(): Promise<void> { mapRows = DEFAULT_MAP }
+import { DEFAULT_PROPS, type Prop } from '../src/utils/officeProps'
+let props: Prop[] = DEFAULT_PROPS
+export async function getOfficeProps(): Promise<Prop[]> { return props }
+export async function saveOfficeProps(p: Prop[]): Promise<void> { props = p; console.log('[mock] saveOfficeProps', p.length) }
+export async function resetOfficeProps(): Promise<void> { props = DEFAULT_PROPS }

@@ -10,7 +10,7 @@ import { memo } from 'react'
 
 export type At = (dx: number, dy: number) => string
 
-const FLOOR_OF = new Set(['.', 'M', 'F', 'C', 'S', 'E'])
+const FLOOR_OF = new Set(['.', 'M', 'F', 'C', 'S', 'E', 'g', 'p'])
 /** ช่องที่วาดล้นออกนอกขอบ (เก้าอี้/เงา) — ผู้ใช้ควรวางชั้นให้สูงกว่าพื้น */
 
 /** พื้นใต้เฟอร์นิเจอร์ = พื้นที่พบบ่อยที่สุดใน 4 ทิศ */
@@ -26,8 +26,30 @@ function floorUnder(at: At): string {
 }
 
 // ── พื้น ─────────────────────────────────────────────
+/** สุ่มคงที่ตามตำแหน่ง — ทุกช่องหน้าตาไม่ซ้ำ แต่วาดใหม่กี่รอบก็เหมือนเดิม */
+const h = (x: number, y: number, k = 0) => Math.abs(Math.sin(x * 12.9898 + y * 78.233 + k * 37.719) * 43758.5453) % 1
+
+function Grass({ x, y }: { x: number; y: number }) {
+  return (<g>
+    <rect width="36" height="36" fill={h(x, y) > .5 ? '#6fbf5b' : '#74c463'} />
+    {Array.from({ length: 9 }, (_, i) => {
+      const bx = h(x, y, i) * 34 + 1, by = h(x, y, i + 20) * 32 + 3, tall = 2.5 + h(x, y, i + 40) * 3
+      return <path key={i} d={`M${bx} ${by} l-1 ${-tall} M${bx + 1.6} ${by} l.6 ${-tall - .6}`} stroke={i % 3 ? '#4d9b3c' : '#9be08a'} strokeWidth=".8" strokeLinecap="round" />
+    })}
+    {h(x, y, 99) > .82 && <g><circle cx={h(x, y, 5) * 28 + 4} cy={h(x, y, 6) * 26 + 5} r="1.6" fill={h(x, y, 7) > .5 ? '#fde047' : '#fafafa'} /><circle cx={h(x, y, 5) * 28 + 4} cy={h(x, y, 6) * 26 + 5} r=".6" fill="#f59e0b" /></g>}
+  </g>)
+}
+
 function Floor({ kind, x, y }: { kind: string; x: number; y: number }) {
   switch (kind) {
+    case 'g': return <Grass x={x} y={y} />
+    case 'p': // ทางเดินหินบนหญ้า
+      return (<g><Grass x={x} y={y} />
+        {[[9, 10, 7, 5], [25, 14, 6.5, 5], [13, 26, 7, 5.5], [28, 29, 5, 4]].map(([cx, cy, rx, ry], i) => (
+          <g key={i}><ellipse cx={cx + 1} cy={cy + 1.2} rx={rx} ry={ry} fill="#000" opacity=".18" />
+            <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={i % 2 ? '#d6d3d1' : '#e7e5e4'} transform={`rotate(${(h(x, y, i) - .5) * 40} ${cx} ${cy})`} />
+            <ellipse cx={cx - rx * .3} cy={cy - ry * .3} rx={rx * .35} ry={ry * .3} fill="#fff" opacity=".45" /></g>
+        ))}</g>)
     case 'M': // พรมห้องประชุม — น้ำเงินเทา ลายทอ
       return (<g>
         <rect width="36" height="36" fill="#cbd5e1" />
@@ -228,6 +250,52 @@ function Door() {
   </g>)
 }
 
+// ── สวน: บ่อน้ำ · แปลงดอกไม้ · รั้วพุ่มไม้ ──
+/** บ่อน้ำ — ขอบหินเฉพาะด้านที่ติดฝั่ง (ช่องข้าง ๆ ไม่ใช่น้ำ) บ่อหลายช่องจึงต่อเป็นผืนเดียว */
+function Water({ at, x, y }: { at: At; x: number; y: number }) {
+  const n = at(0, -1) !== 'w', s2 = at(0, 1) !== 'w', w = at(-1, 0) !== 'w', e = at(1, 0) !== 'w'
+  const fish = h(x, y, 3) > .55
+  return (<g>
+    <rect width="36" height="36" fill="#38bdf8" /><rect width="36" height="36" fill="url(#hd-pond)" />
+    <path d={`M4 ${10 + h(x, y) * 8} q6 -3 12 0 t12 0`} stroke="#e0f2fe" strokeWidth="1" fill="none" opacity=".7">
+      <animateTransform attributeName="transform" type="translate" values="0 0;3 1;0 0" dur={`${3 + h(x, y, 1) * 2}s`} repeatCount="indefinite" /></path>
+    {fish && <g><ellipse rx="4.5" ry="1.8" fill={h(x, y, 4) > .5 ? '#f97316' : '#fafafa'} /><path d="M-4.5 0 l-2.6 -2 v4z" fill="#fb923c" />
+      <animateMotion path={`M8 ${12 + h(x, y, 8) * 12} q10 -6 20 0 q-10 6 -20 0`} dur={`${6 + h(x, y, 9) * 4}s`} repeatCount="indefinite" rotate="auto" /></g>}
+    {h(x, y, 11) > .7 && <g><circle cx={8 + h(x, y, 12) * 18} cy={8 + h(x, y, 13) * 18} r="5" fill="#16a34a" /><path d={`M${8 + h(x, y, 12) * 18} ${8 + h(x, y, 13) * 18} l5 -1.5 v3z`} fill="#38bdf8" /></g>}
+    {n && <rect width="36" height="5" fill="#a8a29e" />}{n && <rect y="4" width="36" height="1.5" fill="#0369a1" opacity=".35" />}
+    {s2 && <rect y="31" width="36" height="5" fill="#a8a29e" />}
+    {w && <rect width="5" height="36" fill="#a8a29e" />}{e && <rect x="31" width="5" height="36" fill="#a8a29e" />}
+    {(n || w) && <rect width="5" height="5" fill="#78716c" />}{(n || e) && <rect x="31" width="5" height="5" fill="#78716c" />}
+  </g>)
+}
+
+function FlowerBed({ x, y }: { x: number; y: number }) {
+  const colors = ['#f472b6', '#facc15', '#a78bfa', '#fb7185', '#f97316', '#fafafa']
+  return (<g>
+    <rect x="1" y="3" width="34" height="31" rx="4" fill="#78350f" /><rect x="2" y="4" width="32" height="28" rx="3" fill="#92400e" />
+    {Array.from({ length: 10 }, (_, i) => {
+      const cx = 5 + (i % 4) * 8.5 + h(x, y, i) * 3, cy = 8 + Math.floor(i / 4) * 9 + h(x, y, i + 9) * 3
+      const c = colors[Math.floor(h(x, y, i + 30) * colors.length)]
+      return (<g key={i}><path d={`M${cx} ${cy + 4} v-4`} stroke="#15803d" strokeWidth="1.2" /><ellipse cx={cx - 2} cy={cy + 2} rx="2" ry="1" fill="#16a34a" />
+        {[0, 72, 144, 216, 288].map(a => <ellipse key={a} cx={cx} cy={cy - 1.4} rx="1.3" ry="2" fill={c} transform={`rotate(${a} ${cx} ${cy})`} />)}
+        <circle cx={cx} cy={cy} r=".9" fill="#fde047" /></g>)
+    })}
+  </g>)
+}
+
+/** รั้วพุ่มไม้ตัดแต่ง — มีความสูง (ล้นขึ้นช่องบน) ต่อกับช่องข้างเคียงเป็นแนวเดียว */
+function Hedge({ at }: { at: At }) {
+  const w = at(-1, 0) === 'h', e = at(1, 0) === 'h'
+  const x0 = w ? 0 : 3, x1 = e ? 36 : 33
+  return (<g>
+    <ellipse cx="18" cy="34" rx="18" ry="3" fill="#000" opacity=".2" filter="url(#hd-blur)" />
+    <rect x={x0} y="6" width={x1 - x0} height="28" rx={w && e ? 0 : 7} fill="#166534" />
+    <rect x={x0} y="-6" width={x1 - x0} height="20" rx={w && e ? 0 : 8} fill="#15803d" />
+    {[6, 16, 26].map(cx => <circle key={cx} cx={cx} cy={-1 + (cx % 3)} r="5" fill="#16a34a" />)}
+    {[8, 20, 30].map(cx => <circle key={cx} cx={cx} cy={-3} r="2" fill="#4ade80" opacity=".6" />)}
+  </g>)
+}
+
 // ── defs (ลาย/เกรเดียนต์) — วางครั้งเดียวต่อแผนที่ ──
 export function OfficeDefs() {
   return (
@@ -260,6 +328,13 @@ export function OfficeDefs() {
           <stop offset=".6" stopColor="#06b6d4" /><stop offset=".8" stopColor="#6366f1" /><stop offset="1" stopColor="#d946ef" />
           <animateTransform attributeName="gradientTransform" type="translate" values="0 0;36 0" dur="3s" repeatCount="indefinite" />
         </linearGradient>
+        <radialGradient id="hd-pond" cx=".5" cy=".4" r=".8">
+          <stop offset="0" stopColor="#7dd3fc" stopOpacity=".55" /><stop offset=".7" stopColor="#0284c7" stopOpacity=".15" /><stop offset="1" stopColor="#075985" stopOpacity=".45" />
+        </radialGradient>
+        <linearGradient id="hd-falls" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="16" spreadMethod="repeat">
+          <stop offset="0" stopColor="#fff" stopOpacity=".9" /><stop offset=".5" stopColor="#7dd3fc" stopOpacity=".5" /><stop offset="1" stopColor="#fff" stopOpacity=".9" />
+          <animateTransform attributeName="gradientTransform" type="translate" values="0 0;0 16" dur=".8s" repeatCount="indefinite" />
+        </linearGradient>
         <linearGradient id="hd-screen" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#38bdf8" /><stop offset=".6" stopColor="#2563eb" /><stop offset="1" stopColor="#1e3a8a" />
         </linearGradient>
@@ -281,7 +356,7 @@ export const OfficeTile = memo(function OfficeTile({ rows, x, y, size }: Props) 
   const at = makeAt(rows, x, y)
   const ch = at(0, 0)
   const furniture = FURNITURE.includes(ch)
-  const floor = ch === '#' ? null : furniture ? floorUnder(at) : (ch === 'E' ? 'S' : ch)
+  const floor = ch === '#' || ch === 'w' ? null : furniture ? floorUnder(at) : ch === 'E' ? 'S' : ch === 'f' ? 'g' : ch
   return (
     <svg width={size} height={size} viewBox="0 0 36 36" style={{ display: 'block', overflow: 'visible' }} aria-hidden="true">
       {floor && <Floor kind={floor} x={x} y={y} />}
@@ -292,6 +367,9 @@ export const OfficeTile = memo(function OfficeTile({ rows, x, y, size }: Props) 
       {ch === 'K' && <Coffee />}
       {ch === 'W' && <Whiteboard />}
       {ch === 'E' && <Door />}
+      {ch === 'w' && <Water at={at} x={x} y={y} />}
+      {ch === 'f' && <FlowerBed x={x} y={y} />}
+      {ch === 'h' && <Hedge at={at} />}
     </svg>
   )
 })

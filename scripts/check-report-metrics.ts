@@ -29,6 +29,7 @@ import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, c
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
 import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS } from '../src/utils/focusMusic'
+import { PROPS, propTiles, propBlocked, canPlaceProp, propAt, parseProps, serializeProp, DEFAULT_PROPS, PROP_GROUPS } from '../src/utils/officeProps'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
 import { parseDecor, serializeDecor, deskSpots, canPlaceDesk, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, placeDesk, setDeskStyle, rotateDesk, deskFootprint, deskSurface, deskItemSlots, blockedTiles, walkableRows, emptyDecor, CATALOG, DESK_STYLES, MAX_ITEMS, type MyDecor as MyDecorT } from '../src/utils/officeDecor'
@@ -2332,6 +2333,40 @@ eq(chordHz(4).join() === chordHz(0).join() && chordHz(-1).join() === chordHz(CHO
 eq(Math.round(chordHz(0)[0]), 131, 'first chord root is C3 (130.8 Hz)')
 eq(CHIME_HZ.every(f => f > 500 && f < 1500), true, 'chimes sit in a soft upper register')
 eq(PRESETS.map(p => p.key).join(','), 'ambient,rain,forest', 'three atmospheres')
+
+
+// -- สวนและสิ่งของชิ้นใหญ่ (utils/officeProps) --
+const GM = parseMap(DEFAULT_MAP)
+eq(DEFAULT_MAP.every(r => r.length === 40), true, 'the standard map is 40 wide with the garden')
+eq(zoneAt(GM, 33, 6), 'garden', 'stone path is the garden zone')
+eq(zoneAt(GM, 28, 2), 'garden', 'grass is the garden zone')
+eq(ZONE_STATUS.garden, 'Break', 'walking into the garden sets you on a break')
+eq(isWalkable(GM, 27, 6) && isWalkable(GM, 27, 7), true, 'two-tile doorway from the office into the garden')
+eq(isWalkable(GM, 30, 9), false, 'pond water is not walkable')
+eq(findPath(GM, { x: 22, y: 6 }, { x: 33, y: 10 }).length > 0, true, 'you can walk from the office into the garden')
+eq(validateMap(DEFAULT_MAP, propBlocked(DEFAULT_PROPS)).length, 0, 'the standard map with all its props has no errors or warnings — nothing is sealed off')
+const wf = { kind: 'waterfall', x: 29, y: 1 }
+eq(propTiles(wf).length, 32, 'waterfall covers 8x4 = 32 tiles')
+eq(propBlocked([wf]).size, 32, '…and blocks all of them')
+eq(propBlocked([{ kind: 'gazebo', x: 30, y: 8 }]).size, 4, 'gazebo blocks only its four pillars — you can walk inside')
+eq(propBlocked([{ kind: 'arch', x: 30, y: 8 }]).has('31,8'), false, 'you walk under the flower arch')
+eq(propBlocked([{ kind: 'duck', x: 30, y: 9 }]).size, 0, 'a duck blocks nothing')
+eq(canPlaceProp(DEFAULT_MAP, [], 'waterfall', { x: 29, y: 1 }).ok, true, 'waterfall fits on the garden grass')
+eq(canPlaceProp(DEFAULT_MAP, [wf], 'bench', { x: 30, y: 2 }).ok, false, 'props cannot overlap')
+eq(canPlaceProp(DEFAULT_MAP, [], 'waterfall', { x: 34, y: 1 }).ok, false, 'not spilling past the map edge')
+eq(canPlaceProp(DEFAULT_MAP, [], 'bench', { x: 10, y: 0 }).ok, false, 'not on the border wall')
+eq(canPlaceProp(DEFAULT_MAP, [], 'sofa', { x: 26, y: 1 }).ok, false, 'not over a wall tile')
+eq(canPlaceProp(DEFAULT_MAP, [], 'duck', { x: 28, y: 2 }).ok, false, 'ducks belong on water')
+eq(canPlaceProp(DEFAULT_MAP, [], 'duck', { x: 31, y: 10 }).ok, true, '…like the pond')
+eq(canPlaceProp(DEFAULT_MAP, [], 'unicorn', { x: 2, y: 2 }).ok, false, 'unknown props refused')
+eq(propAt([wf], { x: 36, y: 4 })?.kind, 'waterfall', 'eraser finds the prop under any of its tiles')
+eq(propAt([wf], { x: 37, y: 4 }), undefined, '…and nothing next to it')
+eq(parseProps(DEFAULT_PROPS.map(serializeProp), DEFAULT_MAP).length, DEFAULT_PROPS.length, 'serialize → parse round-trips the standard props')
+eq(parseProps(['waterfall,29,1', 'bench,30,2', 'unicorn,1,1', 'bench,x,1', 'none,0,0'], DEFAULT_MAP).map(serializeProp).join('|'), 'waterfall,29,1', 'overlaps, unknown kinds, bad numbers and the "none" marker are dropped')
+eq(PROPS.length >= 25 && PROP_GROUPS.every(g => PROPS.some(p => p.group === g)), true, 'at least 25 props across all four groups')
+eq(new Set(PROPS.map(p => p.kind)).size, PROPS.length, 'prop kinds are unique')
+eq(PROPS.every(p => !p.mask || (p.mask.length === p.h && p.mask.every(r => r.length === p.w))), true, 'every mask matches its prop size')
+eq(['g', 'p', 'w', 'f', 'h'].every(ch => TILE_PALETTE.some(t => t.ch === ch && t.group === 'สวน')), true, 'garden terrain is in the palette under สวน')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

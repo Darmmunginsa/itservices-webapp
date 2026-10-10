@@ -4,6 +4,7 @@ import '../src/index.css'
 import { Office2D } from '../src/components/team/Office2D'
 import { OfficeMapEditor } from '../src/components/admin/OfficeMapEditor'
 import { ZONE_LABEL, DEFAULT_MAP, type Zone } from '../src/utils/officeMap'
+import { DEFAULT_PROPS } from '../src/utils/officeProps'
 
 function Preview() {
   const [log, setLog] = useState<string[]>([])
@@ -16,7 +17,7 @@ function Preview() {
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-3">
       <h1 className="text-sm font-semibold">Office2D preview (mock)</h1>
-      <Office2D mapRows={DEFAULT_MAP} members={members} meEmail="me@x" meName="สมชาย ใจดี"
+      <Office2D mapRows={DEFAULT_MAP} mapProps={DEFAULT_PROPS} members={members} meEmail="me@x" meName="สมชาย ใจดี"
         onZoneChange={(z: Zone) => setLog(l => [...l, `zone → ${ZONE_LABEL[z]}`])}
         onError={m => setLog(l => [...l, `ERROR ${m}`])} />
       <pre id="log" className="text-xs text-gray-500">{log.join('\n')}</pre>

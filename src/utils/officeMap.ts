@@ -14,32 +14,34 @@ import type { StatusType } from '../types/teamStatus'
  *  C  พื้นมุมกาแฟ               S  พื้นโซน "ออกไซต์" (หน้าประตู)
  *  d  โต๊ะ+คอม (เดินไม่ได้)      T  โต๊ะประชุม (เดินไม่ได้)
  *  P  ต้นไม้ · K เครื่องกาแฟ · W ไวท์บอร์ด · E ประตูออก (เดินได้ = ออกไซต์)
+ *  g  หญ้า · p ทางเดินหิน (เดินได้ = โซนสวน) · w บ่อน้ำ · f แปลงดอกไม้ · h รั้วพุ่มไม้ (เดินไม่ได้)
  */
 // โต๊ะส่วนกลาง (hot desk) แถวเดียว — พื้นที่ที่เหลือเปิดโล่งไว้ให้สมาชิกวางโต๊ะส่วนตัว 3×3 เอง
+// สวนด้านขวา (x 28–38): หญ้า ทางเดินหิน บ่อ แปลงดอกไม้ รั้วพุ่มไม้ · น้ำตก/ม้านั่ง/น้ำพุ เป็น prop (officeProps.ts)
 export const DEFAULT_MAP = [
-  '############################',
-  '#..........#MMMMMMMMMMW...L#',
-  '#.dd.dd.dd.#MMMTTTTMMM.....#',
-  '#..........#MMMTTTTMMM.GY..#',
-  '#..........#MMMMMMMMMM.....#',
-  '#..........####...####.....#',
-  '#..........................#',
-  '#N.........R..........J....#',
-  '#######..#######....###..###',
-  '#FFFFF..FFF#CCCCCCCCCC#SSSE#',
-  '#FFFFF..FFZ#CKCCCCCCCC#SSSS#',
-  '#FFFFF..FFF#CCCTTCCCCC#SSSS#',
-  '#FFFFF..FFF#CCCCCCCCCC#SSSS#',
-  '############################',
+  '########################################',
+  '#..........#MMMMMMMMMMW...L#ggggggggggg#',
+  '#.dd.dd.dd.#MMMTTTTMMM.....#ggggggggggg#',
+  '#..........#MMMTTTTMMM.GY..#ggggggggggg#',
+  '#..........#MMMMMMMMMM.....#ggggggggggg#',
+  '#..........####...####.....#gffgggggffg#',
+  '#...........................pppppppppgg#',
+  '#N.........R..........J.....gggggpggggg#',
+  '#######..#######....###..###gggggpggggg#',
+  '#FFFFF..FFF#CCCCCCCCCC#SSSE#gwwwgpggggg#',
+  '#FFFFF..FFZ#CKCCCCCCCC#SSSS#gwwwgpggggg#',
+  '#FFFFF..FFF#CCCTTCCCCC#SSSS#ggggppppppg#',
+  '#FFFFF..FFF#CCCCCCCCCC#SSSS#hhhhhhhhhhh#',
+  '########################################',
 ]
 
 /** ต้นไม้ทุกชนิด — วาดแบบมองด้านข้าง สูงล้นขึ้นไปช่องบนได้ · เดินผ่านไม่ได้ */
 export const PLANT_TILES = 'PGYLRUZNJ'
 /** ช่องเฟอร์นิเจอร์/ต้นไม้ — วางชั้นเหนือพื้น (วาดล้นขอบช่องได้โดยไม่ถูกช่องข้าง ๆ ทับ) */
-export const FURNITURE_TILES = 'dTKW' + PLANT_TILES
+export const FURNITURE_TILES = 'dTKWh' + PLANT_TILES
 export const isFurnitureTile = (ch: string): boolean => FURNITURE_TILES.includes(ch)
 
-export type Zone = 'desk' | 'meeting' | 'focus' | 'cafe' | 'site'
+export type Zone = 'desk' | 'meeting' | 'focus' | 'cafe' | 'site' | 'garden'
 
 export interface OfficeMap {
   rows: string[]
@@ -53,8 +55,8 @@ export function parseMap(rows: string[]): OfficeMap {
   return { rows: rows.map(r => r.padEnd(width, '#')), width, height: rows.length }
 }
 
-const WALKABLE = new Set(['.', 'M', 'F', 'C', 'S', 'E'])
-const ZONE_OF: Record<string, Zone> = { '.': 'desk', M: 'meeting', F: 'focus', C: 'cafe', S: 'site', E: 'site' }
+const WALKABLE = new Set(['.', 'M', 'F', 'C', 'S', 'E', 'g', 'p'])
+const ZONE_OF: Record<string, Zone> = { '.': 'desk', M: 'meeting', F: 'focus', C: 'cafe', S: 'site', E: 'site', g: 'garden', p: 'garden' }
 
 export const tileAt = (m: OfficeMap, x: number, y: number): string =>
   (y < 0 || y >= m.height || x < 0 || x >= m.width) ? '#' : m.rows[y][x]
@@ -65,11 +67,11 @@ export const zoneAt = (m: OfficeMap, x: number, y: number): Zone => ZONE_OF[tile
 
 /** โซน → สถานะที่ตั้งให้อัตโนมัติ (null = ว่าง / จบ slot ที่ตั้งไว้) */
 export const ZONE_STATUS: Record<Zone, StatusType | null> = {
-  desk: null, meeting: 'Meeting', focus: 'Busy', cafe: 'Break', site: 'OnSite',
+  desk: null, meeting: 'Meeting', focus: 'Busy', cafe: 'Break', site: 'OnSite', garden: 'Break',
 }
 
 export const ZONE_LABEL: Record<Zone, string> = {
-  desk: 'โต๊ะทำงาน', meeting: 'ห้องประชุม', focus: 'ห้องโฟกัส', cafe: 'มุมกาแฟ', site: 'ออกไซต์',
+  desk: 'โต๊ะทำงาน', meeting: 'ห้องประชุม', focus: 'ห้องโฟกัส', cafe: 'มุมกาแฟ', site: 'ออกไซต์', garden: 'สวน',
 }
 
 export type Dir = 'up' | 'down' | 'left' | 'right'
@@ -160,7 +162,7 @@ export function findPath(m: OfficeMap, from: Pos, to: Pos): Pos[] {
 }
 
 // ── ตัวแก้ผังออฟฟิศ (Admin) ──
-export interface TileDef { ch: string; label: string; walkable: boolean; hint: string }
+export interface TileDef { ch: string; label: string; walkable: boolean; hint: string; group?: 'พื้น/ห้อง' | 'ต้นไม้' | 'สวน' | 'เฟอร์นิเจอร์' }
 export const TILE_PALETTE: TileDef[] = [
   { ch: '.', label: 'พื้นโต๊ะทำงาน', walkable: true,  hint: 'โซนว่าง — จุดเกิดของคนใหม่' },
   { ch: '#', label: 'กำแพง',        walkable: false, hint: 'เดินไม่ได้ กั้นห้อง' },
@@ -182,6 +184,11 @@ export const TILE_PALETTE: TileDef[] = [
   { ch: 'J', label: 'ลีลาวดี',        walkable: false, hint: 'ต้นไม้ — กิ่งอวบ ดอกขาวเหลือง' },
   { ch: 'K', label: 'เครื่องกาแฟ',   walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
   { ch: 'W', label: 'ไวท์บอร์ด',     walkable: false, hint: 'ตกแต่ง (เดินไม่ได้)' },
+  { ch: 'g', label: 'หญ้า',          walkable: true,  hint: 'สนามหญ้าเขียว — เดินเข้าแล้วสถานะ = พัก (โซนสวน)', group: 'สวน' },
+  { ch: 'p', label: 'ทางเดินหิน',     walkable: true,  hint: 'แผ่นหินบนหญ้า (โซนสวน)', group: 'สวน' },
+  { ch: 'w', label: 'บ่อน้ำ',         walkable: false, hint: 'น้ำกระเพื่อม มีปลา — ขอบบ่อต่อกันเอง', group: 'สวน' },
+  { ch: 'f', label: 'แปลงดอกไม้',     walkable: false, hint: 'ดอกไม้หลากสี', group: 'สวน' },
+  { ch: 'h', label: 'รั้วพุ่มไม้',      walkable: false, hint: 'พุ่มไม้ตัดแต่ง ต่อกันเป็นแนวรั้ว', group: 'สวน' },
 ]
 const KNOWN_TILES = new Set(TILE_PALETTE.map(t => t.ch))
 
@@ -217,7 +224,13 @@ export function blankMap(width: number, height: number): string[] {
 export interface MapIssue { level: 'error' | 'warn'; text: string }
 
 /** ตรวจก่อนบันทึก — error = บันทึกไม่ได้ · warn = บันทึกได้แต่ควรรู้ */
-export function validateMap(rows: string[]): MapIssue[] {
+/** ทำให้ช่องที่ถูกสิ่งของขวางเป็น X (เดินไม่ได้) — ใช้ตรวจ/เดิน แต่ไม่ใช่ตอนวาดพื้น */
+export function maskRows(rows: string[], blocked: Set<string>): string[] {
+  if (!blocked.size) return rows
+  return rows.map((r, y) => r.split('').map((ch, x) => (blocked.has(`${x},${y}`) ? 'X' : ch)).join(''))
+}
+
+export function validateMap(rows: string[], blocked: Set<string> = new Set()): MapIssue[] {
   const out: MapIssue[] = []
   if (rows.length < MAP_MIN) out.push({ level: 'error', text: `สูงอย่างน้อย ${MAP_MIN} แถว` })
   const w = rows[0]?.length ?? 0
@@ -228,7 +241,8 @@ export function validateMap(rows: string[]): MapIssue[] {
   if (unknown.size) out.push({ level: 'error', text: `มีตัวอักษรที่ไม่รู้จัก: ${[...unknown].join(' ')}` })
   if (out.some(i => i.level === 'error')) return out
 
-  const m = parseMap(rows)
+  // สิ่งของชิ้นใหญ่ (น้ำตก ศาลา ...) ขวางทางเหมือนเฟอร์นิเจอร์ — ตรวจทางเดินบนผังที่มีของวางแล้ว
+  const m = parseMap(maskRows(rows, blocked))
   const border = [...Array(m.width).keys()].every(x => tileAt(m, x, 0) === '#' && tileAt(m, x, m.height - 1) === '#')
     && [...Array(m.height).keys()].every(y => tileAt(m, 0, y) === '#' && tileAt(m, m.width - 1, y) === '#')
   if (!border) out.push({ level: 'error', text: 'ขอบนอกสุดต้องเป็นกำแพงทั้งหมด' })

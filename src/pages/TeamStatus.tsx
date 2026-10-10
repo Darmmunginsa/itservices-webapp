@@ -6,7 +6,8 @@ import { Header } from '../components/layout/Header'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { VirtualOffice } from '../components/team/VirtualOffice'
 import { Office2D } from '../components/team/Office2D'
-import { getOfficeMapRows } from '../services/office'
+import { getOfficeMapRows, getOfficeProps } from '../services/office'
+import type { Prop } from '../utils/officeProps'
 import { DEFAULT_MAP, ZONE_STATUS, ZONE_LABEL, type Zone } from '../utils/officeMap'
 import { isPhotoFile } from '../components/common/PersonPhoto'
 import { Button } from '../components/common/Button'
@@ -68,7 +69,10 @@ export default function TeamStatus() {
   useEffect(() => { if (popout) document.title = 'สถานะทีม — Helpdesk' }, [popout])
   const pickMode = (m: 'office' | 'board') => { localStorage.setItem('ts-mode', m); setMode(m) }
   const [mapRows, setMapRows] = useState<string[]>(DEFAULT_MAP)
-  useEffect(() => { getOfficeMapRows().then(setMapRows).catch(() => {}) }, [])
+  const [mapProps, setMapProps] = useState<Prop[]>([])
+  useEffect(() => {
+    getOfficeMapRows().then(r => { setMapRows(r); return getOfficeProps(r).then(setMapProps) }).catch(() => {})
+  }, [])
   // slot ที่เกิดจาก "การเดินเข้าโซน" — เดินออกจบเฉพาะอันนี้ สถานะที่ตั้งมือไว้ไม่โดนแตะ
   const autoSlot = useRef<number | null>(null)
   const [slots, setSlots] = useState<TeamStatusSlot[]>([])
@@ -269,7 +273,7 @@ export default function TeamStatus() {
       </div>
 
       {mode === 'office' && (
-        <Office2D mapRows={mapRows} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
+        <Office2D mapRows={mapRows} mapProps={mapProps} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
           onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} onInfo={msg => addToast('success', msg)} />
       )}
 
