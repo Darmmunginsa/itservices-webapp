@@ -2,7 +2,7 @@
 //
 // ไม่ใช้ไฟล์เพลง: สร้างเสียงสดด้วย WebAudio — ไม่มีลิขสิทธิ์ ไม่เพิ่มขนาดเว็บ ไม่ต้องโหลดอะไร
 
-export type MusicPreset = 'ambient' | 'rain' | 'forest'
+export type MusicPreset = 'ambient' | 'rain' | 'forest' | 'garden'
 
 export const PRESETS: { key: MusicPreset; label: string; icon: string; hint: string }[] = [
   { key: 'ambient', label: 'Ambient',     icon: '🎹', hint: 'คอร์ดนุ่ม ๆ ค่อย ๆ เปลี่ยน กับกระดิ่งเบา ๆ' },
@@ -53,3 +53,45 @@ export const CHORDS: number[][] = [
 export const chordHz = (i: number): number[] => CHORDS[((i % CHORDS.length) + CHORDS.length) % CHORDS.length].map(NOTE)
 /** โน้ตกระดิ่ง — เพนทาโทนิก C (เข้ากับทุกคอร์ดในชุด ไม่มีโน้ตเพี้ยน) */
 export const CHIME_HZ = [72, 74, 76, 79, 81, 84, 86, 88].map(NOTE)
+
+// ── เสียงธรรมชาติในสวน (โซน garden) — ตั้งค่าแยกจากห้องโฟกัส ──
+export interface GardenSoundSettings { enabled: boolean; volume: number }
+export const DEFAULT_GARDEN: GardenSoundSettings = { enabled: true, volume: 0.4 }
+const GKEY = 'hd-garden-sound'
+
+export function parseGardenSettings(raw: string | null): GardenSoundSettings {
+  try {
+    const j = JSON.parse(raw || '{}') as Partial<GardenSoundSettings>
+    return {
+      enabled: typeof j.enabled === 'boolean' ? j.enabled : DEFAULT_GARDEN.enabled,
+      volume: typeof j.volume === 'number' && j.volume >= 0 && j.volume <= 1 ? j.volume : DEFAULT_GARDEN.volume,
+    }
+  } catch { return { ...DEFAULT_GARDEN } }
+}
+export function loadGardenSettings(): GardenSoundSettings {
+  try { return parseGardenSettings(localStorage.getItem(GKEY)) } catch { return { ...DEFAULT_GARDEN } }
+}
+export function saveGardenSettings(s: GardenSoundSettings): void {
+  try { localStorage.setItem(GKEY, JSON.stringify(s)) } catch { /* แค่ไม่จำ */ }
+}
+
+/** เล่นอะไรตามโซนที่ยืนอยู่ — ห้องโฟกัส = เพลงที่เลือก · สวน = เสียงธรรมชาติ · ที่อื่น = เงียบ */
+export function soundFor(zone: string, focus: MusicSettings, garden: GardenSoundSettings): { preset: MusicPreset; volume: number } | null {
+  if (zone === 'focus' && focus.enabled && focus.volume > 0) return { preset: focus.preset, volume: focus.volume }
+  if (zone === 'garden' && garden.enabled && garden.volume > 0) return { preset: 'garden', volume: garden.volume }
+  return null
+}
+
+/**
+ * ความดังของเสียงน้ำ 0.2–1 ตามระยะถึงแหล่งน้ำที่ใกล้ที่สุด (น้ำตก/น้ำพุ — วัดจากขอบชิ้นที่ใกล้ที่สุด)
+ * ยืนติดน้ำตก = ดังเต็ม · ห่าง 12 ช่องขึ้นไป = เหลือเสียงน้ำแผ่ว ๆ เป็นพื้นหลัง
+ */
+export function waterLevel(me: { x: number; y: number }, sources: { x: number; y: number; w: number; h: number }[]): number {
+  if (!sources.length) return 0.2
+  const d = Math.min(...sources.map(s => {
+    const dx = Math.max(s.x - me.x, 0, me.x - (s.x + s.w - 1))
+    const dy = Math.max(s.y - me.y, 0, me.y - (s.y + s.h - 1))
+    return Math.hypot(dx, dy)
+  }))
+  return Math.max(0.2, Math.min(1, 1 - (d - 1) / 11))
+}

@@ -10,6 +10,8 @@ class AmbientPlayer {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
   private bus: GainNode | null = null          // ก่อนเข้า reverb/master
+  /** ความดังของเสียงน้ำในสวน — ปรับตามระยะถึงน้ำตก/น้ำพุ */
+  private water: GainNode | null = null
   private stopFns: (() => void)[] = []
   private timers: number[] = []
   private preset: MusicPreset | null = null
@@ -153,6 +155,78 @@ class AmbientPlayer {
     this.stopFns.push(() => leaves.stop())
   }
 
+  /** เป็ด "แก๊บ แก๊บ" — sawtooth ผ่าน bandpass สองตัวเลียนเสียงจมูก */
+  private quack() {
+    const ctx = this.ctx!
+    const n = Math.floor(rand(2, 4))
+    for (let k = 0; k < n; k++) {
+      const t = ctx.currentTime + k * rand(0.18, 0.26)
+      const o = ctx.createOscillator(); o.type = 'sawtooth'
+      o.frequency.setValueAtTime(rand(520, 600), t); o.frequency.exponentialRampToValueAtTime(rand(330, 380), t + 0.12)
+      const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 1100; f1.Q.value = 4
+      const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 2600; f2.Q.value = 6
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.09, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15)
+      const pan = ctx.createStereoPanner(); pan.pan.value = rand(-0.5, 0.5)
+      o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(pan).connect(this.bus!)
+      o.start(t); o.stop(t + 0.17)
+    }
+  }
+
+  private buildGarden() {
+    const ctx = this.ctx!
+    // น้ำตก: white noise ช่วงกลาง-สูง (น้ำกระแทก) + brown noise ต่ำ (มวลน้ำ) ผ่านตัวคุมระดับตามระยะ
+    const water = ctx.createGain(); water.gain.value = 0.6
+    const splash = this.noise('white')
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 0.5
+    // ปรับจากการวัดจริง: ข้างน้ำตก (ระดับน้ำเต็ม) ค่ายอด ~0.1 เท่ากับเพลงห้องโฟกัส
+    const sg = ctx.createGain(); sg.gain.value = 0.3
+    splash.connect(bp).connect(sg).connect(water)
+    const mass = this.noise('brown')
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600
+    const mg = ctx.createGain(); mg.gain.value = 1.4
+    mass.connect(lp).connect(mg).connect(water)
+    water.connect(this.bus!)
+    splash.start(); mass.start()
+    this.water = water
+    // ลมพัดใบไม้เป็นระลอก
+    const wind = this.noise('white')
+    const whp = ctx.createBiquadFilter(); whp.type = 'bandpass'; whp.frequency.value = 2500; whp.Q.value = 0.4
+    const wg = ctx.createGain(); wg.gain.value = 0.02
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09
+    const lfoG = ctx.createGain(); lfoG.gain.value = 0.018
+    lfo.connect(lfoG).connect(wg.gain)
+    wind.connect(whp).connect(wg).connect(this.bus!); wind.start(); lfo.start()
+    this.stopFns.push(() => splash.stop(), () => mass.stop(), () => wind.stop(), () => lfo.stop(), () => { this.water = null })
+    // นกหลายชนิด: ร้องรัว (สูง) · ร้องหวานยาว (กลาง) — ถี่กว่าป่า
+    this.every(1600, 4800, () => {
+      const kind = Math.random()
+      const base = kind < 0.5 ? rand(3000, 4200) : rand(1800, 2600)
+      const n = kind < 0.5 ? Math.floor(rand(4, 8)) : Math.floor(rand(2, 4))
+      const pan = rand(-0.9, 0.9)
+      for (let k = 0; k < n; k++) {
+        const t = ctx.currentTime + k * (kind < 0.5 ? rand(0.07, 0.11) : rand(0.22, 0.32))
+        const len = kind < 0.5 ? 0.06 : 0.2
+        const o = ctx.createOscillator(); o.type = 'sine'
+        o.frequency.setValueAtTime(base, t)
+        o.frequency.exponentialRampToValueAtTime(base * (k % 2 ? 1.3 : 0.85), t + len)
+        const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t)
+        og.gain.exponentialRampToValueAtTime(0.06, t + 0.012); og.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.02)
+        const p = ctx.createStereoPanner(); p.pan.value = pan
+        o.connect(og).connect(p).connect(this.bus!); o.start(t); o.stop(t + len + 0.03)
+      }
+    })
+    // เป็ดร้องนาน ๆ ครั้ง
+    this.every(9000, 22000, () => this.quack())
+  }
+
+  /** เสียงน้ำในสวน 0–1 (เดินเข้าใกล้น้ำตก = ดังขึ้น) */
+  setWater(level: number) {
+    if (!this.ctx || !this.water) return
+    const t = this.ctx.currentTime, g = this.water.gain
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(Math.max(0, Math.min(1, level)), t + 0.8)
+  }
+
   private teardown() {
     this.timers.forEach(t => { clearTimeout(t); clearInterval(t) })
     this.timers = []
@@ -168,7 +242,8 @@ class AmbientPlayer {
     if (this.preset !== preset) {
       this.teardown()
       this.preset = preset
-      if (preset === 'ambient') this.buildAmbient()
+      if (preset === 'garden') this.buildGarden()
+      else if (preset === 'ambient') this.buildAmbient()
       else if (preset === 'rain') this.buildRain()
       else this.buildForest()
     }

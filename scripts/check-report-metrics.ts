@@ -28,7 +28,7 @@ import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } fr
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
-import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS } from '../src/utils/focusMusic'
+import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS, parseGardenSettings, soundFor, waterLevel } from '../src/utils/focusMusic'
 import { PROPS, propTiles, propBlocked, canPlaceProp, propAt, parseProps, serializeProp, DEFAULT_PROPS, PROP_GROUPS } from '../src/utils/officeProps'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
@@ -2367,6 +2367,21 @@ eq(PROPS.length >= 25 && PROP_GROUPS.every(g => PROPS.some(p => p.group === g)),
 eq(new Set(PROPS.map(p => p.kind)).size, PROPS.length, 'prop kinds are unique')
 eq(PROPS.every(p => !p.mask || (p.mask.length === p.h && p.mask.every(r => r.length === p.w))), true, 'every mask matches its prop size')
 eq(['g', 'p', 'w', 'f', 'h'].every(ch => TILE_PALETTE.some(t => t.ch === ch && t.group === 'สวน')), true, 'garden terrain is in the palette under สวน')
+
+
+// -- เสียงธรรมชาติในสวน --
+const GS = parseGardenSettings(null), FS = parseMusicSettings(null)
+eq(GS.enabled && GS.volume > 0, true, 'garden sounds on by default')
+eq(soundFor('garden', FS, GS)?.preset, 'garden', 'the garden plays nature sounds')
+eq(soundFor('focus', FS, GS)?.preset, FS.preset, 'the focus room keeps its own music')
+eq(soundFor('desk', FS, GS), null, 'silent at the desks')
+eq(soundFor('garden', FS, { ...GS, enabled: false }), null, 'garden sounds can be turned off')
+eq(soundFor('focus', { ...FS, enabled: false }, GS), null, '…independently of focus music')
+const WF = [{ x: 29, y: 1, w: 8, h: 4 }]
+eq(waterLevel({ x: 30, y: 5 }, WF), 1, 'standing next to the waterfall = full water sound')
+eq(waterLevel({ x: 33, y: 11 }, WF) < waterLevel({ x: 33, y: 6 }, WF), true, 'walking away makes the water quieter')
+eq(waterLevel({ x: 2, y: 2 }, WF), 0.2, 'far away it never drops below a faint background')
+eq(waterLevel({ x: 2, y: 2 }, []), 0.2, 'no water features = faint background only')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

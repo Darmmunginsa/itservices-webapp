@@ -15,7 +15,8 @@ import { ScreenVideo } from './ScreenVideo'
 import { NotifyMenu } from './NotifyMenu'
 import { FocusMusicCard } from './FocusMusicCard'
 import { ambient } from '../../services/ambientAudio'
-import { loadMusicSettings, saveMusicSettings, shouldPlay, effectiveVolume, type MusicSettings } from '../../utils/focusMusic'
+import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettings, saveGardenSettings, soundFor, waterLevel, type MusicSettings, type GardenSoundSettings } from '../../utils/focusMusic'
+import { GardenSoundCard } from './GardenSoundCard'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
@@ -382,10 +383,19 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [music, setMusic] = useState<MusicSettings>(() => loadMusicSettings())
   const changeMusic = (m: MusicSettings) => { setMusic(m); saveMusicSettings(m) }
   const inCall = connected.length > 0
+  // เสียงธรรมชาติในสวน — น้ำดังขึ้นเมื่อเดินเข้าใกล้น้ำตก/น้ำพุ
+  const [garden, setGarden] = useState<GardenSoundSettings>(() => loadGardenSettings())
+  const changeGarden = (g: GardenSoundSettings) => { setGarden(g); saveGardenSettings(g) }
+  const waterSources = mapProps.filter(p => p.kind === 'waterfall' || p.kind === 'fountain').map(p => ({ ...p, w: propDef(p.kind)!.w, h: propDef(p.kind)!.h }))
+  const water = pos ? waterLevel(pos, waterSources) : 0.2
+  const sound = soundFor(myZone, music, garden)
+  const soundPreset = sound?.preset ?? null
+  const soundVol = sound ? effectiveVolume({ ...music, volume: sound.volume }, inCall) : 0
   useEffect(() => {
-    if (shouldPlay(myZone, music)) ambient.play(music.preset, effectiveVolume(music, inCall))
+    if (soundPreset) ambient.play(soundPreset, soundVol)
     else ambient.stop()
-  }, [myZone, music, inCall])
+  }, [soundPreset, soundVol])
+  useEffect(() => { if (soundPreset === 'garden') ambient.setWater(water) }, [soundPreset, water])
   useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
@@ -493,6 +503,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           </div>
         )}
         {myZone === 'focus' && <FocusMusicCard s={music} onChange={changeMusic} ducked={inCall} />}
+        {myZone === 'garden' && <GardenSoundCard s={garden} onChange={changeGarden} water={water} ducked={inCall} />}
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
