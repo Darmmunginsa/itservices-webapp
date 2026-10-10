@@ -13,6 +13,9 @@ import { useOfficeDM, dmNotice } from '../../hooks/useOfficeDM'
 import { OfficeDMPanel } from './OfficeDMPanel'
 import { ScreenVideo } from './ScreenVideo'
 import { NotifyMenu } from './NotifyMenu'
+import { FocusMusicCard } from './FocusMusicCard'
+import { ambient } from '../../services/ambientAudio'
+import { loadMusicSettings, saveMusicSettings, shouldPlay, effectiveVolume, type MusicSettings } from '../../utils/focusMusic'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { DecorPanel } from './DecorPanel'
@@ -364,6 +367,16 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     : []
   const speakingSet = new Set(voice.peers.filter(p => p.speaking).map(p => p.email))
   const connected = voice.peers.filter(p => p.state === 'connected')
+
+  // ── เพลงผ่อนคลายในห้องโฟกัส — เข้าห้อง = ค่อย ๆ ดังขึ้น · ออก = ค่อย ๆ เงียบ · คุยเสียงอยู่ = ลดเสียงลง ──
+  const [music, setMusic] = useState<MusicSettings>(() => loadMusicSettings())
+  const changeMusic = (m: MusicSettings) => { setMusic(m); saveMusicSettings(m) }
+  const inCall = connected.length > 0
+  useEffect(() => {
+    if (shouldPlay(myZone, music)) ambient.play(music.preset, effectiveVolume(music, inCall))
+    else ambient.stop()
+  }, [myZone, music, inCall])
+  useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
@@ -469,6 +482,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             )}
           </div>
         )}
+        {myZone === 'focus' && <FocusMusicCard s={music} onChange={changeMusic} ducked={inCall} />}
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">

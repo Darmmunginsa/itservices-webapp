@@ -28,6 +28,7 @@ import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } fr
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
+import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS } from '../src/utils/focusMusic'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
 import { parseDecor, serializeDecor, deskSpots, canPlaceDesk, canPlace, placeableTiles, placeItem, rotateItem, flipItem, removeItem, placeDesk, setDeskStyle, rotateDesk, deskFootprint, deskSurface, deskItemSlots, blockedTiles, walkableRows, emptyDecor, CATALOG, DESK_STYLES, MAX_ITEMS, type MyDecor as MyDecorT } from '../src/utils/officeDecor'
@@ -2312,6 +2313,25 @@ eq(bellState({ desktop: true, sound: true }, 'granted'), 'on', 'allowed and on =
 eq(bellState({ desktop: true, sound: true }, 'denied'), 'sound-only', 'blocked by the browser still alerts with sound')
 eq(bellState({ desktop: false, sound: true }, 'granted'), 'sound-only', 'desktop turned off by the user → sound only')
 eq(bellState({ desktop: false, sound: false }, 'granted'), 'off', 'both off = silent')
+
+
+// -- เพลงผ่อนคลายในห้องโฟกัส (utils/focusMusic) --
+const FM = parseMusicSettings(null)
+eq(FM.enabled && FM.preset === 'forest' && FM.volume > 0 && FM.volume < 0.5, true, 'default: on, forest, gentle volume')
+eq(parseMusicSettings('{"preset":"techno","volume":7}').preset, 'forest', 'unknown preset falls back')
+eq(parseMusicSettings('{"preset":"techno","volume":7}').volume, FM.volume, 'out-of-range volume falls back')
+eq(parseMusicSettings('oops').enabled, true, 'garbage = defaults')
+eq(shouldPlay('focus', FM), true, 'plays in the focus room')
+eq(shouldPlay('desk', FM), false, 'silent everywhere else')
+eq(shouldPlay('focus', { ...FM, enabled: false }), false, 'turned off = silent')
+eq(shouldPlay('focus', { ...FM, volume: 0 }), false, 'volume 0 = no audio graph at all')
+eq(effectiveVolume({ ...FM, volume: 0.4 }, true).toFixed(2), '0.14', 'ducks to 35% during a voice call')
+eq(effectiveVolume({ ...FM, volume: 0.4 }, false), 0.4, 'full volume otherwise')
+eq(chordHz(0).length, 5, 'each chord has five notes')
+eq(chordHz(4).join() === chordHz(0).join() && chordHz(-1).join() === chordHz(CHORDS.length - 1).join(), true, 'chords loop both ways')
+eq(Math.round(chordHz(0)[0]), 131, 'first chord root is C3 (130.8 Hz)')
+eq(CHIME_HZ.every(f => f > 500 && f < 1500), true, 'chimes sit in a soft upper register')
+eq(PRESETS.map(p => p.key).join(','), 'ambient,rain,forest', 'three atmospheres')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
