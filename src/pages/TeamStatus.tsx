@@ -239,6 +239,8 @@ export default function TeamStatus() {
       <Header title="สถานะทีม" />
       <div className="p-4 md:p-6 space-y-4">
 
+      {/* หน้าต่างออฟฟิศ = ออฟฟิศล้วน ๆ (ไม่มีการ์ดสถานะ/ปุ่มสลับ) · หน้าหลักมีครบ */}
+      {!popout && (<>
       {/* สถานะของฉัน */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
         <p className="text-xs font-semibold text-gray-400 uppercase mb-2">สถานะของฉัน</p>
@@ -278,6 +280,8 @@ export default function TeamStatus() {
       </div>
 
       {/* ซ่อนแทนปิด — สลับไปดู "สถานะ & ไทม์ไลน์" แล้วเสียง/แชร์จอ/แชทยังไม่หลุด */}
+      </>)}
+
       {popout && <div className={mode === 'office' ? undefined : 'hidden'}>
         <Office2D mapRows={mapRows} mapProps={mapProps} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
           onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} onInfo={msg => addToast('success', msg)} />
