@@ -302,3 +302,9 @@ html[data-fx='on'] .urgent-badge {
 @media (prefers-reduced-motion: reduce) { .hd-decor-hi, .hd-decor-sel { animation: none } }
 /* หยุดลวดลายเคลื่อนไหวบนแผนที่ตอนไม่มีใครดู (ดู useMotionPause) */
 .hd-paused *, .hd-paused *::before, .hd-paused *::after { animation-play-state: paused !important; }
+/* หุ่นยนต์ดูดฝุ่น */
+.hd-robot-brush { animation: hd-spin .5s linear infinite; }
+@keyframes hd-spin { to { transform: rotate(360deg) } }
+.hd-robot-led { animation: hd-led 1.6s steps(2, jump-none) infinite; }
+@keyframes hd-led { 50% { opacity: .25 } }
+@media (prefers-reduced-motion: reduce) { .hd-robot-brush, .hd-robot-led { animation: none } }

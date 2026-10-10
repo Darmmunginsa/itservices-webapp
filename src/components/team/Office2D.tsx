@@ -18,6 +18,8 @@ import { ambient } from '../../services/ambientAudio'
 import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettings, saveGardenSettings, soundFor, waterLevel, parseSound, serializeSound, type MusicSettings, type GardenSoundSettings } from '../../utils/focusMusic'
 import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
+import { RobotSprite, RobotDock } from './RobotSprite'
+import { robotPlan, robotAt, ROBOT_STEP_MS, ROBOT_LINES } from '../../utils/officeRobot'
 import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
@@ -367,6 +369,14 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ตัวโต๊ะส่วนตัว (6 ช่อง/คน) ขวางทางเดิน — สร้างแผนที่เดินใหม่เมื่อชุดโต๊ะเปลี่ยนเท่านั้น
   const blockedKey = [...new Set([...blockedTiles(allDecor.map(d => d.decor.desk)), ...(propKey ? propKey.split(';') : [])])].sort().join(';')
   const walkMap = walkMapFor(map.rows, blockedKey)
+  // ── หุ่นยนต์ดูดฝุ่น: เส้นทางเดียวกันทุกเครื่อง · ตำแหน่งตามนาฬิกา ──
+  const { route, dock: dockPos } = robotPlan(walkMap)
+  const [robotNow, setRobotNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = window.setInterval(() => setRobotNow(Date.now()), ROBOT_STEP_MS)
+    return () => window.clearInterval(t)
+  }, [])
+  const robot = robotAt(route, robotNow)
   useEffect(() => {
     walkRef.current = walkMap
     // ยืนอยู่ตรงที่กลายเป็นตัวโต๊ะ (มีคนเพิ่งวางโต๊ะทับ) → ย้ายไปจุดเกิด ไม่ให้ติดอยู่ในโต๊ะ
@@ -651,6 +661,18 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               <div key={l.zone} className="absolute pointer-events-none z-[5] text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-white/85 dark:bg-gray-900/85 text-gray-700 dark:text-gray-200 shadow-sm border border-black/5"
                 style={{ left: l.x * TILE + 3, top: l.y * TILE + 3 }}>{ZONE_LABEL[l.zone]}</div>
             ))}
+            {/* หุ่นยนต์ดูดฝุ่น + แท่นชาร์จ */}
+            {dockPos && (
+              <div className="absolute pointer-events-none" style={{ left: dockPos.x * TILE, top: dockPos.y * TILE, width: TILE, height: TILE, zIndex: 2 }}><RobotDock size={TILE} /></div>
+            )}
+            {robot && (
+              <button type="button" title="หุ่นยนต์ทำความสะอาด"
+                onClick={e => { e.stopPropagation(); onDecorInfo(ROBOT_LINES[Math.floor(robotNow / ROBOT_STEP_MS) % ROBOT_LINES.length]) }}
+                className="absolute z-[9] flex items-center justify-center cursor-pointer"
+                style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
+                <span style={{ display: 'inline-flex', transform: `rotate(${robot.deg}deg)`, transition: 'transform .3s ease' }}><RobotSprite /></span>
+              </button>
+            )}
             {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}
             {online.map(r => {
               const m = memberBy.get(r.email.toLowerCase())

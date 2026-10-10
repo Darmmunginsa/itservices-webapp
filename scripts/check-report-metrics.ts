@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { robotRoute, robotAt } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
@@ -2404,6 +2405,18 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(myOpenAutoSlots(sl, 'me@x.com', now).map(s => s.id).join(','), '1,2', 'every open auto status of mine is ended, even two left by a fast walk')
   eq(myOpenAutoSlots(sl, 'me@x.com', now).some(s => s.id === 3), false, 'a status set by hand is left alone')
   eq(myOpenAutoSlots(sl, 'me@x.com', now).some(s => s.id === 4), false, 'other people are left alone')
+}
+
+// -- หุ่นยนต์ดูดฝุ่น --
+{
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  const R = robotRoute(OM), R2 = robotRoute(OM)
+  eq(R.length > 100, true, 'the robot has a long route')
+  eq(JSON.stringify(R) === JSON.stringify(R2), true, 'every computer computes the same route, so everyone sees it in the same place')
+  eq(R.every((p, k) => { const q = R[(k + 1) % R.length]; return Math.abs(p.x - q.x) + Math.abs(p.y - q.y) === 1 }), true, 'it moves one tile at a time and loops without jumping')
+  eq(R.every(p => isWalkable(OM, p.x, p.y) && !'gp'.includes(OM.rows[p.y][p.x])), true, 'it stays on indoor floor, never walls or the garden')
+  eq(new Set(R.map(p => `${p.x},${p.y}`)).size > 40, true, 'it covers a good part of the office')
+  eq(JSON.stringify(robotAt(R, 0)?.pos), JSON.stringify(R[0]), 'position follows the clock')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
