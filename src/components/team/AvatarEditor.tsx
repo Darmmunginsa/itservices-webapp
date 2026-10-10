@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Shuffle, X, RotateCcw } from 'lucide-react'
 import { AvatarSprite } from './AvatarSprite'
 import {
-  ACCS, BOTTOMS, CLOTH_COLORS, FACES, HAIR_COLORS, HAIRS, SKINS, TOPS, avatarFromSeed,
+  ACCS, BOTTOMS, CLOTH_COLORS, FACES, HAIR_COLORS, HAIRS, SKINS, TOPS, NICK_MAX, avatarFromSeed,
   type Avatar, type Facing,
 } from '../../utils/officeAvatar'
 
@@ -56,7 +56,8 @@ export function AvatarEditor({ initial, seed, saving, onSave, onClose }: Props) 
   const [tab, setTab] = useState<Tab>('body')
   const [face, setFace] = useState(0)
   const set = <K extends keyof Avatar>(k: K, v: Avatar[K]) => setA(p => ({ ...p, [k]: v }))
-  const random = () => setA(avatarFromSeed(`${seed}:${Date.now()}:${Math.random()}`))
+  // สุ่มชุดใหม่ แต่ชื่อเล่นคงเดิม
+  const random = () => setA(p => ({ ...avatarFromSeed(`${seed}:${Date.now()}:${Math.random()}`), nick: p.nick }))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -86,6 +87,11 @@ export function AvatarEditor({ initial, seed, saving, onSave, onClose }: Props) 
           </div>
           {/* ตัวเลือก */}
           <div className="flex-1 min-w-0 space-y-3">
+            <label className="block">
+              <span className="text-[11px] font-semibold text-gray-500">ชื่อเล่น (โชว์เหนือหัวตัวละคร และตอนน้องบอทมาหา แทนชื่อจริง)</span>
+              <input value={a.nick} maxLength={NICK_MAX} onChange={e => set('nick', e.target.value)} placeholder="เว้นว่าง = ใช้ชื่อแรกของชื่อจริง"
+                className="mt-1 w-full text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800" />
+            </label>
             <div className="flex flex-wrap gap-1">
               {TABS.map(t => (
                 <button key={t.key} onClick={() => setTab(t.key)}

@@ -20,7 +20,7 @@ import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
-import { parseAvatar, serializeAvatar, facingFrom, type Avatar, type Facing } from '../../utils/officeAvatar'
+import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
 import { getAllAvatars, saveMyAvatar } from '../../services/officeAvatar'
 import { robotPlan, robotNow as robotStateAt, planMissions, parseCleanRequests, robotLabel, coffeeSpot, ROBOT_STEP_MS, ROBOT_LINES, ROBOT_ROOM } from '../../utils/officeRobot'
 import { getMySound, saveMySound } from '../../services/officeSound'
@@ -97,7 +97,7 @@ function NameTag({ name, color, mine = false }: { name: string; color: string; m
   return (
     <span className={`inline-flex items-center gap-0.5 text-[9px] leading-tight px-1 py-px rounded whitespace-nowrap shadow-sm ${mine ? 'bg-primary-600 text-white' : 'bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200'}`}>
       <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
-      {name.split(/\s+/)[0]}
+      {name}
     </span>
   )
 }
@@ -146,6 +146,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   }, [])
   const avatarOf = (email: string): Avatar => parseAvatar(avatars.get(email), email)
   const myAvatar = avatarOf(me)
+  /** ชื่อที่โชว์ของใครก็ได้ — ชื่อเล่นที่ตั้งไว้ หรือชื่อแรกของชื่อจริง */
+  const nickOf = (email: string, realName: string) => displayName(avatarOf(email.toLowerCase()), realName)
   const saveAvatar = (a: Avatar) => {
     if (!meEmail) return
     const json = serializeAvatar(a)
@@ -448,7 +450,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const cleanReqs = parseCleanRequests(chat).filter(r => r.at >= dayStart.getTime())
   const missions = planMissions(walkMap, route, cleanReqs)
   const robot = robotStateAt(route, missions, robotNow)
-  const myPending = missions.some(m2 => m2.by === meName && robotNow < (m2.start + m2.sweepTo) * ROBOT_STEP_MS)
+  const myPending = missions.some(m2 => (m2.byEmail ? m2.byEmail === me : m2.by === meName) && robotNow < (m2.start + m2.sweepTo) * ROBOT_STEP_MS)
   const [requesting, setRequesting] = useState(false)
   const hasCoffee = !!coffeeSpot(walkMap)
   async function requestRobot(kind: 'clean' | 'coffee') {
@@ -780,9 +782,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE - 10, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
                 {/* หันตามก้าวแนวนอนล่าสุด */}
                 <span style={{ display: 'inline-flex', transform: robot.left ? 'scaleX(-1)' : undefined }}><RobotSprite holding={robot.phase === 'carry' || robot.phase === 'give' ? 'cup' : robot.phase === 'brew' ? 'none' : robot.mission?.kind === 'coffee' && robot.phase === 'fetch' ? 'none' : 'broom'} /></span>
-                {robotLabel(robot) && (
+                {robotLabel(robot, nickOf) && (
                   <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 shadow-sm border border-amber-200 dark:border-amber-800">
-                    {robotLabel(robot)}
+                    {robotLabel(robot, nickOf)}
                   </span>
                 )}
               </button>
@@ -795,10 +797,10 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               const mo = motion[e]
               return (
                 <button key={r.id} onClick={ev => { ev.stopPropagation(); openDM(r.UserEmail) }}
-                  title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}
+                  title={`${nickOf(e, r.UserName)}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}
                   className="absolute z-10 flex flex-col items-center cursor-pointer"
                   style={{ left: p.x * TILE, top: p.y * TILE + TILE - 62, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
-                  <NameTag name={r.UserName} color={statusDot(m?.slot)} />
+                  <NameTag name={nickOf(e, r.UserName)} color={statusDot(m?.slot)} />
                   <span className="relative">
                     {speakingSet.has(e) && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
                     <AvatarSprite a={avatarOf(e)} facing={mo?.face ?? 'down'} moving={!!mo && mo.until > robotNow} />
@@ -815,7 +817,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               return (
                 <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none"
                   style={{ left: pos.x * TILE, top: pos.y * TILE + TILE - 62, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
-                  <NameTag name="ฉัน" color={statusDot(m?.slot)} mine />
+                  <NameTag name={myAvatar.nick || 'ฉัน'} color={statusDot(m?.slot)} mine />
                   <span className="relative">
                     {voice.meSpeaking && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
                     <AvatarSprite a={myAvatar} facing={myFace} moving={meMoving} />

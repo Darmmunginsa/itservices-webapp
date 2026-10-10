@@ -39,6 +39,8 @@ export type AccKey = typeof ACCS[number]['key']
 export interface Avatar {
   skin: string; hair: HairKey; hairColor: string; face: FaceKey
   top: TopKey; topColor: string; bottom: BottomKey; bottomColor: string; shoes: string; acc: AccKey
+  /** ชื่อเล่นที่โชว์บนแผนที่และป้ายของหุ่นยนต์ ('' = ใช้ชื่อแรกของชื่อจริง) */
+  nick: string
 }
 
 export type Facing = 'down' | 'up' | 'left' | 'right'
@@ -64,6 +66,7 @@ export function avatarFromSeed(seed: string): Avatar {
     top, topColor: pick(CLOTH_COLORS), bottom: top === 'dress' ? 'skirt' : pick(BOTTOMS).key,
     bottomColor: pick(['#334155', '#1e3a8a', '#111827', '#78716c', '#7c2d12', '#f8fafc']), shoes: pick(['#111827', '#7c2d12', '#f8fafc', '#ef4444']),
     acc: h % 3 === 0 ? pick(ACCS.filter(x => x.key !== 'none' && x.key !== 'crown' && x.key !== 'halo')).key : 'none',
+    nick: '',
   }
 }
 
@@ -79,12 +82,23 @@ export function parseAvatar(raw: string | null | undefined, seed: string): Avata
       skin: col(j.skin, base.skin), hair: oneOf(j.hair, HAIR_SET, base.hair), hairColor: col(j.hairColor, base.hairColor),
       face: oneOf(j.face, FACE_SET, base.face), top: oneOf(j.top, TOP_SET, base.top), topColor: col(j.topColor, base.topColor),
       bottom: oneOf(j.bottom, BOTTOM_SET, base.bottom), bottomColor: col(j.bottomColor, base.bottomColor),
-      shoes: col(j.shoes, base.shoes), acc: oneOf(j.acc, ACC_SET, base.acc),
+      shoes: col(j.shoes, base.shoes), acc: oneOf(j.acc, ACC_SET, base.acc), nick: cleanNick(j.nick),
     }
   } catch { return base }
 }
 
-export const serializeAvatar = (a: Avatar): string => JSON.stringify(a)
+export const serializeAvatar = (a: Avatar): string => JSON.stringify({ ...a, nick: cleanNick(a.nick) })
+
+export const NICK_MAX = 20
+/** ชื่อเล่น: ตัดช่องว่างหัวท้าย ตัดอักขระควบคุม ยาวไม่เกิน 20 ตัว */
+export function cleanNick(v: unknown): string {
+  if (typeof v !== 'string') return ''
+  // eslint-disable-next-line no-control-regex
+  return [...v.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim()].slice(0, NICK_MAX).join('')
+}
+
+/** ชื่อที่โชว์: ชื่อเล่น หรือชื่อแรกของชื่อจริง */
+export const displayName = (a: Avatar | null | undefined, realName: string): string => a?.nick || realName.split(/\s+/)[0] || realName
 
 /** ทิศที่หันจากการขยับ a → b (ไม่ขยับ = คงทิศเดิม) */
 export function facingFrom(a: { x: number; y: number }, b: { x: number; y: number }, prev: Facing = 'down'): Facing {

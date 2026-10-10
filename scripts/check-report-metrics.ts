@@ -2,7 +2,7 @@
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
 import { claimBeats } from '../src/utils/voiceProximity'
-import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom } from '../src/utils/officeAvatar'
+import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom, displayName, cleanNick } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
@@ -2483,6 +2483,22 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(claimBeats(autoFocus, autoBg), true, 'when a call auto-starts, the focused window takes it')
   eq(claimBeats({ ...manual, id: 'z', ts: 150 }, manual), true, 'pressing join in another window moves the voice there')
   eq(claimBeats(manual, manual), false, 'a window never beats itself')
+}
+
+// -- ชื่อเล่นของตัวละคร --
+{
+  const A = avatarFromSeed('somchai@x.com')
+  eq(A.nick, '', 'no nickname by default')
+  eq(displayName(A, 'Somchai Jaidee'), 'Somchai', 'without a nickname the first name shows')
+  eq(displayName({ ...A, nick: 'Bank' }, 'Somchai Jaidee'), 'Bank', 'a nickname replaces the real name')
+  eq(parseAvatar(serializeAvatar({ ...A, nick: '  แบงค์   สายลุย  ' }), 'somchai@x.com').nick, 'แบงค์ สายลุย', 'the nickname is saved, with extra spaces tidied')
+  eq(cleanNick('x'.repeat(40)).length, 20, 'nicknames are capped at 20 characters')
+  eq(cleanNick(42), '', 'a non-text nickname is ignored')
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  const R = robotRoute(OM), at = 1_000_000 * 900
+  const ms = planMissions(OM, R, parseCleanRequests([{ Title: 'coffee:5,1', UserName: 'Somchai Jaidee', UserEmail: 'Somchai@x.com', Room: 'robot', Created: new Date(at).toISOString() }]))
+  const lbl = robotLabel(robotNow(R, ms, (ms[0].start + 1) * 900)!, (email, real) => email === 'somchai@x.com' ? 'Bank' : real)
+  eq(!!lbl && lbl.includes('Bank') && !lbl.includes('Somchai'), true, 'the robot calls you by your nickname, not your real name')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

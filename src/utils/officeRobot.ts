@@ -106,9 +106,9 @@ const MAX_PATH = 90
 
 export type RobotJob = 'clean' | 'coffee'
 export type RobotPhase = 'go' | 'sweep' | 'fetch' | 'brew' | 'carry' | 'give' | 'back'
-export interface CleanRequest { at: number; x: number; y: number; by: string; kind: RobotJob }
+export interface CleanRequest { at: number; x: number; y: number; by: string; byEmail: string; kind: RobotJob }
 export interface Mission {
-  start: number; steps: Pos[]; by: string; target: Pos; kind: RobotJob
+  start: number; steps: Pos[]; by: string; byEmail: string; target: Pos; kind: RobotJob
   /** ช่วงของแต่ละขั้น (ก้าวที่ < end) */
   phases: { phase: RobotPhase; end: number }[]
   /** ช่วงที่ทำงานอยู่ตรงหน้าคนเรียก (กวาด / ยื่นกาแฟ) */
@@ -116,13 +116,13 @@ export interface Mission {
 }
 
 /** อ่านคำขอจากแถวแชท — "clean:x,y" หรือ "coffee:x,y" */
-export function parseCleanRequests(rows: { Title: string; UserName: string; Room?: string; Created: string }[]): CleanRequest[] {
+export function parseCleanRequests(rows: { Title: string; UserName: string; UserEmail?: string; Room?: string; Created: string }[]): CleanRequest[] {
   const out: CleanRequest[] = []
   for (const r of rows) {
     if ((r.Room ?? '') !== ROBOT_ROOM) continue
     const m = /^(clean|coffee):(\d+),(\d+)$/.exec((r.Title || '').trim())
     const at = new Date(r.Created).getTime()
-    if (m && Number.isFinite(at)) out.push({ at, x: +m[2], y: +m[3], by: r.UserName || '', kind: m[1] as RobotJob })
+    if (m && Number.isFinite(at)) out.push({ at, x: +m[2], y: +m[3], by: r.UserName || '', byEmail: (r.UserEmail || '').toLowerCase(), kind: m[1] as RobotJob })
   }
   return out.sort((a, b) => a.at - b.at)
 }
@@ -184,7 +184,7 @@ export function planMissions(m: OfficeMap, route: Pos[], reqs: CleanRequest[]): 
     const work = r.kind === 'coffee' ? 'give' : 'sweep'
     const wi = phases.findIndex(p => p.phase === work)
     const sweepFrom = wi > 0 ? phases[wi - 1].end : 0, sweepTo = phases[wi].end
-    out.push({ start, steps, by: r.by, target, kind: r.kind, phases, sweepFrom, sweepTo })
+    out.push({ start, steps, by: r.by, byEmail: r.byEmail, target, kind: r.kind, phases, sweepFrom, sweepTo })
     shift += steps.length
     busyUntil = start + steps.length
   }
@@ -217,10 +217,10 @@ export function robotNow(route: Pos[], missions: Mission[], now: number): RobotN
   return { pos: cur.pos, left, mission: cur.mission, phase, sweeping: phase === 'sweep', returning: phase === 'back' }
 }
 
-/** ป้ายเหนือหัวหุ่น */
-export function robotLabel(r: RobotNow): string | null {
+/** ป้ายเหนือหัวหุ่น — nameOf: แปลงคนเรียกเป็นชื่อที่โชว์ (ชื่อเล่น) ไม่ให้เห็นชื่อจริง */
+export function robotLabel(r: RobotNow, nameOf?: (email: string, realName: string) => string): string | null {
   if (!r.mission) return null
-  const who = r.mission.by.split(/\s+/)[0]
+  const who = nameOf ? nameOf(r.mission.byEmail, r.mission.by) : r.mission.by.split(/\s+/)[0]
   switch (r.phase) {
     case 'go': return `→ ไปกวาดให้ ${who}`
     case 'sweep': return `🧹 กวาดให้ ${who}`
