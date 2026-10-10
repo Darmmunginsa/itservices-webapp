@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
@@ -2459,6 +2460,19 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   const a = robotNow(R, [cm], endT - STEP)!.pos, b = robotNow(R, [cm], endT)!.pos
   eq(Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 1, true, 'after delivering it resumes its rounds without jumping')
   eq(robotLabel(robotNow(R, [cm], (cm.start + brewEnd - 1) * STEP)!), '☕ กำลังกดชง… ฟู่ววว', 'the label says it is brewing')
+}
+
+// -- ตัวละครแบบ Gather --
+{
+  const A1 = avatarFromSeed('somchai@x.com'), A2 = avatarFromSeed('SOMCHAI@x.com'), B = avatarFromSeed('somying@x.com')
+  eq(JSON.stringify(A1), JSON.stringify(A2), 'the same email always gets the same starting character, on every screen')
+  eq(JSON.stringify(A1) !== JSON.stringify(B), true, 'different people start as different characters')
+  const custom = { ...A1, hair: 'mohawk' as const, acc: 'crown' as const, topColor: '#ec4899' }
+  eq(JSON.stringify(parseAvatar(serializeAvatar(custom), 'somchai@x.com')), JSON.stringify(custom), 'a saved character loads back exactly')
+  const bad = parseAvatar(JSON.stringify({ hair: 'unicorn', skin: 'red', acc: 'crown' }), 'somchai@x.com')
+  eq(bad.hair === A1.hair && bad.skin === A1.skin && bad.acc === 'crown', true, 'bad parts fall back to the default, good parts are kept')
+  eq(JSON.stringify(parseAvatar(null, 'somchai@x.com')), JSON.stringify(A1), 'no saved character = the starting one')
+  eq([facingFrom({ x: 1, y: 1 }, { x: 0, y: 1 }), facingFrom({ x: 1, y: 1 }, { x: 1, y: 0 }), facingFrom({ x: 1, y: 1 }, { x: 1, y: 1 }, 'left')].join(','), 'left,up,left', 'characters face where they walk, and keep facing when still')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

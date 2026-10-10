@@ -317,3 +317,15 @@ html[data-fx='on'] .urgent-badge {
 @keyframes hd-steam { 0% { opacity: 0; transform: translateY(1px) } 50% { opacity: .9 } 100% { opacity: 0; transform: translateY(-2px) } }
 @keyframes hd-led { 50% { opacity: .35 } }
 @media (prefers-reduced-motion: reduce) { .hd-robot-walk, .hd-robot-legL, .hd-robot-legR, .hd-robot-broom, .hd-robot-dust, .hd-robot-led, .hd-robot-steam { animation: none } }
+/* ตัวละครแบบ Gather — เดินแล้วตัวเด้ง แกว่งแขนขา */
+.hd-av-bob { animation: hd-avbob .36s ease-in-out infinite; }
+@keyframes hd-avbob { 50% { transform: translateY(-1.4px) } }
+.hd-av-legL { animation: hd-avleg .36s ease-in-out infinite; }
+.hd-av-legR { animation: hd-avleg .36s ease-in-out infinite reverse; }
+@keyframes hd-avleg { 0%, 100% { transform: rotate(16deg) } 50% { transform: rotate(-16deg) } }
+.hd-av-armL { animation: hd-avarm .36s ease-in-out infinite reverse; }
+.hd-av-armR { animation: hd-avarm .36s ease-in-out infinite; }
+@keyframes hd-avarm { 0%, 100% { transform: rotate(18deg) } 50% { transform: rotate(-18deg) } }
+.hd-av-halo { animation: hd-avhalo 2.4s ease-in-out infinite; }
+@keyframes hd-avhalo { 50% { transform: translateY(-1.2px) } }
+@media (prefers-reduced-motion: reduce) { .hd-av-bob, .hd-av-legL, .hd-av-legR, .hd-av-armL, .hd-av-armR, .hd-av-halo { animation: none } }

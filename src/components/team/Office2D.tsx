@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
-import { PersonPhoto } from '../common/PersonPhoto'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
 } from '../../utils/officeMap'
@@ -19,6 +18,10 @@ import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettin
 import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
+import { AvatarSprite } from './AvatarSprite'
+import { AvatarEditor } from './AvatarEditor'
+import { parseAvatar, serializeAvatar, facingFrom, type Avatar, type Facing } from '../../utils/officeAvatar'
+import { getAllAvatars, saveMyAvatar } from '../../services/officeAvatar'
 import { robotPlan, robotNow as robotStateAt, planMissions, parseCleanRequests, robotLabel, coffeeSpot, ROBOT_STEP_MS, ROBOT_LINES, ROBOT_ROOM } from '../../utils/officeRobot'
 import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
@@ -89,6 +92,16 @@ const fmtClock = (iso: string) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+/** ป้ายชื่อเหนือหัว + จุดสีสถานะ (แบบ Gather) */
+function NameTag({ name, color, mine = false }: { name: string; color: string; mine?: boolean }) {
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[9px] leading-tight px-1 py-px rounded whitespace-nowrap shadow-sm ${mine ? 'bg-primary-600 text-white' : 'bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200'}`}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+      {name.split(/\s+/)[0]}
+    </span>
+  )
+}
+
 export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onError, onInfo, mapProps = [] }: Props) {
   const map = useMemo(() => parseMap(mapRows), [mapRows])
   const me = meEmail.toLowerCase()
@@ -108,6 +121,40 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const baseTitle = useRef(document.title)
   const dirty = useRef(false)
   const posRef = useRef<Pos | null>(null)
+  // ── ตัวละคร (แบบ Gather): หันตามทางเดิน · เดินอยู่ = แกว่งแขนขา ──
+  const [myFace, setMyFace] = useState<Facing>('down')
+  const [meMoving, setMeMoving] = useState(false)
+  const stillTimer = useRef<number | undefined>(undefined)
+  const markMoved = useCallback((from: Pos | null, to: Pos) => {
+    if (from) setMyFace(f => facingFrom(from, to, f))
+    setMeMoving(true)
+    window.clearTimeout(stillTimer.current)
+    stillTimer.current = window.setTimeout(() => setMeMoving(false), 320)
+  }, [])
+  const prevOthers = useRef(new Map<string, Pos>())
+  const [motion, setMotion] = useState<Record<string, { face: Facing; until: number }>>({})
+  const [avatars, setAvatars] = useState<Map<string, string>>(() => new Map())
+  const [dressing, setDressing] = useState(false)
+  const [savingAvatar, setSavingAvatar] = useState(false)
+  // โหลดตัวละครทุกคน (และรีเฟรชทุก 1 นาที เผื่อเพื่อนเพิ่งแต่งตัวใหม่) · ยังไม่มีคอลัมน์ Avatar = ใช้ตัวละครเริ่มต้นจากอีเมล
+  useEffect(() => {
+    let alive = true
+    const load = () => getAllAvatars().then(m0 => { if (alive) setAvatars(m0) }).catch(() => { /* ยังไม่มีคอลัมน์ */ })
+    load()
+    const t = window.setInterval(load, 60_000)
+    return () => { alive = false; window.clearInterval(t) }
+  }, [])
+  const avatarOf = (email: string): Avatar => parseAvatar(avatars.get(email), email)
+  const myAvatar = avatarOf(me)
+  const saveAvatar = (a: Avatar) => {
+    if (!meEmail) return
+    const json = serializeAvatar(a)
+    setSavingAvatar(true)
+    saveMyAvatar(meEmail, meName, json)
+      .then(() => { setAvatars(m0 => new Map(m0).set(me, json)); setDressing(false); onDecorInfo('👤 บันทึกตัวละครแล้ว — ทุกคนเห็นตัวใหม่ของคุณ') })
+      .catch(() => cb.current.onError('บันทึกตัวละครไม่สำเร็จ — เพิ่มคอลัมน์ Avatar ใน HD_OfficeDecor (ดู docs/Team-Status.md)'))
+      .finally(() => setSavingAvatar(false))
+  }
   // แผนที่สำหรับเดิน = ผังออฟฟิศ + ตัวโต๊ะส่วนตัว 3×3 ที่ขวางทาง (อัปเดตเมื่อโหลดโต๊ะของทีม)
   const walkRef = useRef<OfficeMap>(map)
   // ไมค์เปิดอยู่ไหม — ฝากไปกับตำแหน่ง (ช่อง Room = "desk:mic") ให้คนอื่นรู้ว่าต่อสายได้
@@ -157,7 +204,22 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       Promise.all([getPresence().catch(() => null), getChat().catch(() => null)]).then(([p, c]) => {
         if (!alive) return
         setNow(new Date())
-        if (p) setOthers(p.filter(r => (r.UserEmail ?? '').toLowerCase() !== me))
+        if (p) {
+          const list = p.filter(r => (r.UserEmail ?? '').toLowerCase() !== me)
+          // ใครขยับ → หันตามทาง + เดินอยู่ช่วงที่ตัวเลื่อน (2.4 วิ)
+          const t = Date.now(), moved: Record<string, { from: Pos; to: Pos }> = {}
+          for (const r of list) {
+            const e = (r.UserEmail ?? '').toLowerCase(), old = prevOthers.current.get(e)
+            if (old && (old.x !== r.X || old.y !== r.Y)) moved[e] = { from: old, to: { x: r.X, y: r.Y } }
+          }
+          prevOthers.current = new Map(list.map(r => [(r.UserEmail ?? '').toLowerCase(), { x: r.X, y: r.Y }]))
+          if (Object.keys(moved).length) setMotion(m0 => {
+            const n = { ...m0 }
+            for (const [e, mv] of Object.entries(moved)) n[e] = { face: facingFrom(mv.from, mv.to, m0[e]?.face), until: t + 2400 }
+            return n
+          })
+          setOthers(list)
+        }
         if (c) {
           const list = c.slice().reverse()
           setChat(list)
@@ -209,12 +271,14 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     if (!cur) return
     stopWalk()
     const next = step(walkRef.current, cur, dir)
+    setMyFace(dir)
     if (next === cur) return
+    markMoved(cur, next)
     posRef.current = next
     dirty.current = true
     setPos(next)
     enterZone(zoneAt(map, next.x, next.y))
-  }, [map, enterZone, stopWalk])
+  }, [map, enterZone, stopWalk, markMoved])
 
   // คีย์บอร์ด — เฉพาะตอนแผนที่โฟกัส (พิมพ์แชทอยู่จะไม่เดิน)
   useEffect(() => {
@@ -249,12 +313,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     const tick = () => {
       const p = queue.shift()
       if (!p) { stopWalk(); return }
+      markMoved(posRef.current, p)
       posRef.current = p; dirty.current = true; setPos(p)
       enterZone(zoneAt(map, p.x, p.y))
     }
     tick()
     walkTimer.current = window.setInterval(tick, 110)
-  }, [map, enterZone, stopWalk])
+  }, [map, enterZone, stopWalk, markMoved])
   useEffect(() => stopWalk, [stopWalk])
 
   async function submit() {
@@ -478,6 +543,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   return (
     <div className="flex flex-col lg:flex-row gap-3">
+      {dressing && <AvatarEditor initial={myAvatar} seed={me} saving={savingAvatar} onSave={saveAvatar} onClose={() => setDressing(false)} />}
       {/* ── แผนที่ ── */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
@@ -487,6 +553,12 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={decor.begin} title="วางโต๊ะของคุณตรงไหนก็ได้ เลือกแบบโต๊ะ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
               🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'วางโต๊ะของฉัน'}
+            </button>
+          )}
+          {!decor.decorating && (
+            <button onClick={() => setDressing(true)} title="แต่งตัวละครของคุณ — ผม เสื้อผ้า ของประดับ · ทุกคนเห็น"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
+              👤 แต่งตัวละคร
             </button>
           )}
           {pos && !decor.decorating && (
@@ -713,23 +785,25 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 )}
               </button>
             )}
-            {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}
+            {/* คนอื่น — ตัวละครเดินไปตำแหน่งใหม่ (หันตามทาง แกว่งแขนขา) · ชื่ออยู่เหนือหัวแบบ Gather */}
             {online.map(r => {
-              const m = memberBy.get(r.email.toLowerCase())
+              const e = r.email.toLowerCase()
+              const m = memberBy.get(e)
               const p = clampToMap(walkMap, { x: r.X, y: r.Y }, hashIndex(r.email))
+              const mo = motion[e]
               return (
-                <button key={r.id} onClick={e => { e.stopPropagation(); openDM(r.UserEmail) }}
+                <button key={r.id} onClick={ev => { ev.stopPropagation(); openDM(r.UserEmail) }}
                   title={`${r.UserName}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}
-                  className="absolute z-10 flex flex-col items-center hd-avatar cursor-pointer"
-                  style={{ left: p.x * TILE, top: p.y * TILE - 8, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
-                  <span className="hd-avatar-shadow" />
-                  <span className={`relative rounded-full ring-2 shadow-md ${speakingSet.has(r.email.toLowerCase()) ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
-                    <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={r.UserName} size={28} />
-                    {r.mic && <span className="absolute -right-1 -bottom-1 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title={r.muted ? 'ปิดไมค์อยู่' : 'เปิดไมค์อยู่'}>
+                  className="absolute z-10 flex flex-col items-center cursor-pointer"
+                  style={{ left: p.x * TILE, top: p.y * TILE + TILE - 62, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
+                  <NameTag name={r.UserName} color={statusDot(m?.slot)} />
+                  <span className="relative">
+                    {speakingSet.has(e) && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
+                    <AvatarSprite a={avatarOf(e)} facing={mo?.face ?? 'down'} moving={!!mo && mo.until > robotNow} />
+                    {r.mic && <span className="absolute right-0 top-3 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title={r.muted ? 'ปิดไมค์อยู่' : 'เปิดไมค์อยู่'}>
                       {r.muted ? <MicOff size={8} className="text-red-600" /> : <Mic size={8} className="text-green-600" />}</span>}
                   </span>
-                  <span className="text-[9px] leading-tight px-1 rounded bg-white/90 dark:bg-gray-900/90 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.UserName.split(/\s+/)[0]}</span>
-                  {dm.callWith === r.email.toLowerCase() && <span className="absolute -top-2 -right-1 text-[10px]" title="กำลังคุยส่วนตัว">🔒</span>}
+                  {dm.callWith === e && <span className="absolute top-0 -right-2 text-[10px]" title="กำลังคุยส่วนตัว">🔒</span>}
                 </button>
               )
             })}
@@ -737,15 +811,14 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {pos && (() => {
               const m = memberBy.get(me)
               return (
-                <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none hd-avatar"
-                  style={{ left: pos.x * TILE, top: pos.y * TILE - 8, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
-                  <span className="hd-avatar-shadow" />
-                  {/* key ตามตำแหน่ง = เล่นแอนิเมชันเด้ง 1 ครั้งทุกก้าว */}
-                  <span key={`${pos.x},${pos.y}`} className={`hd-step rounded-full ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 shadow-md ${voice.meSpeaking ? 'hd-speaking' : ''}`} style={{ ['--tw-ring-color' as string]: statusDot(m?.slot) }}>
-                    <PersonPhoto itemId={m?.profileId ?? 0} fileName={m?.photoFile} name={meName} size={28} />
+                <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none"
+                  style={{ left: pos.x * TILE, top: pos.y * TILE + TILE - 62, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
+                  <NameTag name="ฉัน" color={statusDot(m?.slot)} mine />
+                  <span className="relative">
+                    {voice.meSpeaking && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
+                    <AvatarSprite a={myAvatar} facing={myFace} moving={meMoving} />
+                    {voice.micOn && voice.muted && !voice.talking && <span className="absolute right-0 top-3 w-3.5 h-3.5 rounded-full bg-red-600 flex items-center justify-center shadow" title="ปิดไมค์อยู่"><MicOff size={8} className="text-white" /></span>}
                   </span>
-                  {voice.micOn && voice.muted && !voice.talking && <span className="absolute right-0 top-4 w-3.5 h-3.5 rounded-full bg-red-600 flex items-center justify-center shadow" title="ปิดไมค์อยู่"><MicOff size={8} className="text-white" /></span>}
-                  <span className="text-[9px] leading-tight px-1 rounded bg-primary-600 text-white whitespace-nowrap">ฉัน</span>
                 </div>
               )
             })()}
