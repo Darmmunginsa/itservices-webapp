@@ -114,3 +114,15 @@ export function waterLevel(me: { x: number; y: number }, sources: { x: number; y
   }))
   return Math.max(0.2, Math.min(1, 1 - (d - 1) / 11))
 }
+
+// ── ผูกค่าเสียงกับบัญชี (เก็บบน SharePoint) ──
+export interface SoundProfile { focus: MusicSettings; garden: GardenSoundSettings }
+export const serializeSound = (p: SoundProfile): string => JSON.stringify({ v: 1, focus: p.focus, garden: p.garden })
+/** อ่านค่าจากบัญชี — ข้อมูลเสีย = null (ใช้ค่าในเครื่องต่อ) · ฟิลด์ที่ผิดใช้ค่าเริ่มต้นเฉพาะตัวนั้น */
+export function parseSound(raw: string | null | undefined): SoundProfile | null {
+  try {
+    const j = JSON.parse(raw || '') as { focus?: unknown; garden?: unknown }
+    if (!j || typeof j !== 'object' || (!j.focus && !j.garden)) return null
+    return { focus: parseMusicSettings(JSON.stringify(j.focus ?? {})), garden: parseGardenSettings(JSON.stringify(j.garden ?? {})) }
+  } catch { return null }
+}

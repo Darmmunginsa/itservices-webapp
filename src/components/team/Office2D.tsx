@@ -15,8 +15,9 @@ import { ScreenVideo } from './ScreenVideo'
 import { NotifyMenu } from './NotifyMenu'
 import { FocusMusicCard } from './FocusMusicCard'
 import { ambient } from '../../services/ambientAudio'
-import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettings, saveGardenSettings, soundFor, waterLevel, type MusicSettings, type GardenSoundSettings } from '../../utils/focusMusic'
+import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettings, saveGardenSettings, soundFor, waterLevel, parseSound, serializeSound, type MusicSettings, type GardenSoundSettings } from '../../utils/focusMusic'
 import { GardenSoundCard } from './GardenSoundCard'
+import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
@@ -381,11 +382,36 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   // ── เพลงผ่อนคลายในห้องโฟกัส — เข้าห้อง = ค่อย ๆ ดังขึ้น · ออก = ค่อย ๆ เงียบ · คุยเสียงอยู่ = ลดเสียงลง ──
   const [music, setMusic] = useState<MusicSettings>(() => loadMusicSettings())
-  const changeMusic = (m: MusicSettings) => { setMusic(m); saveMusicSettings(m) }
   const inCall = connected.length > 0
   // เสียงธรรมชาติในสวน — น้ำดังขึ้นเมื่อเดินเข้าใกล้น้ำตก/น้ำพุ
   const [garden, setGarden] = useState<GardenSoundSettings>(() => loadGardenSettings())
-  const changeGarden = (g: GardenSoundSettings) => { setGarden(g); saveGardenSettings(g) }
+  // ── ค่าเสียงผูกกับบัญชี: เปิดหน้า = ดึงค่าจาก SharePoint · ปรับ = บันทึกขึ้นไป (รอหยุดลาก 1.5 วิ) ──
+  const syncTimer = useRef<number | undefined>(undefined)
+  const syncWarned = useRef(false)
+  const pushSound = (m: MusicSettings, g: GardenSoundSettings) => {
+    if (!meEmail) return
+    window.clearTimeout(syncTimer.current)
+    syncTimer.current = window.setTimeout(() => {
+      saveMySound(meEmail, meName, serializeSound({ focus: m, garden: g })).catch(() => {
+        if (syncWarned.current) return
+        syncWarned.current = true
+        onError?.('ค่าเสียงยังไม่ถูกบันทึกกับบัญชี (ใช้ได้เฉพาะเครื่องนี้) — เพิ่มคอลัมน์ Sound ใน HD_OfficeDecor (ดู docs/Team-Status.md)')
+      })
+    }, 1500)
+  }
+  const changeMusic = (m: MusicSettings) => { setMusic(m); saveMusicSettings(m); pushSound(m, garden) }
+  const changeGarden = (g: GardenSoundSettings) => { setGarden(g); saveGardenSettings(g); pushSound(music, g) }
+  useEffect(() => {
+    if (!meEmail) return
+    let alive = true
+    getMySound(meEmail).then(raw => {
+      const p = parseSound(raw)
+      if (!alive || !p) return
+      setMusic(p.focus); saveMusicSettings(p.focus)
+      setGarden(p.garden); saveGardenSettings(p.garden)
+    }).catch(() => { /* ยังไม่มีคอลัมน์ Sound — ใช้ค่าในเครื่อง */ })
+    return () => { alive = false }
+  }, [meEmail])
   const waterSources = mapProps.filter(p => p.kind === 'waterfall' || p.kind === 'fountain').map(p => ({ ...p, w: propDef(p.kind)!.w, h: propDef(p.kind)!.h }))
   const water = pos ? waterLevel(pos, waterSources) : 0.2
   const sound = soundFor(myZone, music, garden)

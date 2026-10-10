@@ -28,7 +28,7 @@ import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } fr
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
-import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS, parseGardenSettings, soundFor, waterLevel, GARDEN_LAYERS } from '../src/utils/focusMusic'
+import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS, parseGardenSettings, soundFor, waterLevel, GARDEN_LAYERS, parseSound, serializeSound } from '../src/utils/focusMusic'
 import { PROPS, propTiles, propBlocked, canPlaceProp, propAt, parseProps, serializeProp, DEFAULT_PROPS, PROP_GROUPS } from '../src/utils/officeProps'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
@@ -2387,6 +2387,13 @@ eq(GARDEN_LAYERS.every(l => GS.mix[l.key] > 0), true, 'every garden sound is on 
 const GMIX = parseGardenSettings(JSON.stringify({ enabled: true, volume: 0.5, mix: { stream: 0.2, birds: 0, ducks: 7, wind: 'x' } }))
 eq([GMIX.mix.stream, GMIX.mix.birds, GMIX.mix.ducks, GMIX.mix.wind, GMIX.mix.falls].join(','), '0.2,0,1,1,1', 'each sound keeps its own level; bad values fall back to the default')
 eq(parseGardenSettings(JSON.stringify({ enabled: false, volume: 0.3 })).mix.stream, 0.7, 'old saved settings without a mix still load')
+
+// -- ค่าเสียงผูกกับบัญชี --
+const SP1 = { focus: { ...FS, preset: 'rain' as const, volume: 0.2 }, garden: { ...GS, volume: 0.55, mix: { ...GS.mix, stream: 0.3, ducks: 0 } } }
+eq(JSON.stringify(parseSound(serializeSound(SP1))), JSON.stringify(SP1), 'sound levels survive the trip to the account and back')
+eq(parseSound(null), null, 'no saved sound = keep this device settings')
+eq(parseSound('not json'), null, 'broken data = keep this device settings')
+eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.volume, 'a missing part falls back to defaults')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
