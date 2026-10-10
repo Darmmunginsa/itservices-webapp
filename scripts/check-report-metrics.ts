@@ -1,7 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
-import { robotRoute, robotAt } from '../src/utils/officeRobot'
+import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
@@ -2417,6 +2417,30 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(R.every(p => isWalkable(OM, p.x, p.y) && !'gp'.includes(OM.rows[p.y][p.x])), true, 'it stays on indoor floor, never walls or the garden')
   eq(new Set(R.map(p => `${p.x},${p.y}`)).size > 40, true, 'it covers a good part of the office')
   eq(JSON.stringify(robotAt(R, 0)?.pos), JSON.stringify(R[0]), 'position follows the clock')
+}
+
+// -- Request Cleaning --
+{
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  const R = robotRoute(OM), STEP = 900
+  const at = 1_000_000 * STEP
+  const reqs = parseCleanRequests([
+    { Title: 'clean:5,1', UserName: 'Somchai', Room: 'robot', Created: new Date(at).toISOString() },
+    { Title: 'hello', UserName: 'X', Room: '', Created: new Date(at).toISOString() },
+    { Title: 'clean:oops', UserName: 'Y', Room: 'robot', Created: new Date(at).toISOString() },
+  ])
+  eq(reqs.length, 1, 'only robot-room clean:x,y messages count as requests')
+  const M = planMissions(OM, R, reqs)
+  eq(M.length, 1, 'a request becomes one mission')
+  const m = M[0]
+  eq(JSON.stringify(m.steps[m.sweepFrom - 1] ?? m.steps[0]), JSON.stringify({ x: 5, y: 1 }), 'the robot walks to where you stood')
+  eq(m.steps.every((p, k) => k === 0 || Math.abs(p.x - m.steps[k - 1].x) + Math.abs(p.y - m.steps[k - 1].y) <= 1), true, 'it walks tile by tile, no teleport')
+  const endT = (m.start + m.steps.length) * STEP
+  const a = robotNow(R, M, endT - STEP)!.pos, b = robotNow(R, M, endT)!.pos
+  eq(Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= 1, true, 'after the mission it resumes its rounds without jumping')
+  eq(robotNow(R, M, (m.start + m.sweepFrom) * STEP)!.sweeping, true, 'it sweeps when it arrives')
+  const two = planMissions(OM, R, [...reqs, { ...reqs[0], by: 'Other', at: at + STEP }])
+  eq(two.length === 2 && two[1].start >= two[0].start + two[0].steps.length, true, 'a second request waits its turn')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

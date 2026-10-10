@@ -3,7 +3,7 @@
 // ไม่ต้องส่งข้อมูลผ่าน SharePoint: ทุกเครื่องสร้างเส้นทางเดียวกันจากผังเดียวกัน (สุ่มแบบมี seed)
 // แล้วดูว่าตอนนี้ควรอยู่ช่องไหนจากนาฬิกา → ทุกคนเห็นหุ่นอยู่ที่เดียวกันพร้อมกัน
 
-import { isWalkable, tileAt, type OfficeMap, type Pos } from './officeMap'
+import { findPath, isWalkable, tileAt, type OfficeMap, type Pos } from './officeMap'
 
 export const ROBOT_STEP_MS = 900
 /** ช่องที่หุ่นไม่ลงไป (สวน: หญ้า/ทางเดินหิน — หุ่นดูดฝุ่นใช้ในอาคาร) */
@@ -90,4 +90,85 @@ export function robotPlan(m: OfficeMap): { dock: Pos | null; route: Pos[] } {
   let p = planCache.get(m)
   if (!p) { p = { dock: robotDock(m), route: robotRoute(m) }; planCache.set(m, p) }
   return p
+}
+
+// ── Request Cleaning: เรียกหุ่นมากวาดตรงที่เรายืน ──
+// คำขอส่งผ่าน HD_OfficeChat (Room = 'robot' — ไม่โผล่ในแท็บแชท) ทุกเครื่องอ่านคำขอชุดเดียวกัน
+// แล้วคำนวณภารกิจแบบเดียวกัน: เดินไปหา → กวาดรอบ ๆ → เดินกลับจุดเดิม → วิ่งเส้นทางปกติต่อ (ไม่วาร์ป)
+
+export const ROBOT_ROOM = 'robot'
+export const SWEEP_STEPS = 12
+const MAX_PATH = 90
+
+export interface CleanRequest { at: number; x: number; y: number; by: string }
+export interface Mission { start: number; steps: Pos[]; by: string; target: Pos; sweepFrom: number; sweepTo: number }
+
+/** อ่านคำขอจากแถวแชท — "clean:x,y" */
+export function parseCleanRequests(rows: { Title: string; UserName: string; Room?: string; Created: string }[]): CleanRequest[] {
+  const out: CleanRequest[] = []
+  for (const r of rows) {
+    if ((r.Room ?? '') !== ROBOT_ROOM) continue
+    const m = /^clean:(\d+),(\d+)$/.exec((r.Title || '').trim())
+    const at = new Date(r.Created).getTime()
+    if (m && Number.isFinite(at)) out.push({ at, x: +m[1], y: +m[2], by: r.UserName || '' })
+  }
+  return out.sort((a, b) => a.at - b.at)
+}
+
+/** กวาดไปมารอบปลายทาง (ช่องที่เดินได้รอบตัว) แล้วจบที่ปลายทาง */
+function sweepAround(m: OfficeMap, t: Pos): Pos[] {
+  const nb = DIRS.map(d => ({ x: t.x + d.x, y: t.y + d.y })).filter(p => isWalkable(m, p.x, p.y))
+  if (!nb.length) return Array.from({ length: SWEEP_STEPS }, () => t)
+  const out: Pos[] = []
+  for (let i = 0; out.length < SWEEP_STEPS; i++) { out.push(nb[i % nb.length]); out.push(t) }
+  return out
+}
+
+/** ภารกิจทั้งหมดตามลำดับ — คิวต่อกัน (คำขอระหว่างหุ่นไม่ว่าง = ทำต่อจากงานก่อน) */
+export function planMissions(m: OfficeMap, route: Pos[], reqs: CleanRequest[]): Mission[] {
+  if (!route.length) return []
+  const n = route.length
+  const out: Mission[] = []
+  let shift = 0, busyUntil = -Infinity
+  for (const r of reqs) {
+    const start = Math.max(Math.floor(r.at / ROBOT_STEP_MS) + 1, busyUntil)
+    const from = route[(((start - shift) % n) + n) % n]
+    const target = { x: r.x, y: r.y }
+    const go = (from.x === target.x && from.y === target.y) ? [] : findPath(m, from, target)
+    if ((!go.length && (from.x !== target.x || from.y !== target.y)) || go.length > MAX_PATH) continue
+    const sweep = sweepAround(m, target)
+    const back = go.slice(0, -1).reverse().concat([from])
+    const steps = [...go, ...sweep, ...back]
+    out.push({ start, steps, by: r.by, target, sweepFrom: go.length, sweepTo: go.length + sweep.length })
+    shift += steps.length
+    busyUntil = start + steps.length
+  }
+  return out
+}
+
+/** ตำแหน่ง ณ ก้าวที่ step (รวมภารกิจ) */
+function posAtStep(route: Pos[], missions: Mission[], step: number): { pos: Pos; mission: Mission | null; k: number } {
+  const n = route.length
+  let shift = 0
+  for (const ms of missions) {
+    if (step < ms.start) break
+    if (step < ms.start + ms.steps.length) return { pos: ms.steps[step - ms.start], mission: ms, k: step - ms.start }
+    shift += ms.steps.length
+  }
+  return { pos: route[(((step - shift) % n) + n) % n], mission: null, k: 0 }
+}
+
+export interface RobotNow { pos: Pos; left: boolean; mission: Mission | null; sweeping: boolean; returning: boolean }
+export function robotNow(route: Pos[], missions: Mission[], now: number): RobotNow | null {
+  if (!route.length) return null
+  const step = Math.floor(now / ROBOT_STEP_MS)
+  const cur = posAtStep(route, missions, step)
+  let left = false
+  for (let k = 0; k < 40; k++) {
+    const a = posAtStep(route, missions, step - k - 1).pos, b = posAtStep(route, missions, step - k).pos
+    if (a.x !== b.x) { left = b.x < a.x; break }
+  }
+  const sweeping = !!cur.mission && cur.k >= cur.mission.sweepFrom && cur.k < cur.mission.sweepTo
+  const returning = !!cur.mission && cur.k >= cur.mission.sweepTo
+  return { pos: cur.pos, left, mission: cur.mission, sweeping, returning }
 }

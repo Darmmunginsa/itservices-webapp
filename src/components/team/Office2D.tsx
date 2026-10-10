@@ -19,7 +19,7 @@ import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettin
 import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
-import { robotPlan, robotAt, ROBOT_STEP_MS, ROBOT_LINES } from '../../utils/officeRobot'
+import { robotPlan, robotNow as robotStateAt, planMissions, parseCleanRequests, ROBOT_STEP_MS, ROBOT_LINES, ROBOT_ROOM } from '../../utils/officeRobot'
 import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
@@ -165,7 +165,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           const maxId = list.reduce((m, r) => Math.max(m, r.id), 0)
           if (seenMaxId.current == null) seenMaxId.current = maxId
           else if (maxId > seenMaxId.current) {
-            const fresh = list.filter(r => r.id > seenMaxId.current! && (r.UserEmail ?? '').toLowerCase() !== me)
+            const fresh = list.filter(r => r.id > seenMaxId.current! && (r.UserEmail ?? '').toLowerCase() !== me && (r.Room ?? '') !== ROBOT_ROOM)
             seenMaxId.current = maxId
             if (fresh.length && (document.hidden || !document.hasFocus())) {
               setUnread(u => u + fresh.length)
@@ -376,7 +376,24 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     const t = window.setInterval(() => setRobotNow(Date.now()), ROBOT_STEP_MS)
     return () => window.clearInterval(t)
   }, [])
-  const robot = robotAt(route, robotNow)
+  // คำขอทำความสะอาดวันนี้ (ส่งผ่านแชทห้อง 'robot') → ภารกิจเดียวกันทุกเครื่อง
+  const dayStart = new Date(robotNow); dayStart.setHours(0, 0, 0, 0)
+  const cleanReqs = parseCleanRequests(chat).filter(r => r.at >= dayStart.getTime())
+  const missions = planMissions(walkMap, route, cleanReqs)
+  const robot = robotStateAt(route, missions, robotNow)
+  const myPending = missions.some(m2 => m2.by === meName && robotNow < (m2.start + m2.sweepTo) * ROBOT_STEP_MS)
+  const [requesting, setRequesting] = useState(false)
+  async function requestCleaning() {
+    if (!pos || !meEmail || requesting) return
+    setRequesting(true)
+    try {
+      const t = `clean:${pos.x},${pos.y}`
+      const res = await sendChat({ email: meEmail, name: meName, text: t, room: ROBOT_ROOM })
+      setChat(prev => [...prev, { id: res.id, Title: t, UserEmail: meEmail, UserName: meName, Room: ROBOT_ROOM, Created: new Date().toISOString() }])
+      onDecorInfo('🤖 รับทราบครับ! กำลังเดินไปกวาดให้')
+    } catch { cb.current.onError('เรียกหุ่นไม่สำเร็จ — ตรวจว่ามี list HD_OfficeChat') }
+    finally { setRequesting(false) }
+  }
   useEffect(() => {
     walkRef.current = walkMap
     // ยืนอยู่ตรงที่กลายเป็นตัวโต๊ะ (มีคนเพิ่งวางโต๊ะทับ) → ย้ายไปจุดเกิด ไม่ให้ติดอยู่ในโต๊ะ
@@ -469,6 +486,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={decor.begin} title="วางโต๊ะของคุณตรงไหนก็ได้ เลือกแบบโต๊ะ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
               🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'วางโต๊ะของฉัน'}
+            </button>
+          )}
+          {pos && !decor.decorating && (
+            <button onClick={requestCleaning} disabled={requesting || myPending}
+              title="เรียกหุ่นยนต์มากวาดตรงที่คุณยืนอยู่ — ทุกคนเห็นหุ่นเดินมา"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-600 disabled:opacity-50">
+              🧹 {myPending ? 'หุ่นกำลังมา…' : 'Request Cleaning'}
             </button>
           )}
           {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
@@ -672,6 +696,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE - 10, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
                 {/* หันตามก้าวแนวนอนล่าสุด */}
                 <span style={{ display: 'inline-flex', transform: robot.left ? 'scaleX(-1)' : undefined }}><RobotSprite /></span>
+                {robot.mission && (
+                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 shadow-sm border border-amber-200 dark:border-amber-800">
+                    {robot.sweeping ? `🧹 กวาดให้ ${robot.mission.by.split(/\s+/)[0]}` : robot.returning ? '✨ สะอาดแล้ว กลับไปทำงานต่อ' : `→ ไปหา ${robot.mission.by.split(/\s+/)[0]}`}
+                  </span>
+                )}
               </button>
             )}
             {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}
