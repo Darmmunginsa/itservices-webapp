@@ -14,7 +14,7 @@ import { Button } from '../components/common/Button'
 import { spGet } from '../services/sharepoint'
 import { getSchedule } from '../services/graph'
 import {
-  activeSlotAt, createSlot, endOfDay, endOfWorkday, endSlotNow, getSlotsForDay, startOfDay,
+  activeSlotAt, AUTO_NOTE, createSlot, endMyAutoSlots, endOfDay, endOfWorkday, endSlotNow, getSlotsForDay, startOfDay,
 } from '../services/teamStatus'
 import { useAppStore } from '../store/useAppStore'
 import type { AgentProfile } from '../types/common'
@@ -74,7 +74,8 @@ export default function TeamStatus() {
     getOfficeMapRows().then(r => { setMapRows(r); return getOfficeProps(r).then(setMapProps) }).catch(() => {})
   }, [])
   // slot ที่เกิดจาก "การเดินเข้าโซน" — เดินออกจบเฉพาะอันนี้ สถานะที่ตั้งมือไว้ไม่โดนแตะ
-  const autoSlot = useRef<number | null>(null)
+  const zoneSeq = useRef(0)
+  const zoneChain = useRef<Promise<unknown>>(Promise.resolve())
   const [slots, setSlots] = useState<TeamStatusSlot[]>([])
   const [calendar, setCalendar] = useState<CalendarBusySlot[]>([])
   const [loading, setLoading] = useState(true)
@@ -197,19 +198,21 @@ export default function TeamStatus() {
     } finally { setSaving(false) }
   }
 
+  // เข้าโซน → ตั้งสถานะอัตโนมัติ · ทำทีละคำสั่งตามลำดับ (เดินผ่านหลายโซนเร็ว ๆ ไม่ค้างสถานะเก่า)
+  // ก่อนตั้งใหม่ จบสถานะอัตโนมัติของฉันทั้งหมดจาก SharePoint — กลับโต๊ะ = ว่างเสมอ
   const onZoneChange = useCallback((zone: Zone) => {
     const status = ZONE_STATUS[zone]
-    const prev = autoSlot.current
-    autoSlot.current = null
-    const endPrev = prev ? endSlotNow(prev).catch(() => {}) : Promise.resolve()
-    endPrev.then(() => {
-      if (!status || !user) { loadSlots(); return }
+    const my = ++zoneSeq.current
+    zoneChain.current = zoneChain.current.then(async () => {
+      if (my !== zoneSeq.current || !user) return      // มีโซนใหม่กว่ารอคิวอยู่ — ให้ตัวนั้นจัดการ
+      await endMyAutoSlots(user.email).catch(() => {})
+      if (!status || my !== zoneSeq.current) return
       const start = new Date()
-      return createSlot({
+      await createSlot({
         userEmail: user.email, userName: user.displayName || user.email,
-        statusType: status, reason: ZONE_LABEL[zone], start, end: endOfWorkday(start), note: 'auto:office',
-      }).then(r => { autoSlot.current = r.id; loadSlots() }).catch(() => {})
-    })
+        statusType: status, reason: ZONE_LABEL[zone], start, end: endOfWorkday(start), note: AUTO_NOTE,
+      })
+    }).catch(() => {}).then(() => loadSlots())
   }, [user, loadSlots])
 
   async function endNow(id: number) {

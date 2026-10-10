@@ -1,6 +1,7 @@
 import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 import type { StatusType, TeamStatusSlot } from '../types/teamStatus'
 import { DAY_END_HOUR } from '../types/teamStatus'
+import { myOpenAutoSlots } from '../utils/teamStatusAuto'
 
 const LIST = 'HD_TeamStatus'
 const SELECT = 'Id,Title,UserEmail,UserName,StatusType,StartTime,EndTime,Note,Created'
@@ -60,4 +61,12 @@ export function activeSlotAt(slots: TeamStatusSlot[], at = new Date()): TeamStat
   const hits = slots.filter(s => new Date(s.StartTime).getTime() <= t && new Date(s.EndTime).getTime() > t)
   if (!hits.length) return null
   return hits.reduce((a, b) => (new Date(a.StartTime) > new Date(b.StartTime) ? a : b))
+}
+
+export { AUTO_NOTE } from '../utils/teamStatusAuto'
+
+/** จบสถานะอัตโนมัติของฉันทั้งหมด — อ่านจาก SharePoint จริง ไม่พึ่งค่าที่จำไว้ในหน้า (รีโหลด/หน้าต่างแยก/เดินเร็วก็ไม่หลุด) */
+export async function endMyAutoSlots(email: string): Promise<void> {
+  const open = myOpenAutoSlots(await getSlotsForDay(new Date()), email)
+  await Promise.all(open.map(s => endSlotNow(s.id)))
 }

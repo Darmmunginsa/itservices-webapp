@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
@@ -2394,6 +2395,16 @@ eq(JSON.stringify(parseSound(serializeSound(SP1))), JSON.stringify(SP1), 'sound 
 eq(parseSound(null), null, 'no saved sound = keep this device settings')
 eq(parseSound('not json'), null, 'broken data = keep this device settings')
 eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.volume, 'a missing part falls back to defaults')
+
+// -- สถานะอัตโนมัติจากผังออฟฟิศ: กลับโต๊ะต้องจบทุกอัน --
+{
+  const now = new Date('2026-10-10T10:00:00Z')
+  const mk = (id: number, email: string, note: string | undefined, end: string) => ({ id, Title: '', UserEmail: email, UserName: '', StatusType: 'Break' as const, StartTime: '2026-10-10T09:00:00Z', EndTime: end, Note: note })
+  const sl = [mk(1, 'Me@x.com', 'auto:office', '2026-10-10T18:00:00Z'), mk(2, 'me@x.com', 'auto:office', '2026-10-10T17:00:00Z'), mk(3, 'me@x.com', undefined, '2026-10-10T18:00:00Z'), mk(4, 'other@x.com', 'auto:office', '2026-10-10T18:00:00Z'), mk(5, 'me@x.com', 'auto:office', '2026-10-10T09:30:00Z')]
+  eq(myOpenAutoSlots(sl, 'me@x.com', now).map(s => s.id).join(','), '1,2', 'every open auto status of mine is ended, even two left by a fast walk')
+  eq(myOpenAutoSlots(sl, 'me@x.com', now).some(s => s.id === 3), false, 'a status set by hand is left alone')
+  eq(myOpenAutoSlots(sl, 'me@x.com', now).some(s => s.id === 4), false, 'other people are left alone')
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
