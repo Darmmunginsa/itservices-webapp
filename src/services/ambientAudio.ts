@@ -208,23 +208,36 @@ class AmbientPlayer {
     const lfoG = ctx.createGain(); lfoG.gain.value = 0.018
     lfo.connect(lfoG).connect(wg.gain)
     wind.connect(whp).connect(wg).connect(L.wind); wind.start(); lfo.start()
-    // ลำธารน้ำไหล: เสียงซ่าต่ำ-กลางที่ความถี่ส่ายช้า ๆ + ฟองน้ำ "จุ๋ม" สั้น ๆ ถี่ ๆ (ไม่ขึ้นกับระยะ)
-    const brook = this.noise('brown')
-    const bbp = ctx.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 800; bbp.Q.value = 0.8
-    const blfo = ctx.createOscillator(); blfo.frequency.value = 0.23
-    const blfoG = ctx.createGain(); blfoG.gain.value = 250
+    // น้ำไหลแบบรินน้ำ "จ๊อก ๆ": ฟองอากาศก้องในน้ำ (เสียงสูงขึ้นเร็วแล้วจางเหมือนฟองแตก) มาเป็นจังหวะรินเป็นชุด
+    // + เสียงซ่าใส ๆ บาง ๆ ของสายน้ำ (ไม่ขึ้นกับระยะ)
+    const brook = this.noise('white')
+    const bbp = ctx.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 2200; bbp.Q.value = 1.2
+    const blfo = ctx.createOscillator(); blfo.frequency.value = 0.31
+    const blfoG = ctx.createGain(); blfoG.gain.value = 500
     blfo.connect(blfoG).connect(bbp.frequency)
-    const bg = ctx.createGain(); bg.gain.value = 0.5
+    const bg = ctx.createGain(); bg.gain.value = 0.035
     brook.connect(bbp).connect(bg).connect(L.stream); brook.start(); blfo.start()
-    this.every(70, 260, () => {
-      const t = ctx.currentTime, f = rand(350, 1100), len = rand(0.03, 0.08)
-      const o = ctx.createOscillator(); o.type = 'sine'
-      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * rand(1.4, 2.2), t + len)
-      const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t)
-      og.gain.exponentialRampToValueAtTime(rand(0.006, 0.018), t + 0.008); og.gain.exponentialRampToValueAtTime(0.0001, t + len)
-      const p = ctx.createStereoPanner(); p.pan.value = rand(-0.6, 0.6)
-      o.connect(og).connect(p).connect(L.stream); o.start(t); o.stop(t + len + 0.01)
+    /** ฟองหนึ่งลูก — ก้อง (sine + overtone) ความถี่ไต่ขึ้นตามขนาดฟอง */
+    const glug = (t: number, f: number, vol: number) => {
+      const len = rand(0.05, 0.11)
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + len)
+      const p = ctx.createStereoPanner(); p.pan.value = rand(-0.35, 0.35)
+      g.connect(p).connect(L.stream)
+      for (const [mul, amp] of [[1, 1], [2.02, 0.25]] as const) {
+        const o = ctx.createOscillator(); o.type = 'sine'
+        o.frequency.setValueAtTime(f * mul, t); o.frequency.exponentialRampToValueAtTime(f * mul * rand(1.6, 2.4), t + len)
+        const og = ctx.createGain(); og.gain.value = amp
+        o.connect(og).connect(g); o.start(t); o.stop(t + len + 0.01)
+      }
+    }
+    // รินเป็นชุด: จ๊อก-จ๊อก-จ๊อก ถี่ ๆ แล้วเว้นช่วงสั้น ๆ ระดับเสียงแต่ละชุดใกล้กัน (ภาชนะเดียวกัน)
+    this.every(260, 900, () => {
+      const n = Math.floor(rand(2, 6)), base = rand(260, 520), t0 = ctx.currentTime
+      for (let k = 0; k < n; k++) glug(t0 + k * rand(0.07, 0.13), base * rand(0.85, 1.25), rand(0.11, 0.24))
     })
+    // ฟองเล็กแทรกระหว่างชุด ให้สายน้ำต่อเนื่อง
+    this.every(90, 300, () => glug(ctx.currentTime, rand(600, 1100), rand(0.025, 0.06)))
     this.stopFns.push(() => splash.stop(), () => mass.stop(), () => wind.stop(), () => lfo.stop(), () => brook.stop(), () => blfo.stop(),
       () => { this.water = null; this.layers = {} })
     // นกหลายชนิด: ร้องรัว (สูง) · ร้องหวานยาว (กลาง) — ถี่กว่าป่า
