@@ -1,7 +1,7 @@
 // ตัวสร้างเสียงผ่อนคลาย (WebAudio) — Ambient / ฝน / ป่าและลำธาร
 // ทุกอย่างสร้างสด: oscillator + noise + filter + reverb ที่สังเคราะห์เอง ไม่มีไฟล์เสียง
 
-import { chordHz, CHIME_HZ, type MusicPreset } from '../utils/focusMusic'
+import { chordHz, CHIME_HZ, DEFAULT_MIX, type GardenLayer, type GardenMix, type MusicPreset } from '../utils/focusMusic'
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a)
 const pick = <T,>(xs: T[]): T => xs[Math.floor(Math.random() * xs.length)]
@@ -12,6 +12,9 @@ class AmbientPlayer {
   private bus: GainNode | null = null          // ก่อนเข้า reverb/master
   /** ความดังของเสียงน้ำในสวน — ปรับตามระยะถึงน้ำตก/น้ำพุ */
   private water: GainNode | null = null
+  /** ตัวคุมความดังแต่ละเสียงในสวน (ผู้ใช้ปรับเอง) */
+  private layers: Partial<Record<GardenLayer, GainNode>> = {}
+  private mix: GardenMix = { ...DEFAULT_MIX }
   private stopFns: (() => void)[] = []
   private timers: number[] = []
   private preset: MusicPreset | null = null
@@ -168,13 +171,21 @@ class AmbientPlayer {
       const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t)
       g.gain.exponentialRampToValueAtTime(0.09, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15)
       const pan = ctx.createStereoPanner(); pan.pan.value = rand(-0.5, 0.5)
-      o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(pan).connect(this.bus!)
+      o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g); g.connect(pan).connect(this.layers.ducks ?? this.bus!)
       o.start(t); o.stop(t + 0.17)
     }
   }
 
+  private layer(k: GardenLayer): GainNode {
+    const g = this.ctx!.createGain(); g.gain.value = this.mix[k]
+    g.connect(this.bus!); this.layers[k] = g
+    return g
+  }
+
   private buildGarden() {
     const ctx = this.ctx!
+    const L = { falls: this.layer('falls'), stream: this.layer('stream'), wind: this.layer('wind'), birds: this.layer('birds') }
+    this.layer('ducks')
     // น้ำตก: white noise ช่วงกลาง-สูง (น้ำกระแทก) + brown noise ต่ำ (มวลน้ำ) ผ่านตัวคุมระดับตามระยะ
     const water = ctx.createGain(); water.gain.value = 0.6
     const splash = this.noise('white')
@@ -186,7 +197,7 @@ class AmbientPlayer {
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 600
     const mg = ctx.createGain(); mg.gain.value = 1.4
     mass.connect(lp).connect(mg).connect(water)
-    water.connect(this.bus!)
+    water.connect(L.falls)
     splash.start(); mass.start()
     this.water = water
     // ลมพัดใบไม้เป็นระลอก
@@ -196,8 +207,26 @@ class AmbientPlayer {
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.09
     const lfoG = ctx.createGain(); lfoG.gain.value = 0.018
     lfo.connect(lfoG).connect(wg.gain)
-    wind.connect(whp).connect(wg).connect(this.bus!); wind.start(); lfo.start()
-    this.stopFns.push(() => splash.stop(), () => mass.stop(), () => wind.stop(), () => lfo.stop(), () => { this.water = null })
+    wind.connect(whp).connect(wg).connect(L.wind); wind.start(); lfo.start()
+    // ลำธารน้ำไหล: เสียงซ่าต่ำ-กลางที่ความถี่ส่ายช้า ๆ + ฟองน้ำ "จุ๋ม" สั้น ๆ ถี่ ๆ (ไม่ขึ้นกับระยะ)
+    const brook = this.noise('brown')
+    const bbp = ctx.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 800; bbp.Q.value = 0.8
+    const blfo = ctx.createOscillator(); blfo.frequency.value = 0.23
+    const blfoG = ctx.createGain(); blfoG.gain.value = 250
+    blfo.connect(blfoG).connect(bbp.frequency)
+    const bg = ctx.createGain(); bg.gain.value = 0.5
+    brook.connect(bbp).connect(bg).connect(L.stream); brook.start(); blfo.start()
+    this.every(70, 260, () => {
+      const t = ctx.currentTime, f = rand(350, 1100), len = rand(0.03, 0.08)
+      const o = ctx.createOscillator(); o.type = 'sine'
+      o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * rand(1.4, 2.2), t + len)
+      const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t)
+      og.gain.exponentialRampToValueAtTime(rand(0.006, 0.018), t + 0.008); og.gain.exponentialRampToValueAtTime(0.0001, t + len)
+      const p = ctx.createStereoPanner(); p.pan.value = rand(-0.6, 0.6)
+      o.connect(og).connect(p).connect(L.stream); o.start(t); o.stop(t + len + 0.01)
+    })
+    this.stopFns.push(() => splash.stop(), () => mass.stop(), () => wind.stop(), () => lfo.stop(), () => brook.stop(), () => blfo.stop(),
+      () => { this.water = null; this.layers = {} })
     // นกหลายชนิด: ร้องรัว (สูง) · ร้องหวานยาว (กลาง) — ถี่กว่าป่า
     this.every(1600, 4800, () => {
       const kind = Math.random()
@@ -213,7 +242,7 @@ class AmbientPlayer {
         const og = ctx.createGain(); og.gain.setValueAtTime(0.0001, t)
         og.gain.exponentialRampToValueAtTime(0.06, t + 0.012); og.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.02)
         const p = ctx.createStereoPanner(); p.pan.value = pan
-        o.connect(og).connect(p).connect(this.bus!); o.start(t); o.stop(t + len + 0.03)
+        o.connect(og).connect(p).connect(L.birds); o.start(t); o.stop(t + len + 0.03)
       }
     })
     // เป็ดร้องนาน ๆ ครั้ง
@@ -225,6 +254,16 @@ class AmbientPlayer {
     if (!this.ctx || !this.water) return
     const t = this.ctx.currentTime, g = this.water.gain
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(Math.max(0, Math.min(1, level)), t + 0.8)
+  }
+
+  /** ความดังแต่ละเสียงในสวน 0–1 */
+  setMix(mix: GardenMix) {
+    this.mix = { ...mix }
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    for (const [k, g] of Object.entries(this.layers) as [GardenLayer, GainNode][]) {
+      g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(this.mix[k], t + 0.3)
+    }
   }
 
   private teardown() {

@@ -55,8 +55,26 @@ export const chordHz = (i: number): number[] => CHORDS[((i % CHORDS.length) + CH
 export const CHIME_HZ = [72, 74, 76, 79, 81, 84, 86, 88].map(NOTE)
 
 // ── เสียงธรรมชาติในสวน (โซน garden) — ตั้งค่าแยกจากห้องโฟกัส ──
-export interface GardenSoundSettings { enabled: boolean; volume: number }
-export const DEFAULT_GARDEN: GardenSoundSettings = { enabled: true, volume: 0.4 }
+export type GardenLayer = 'falls' | 'stream' | 'wind' | 'birds' | 'ducks'
+export type GardenMix = Record<GardenLayer, number>
+export const GARDEN_LAYERS: { key: GardenLayer; label: string; icon: string }[] = [
+  { key: 'falls',  label: 'น้ำตก',   icon: '💧' },
+  { key: 'stream', label: 'น้ำไหล',  icon: '🌊' },
+  { key: 'wind',   label: 'ลม',     icon: '🍃' },
+  { key: 'birds',  label: 'นก',     icon: '🐦' },
+  { key: 'ducks',  label: 'เป็ด',    icon: '🦆' },
+]
+export const DEFAULT_MIX: GardenMix = { falls: 1, stream: 0.7, wind: 1, birds: 1, ducks: 1 }
+export interface GardenSoundSettings { enabled: boolean; volume: number; mix: GardenMix }
+export const DEFAULT_GARDEN: GardenSoundSettings = { enabled: true, volume: 0.4, mix: { ...DEFAULT_MIX } }
+const okVol = (v: unknown): v is number => typeof v === 'number' && v >= 0 && v <= 1
+/** อ่านค่าผสมเสียงแต่ละตัว — ค่าที่หาย/ผิดใช้ค่าเริ่มต้นเฉพาะตัวนั้น */
+export function parseMix(raw: unknown): GardenMix {
+  const j = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<GardenLayer, unknown>>
+  const out = { ...DEFAULT_MIX }
+  for (const { key } of GARDEN_LAYERS) { const v = j[key]; if (okVol(v)) out[key] = v }
+  return out
+}
 const GKEY = 'hd-garden-sound'
 
 export function parseGardenSettings(raw: string | null): GardenSoundSettings {
@@ -64,12 +82,13 @@ export function parseGardenSettings(raw: string | null): GardenSoundSettings {
     const j = JSON.parse(raw || '{}') as Partial<GardenSoundSettings>
     return {
       enabled: typeof j.enabled === 'boolean' ? j.enabled : DEFAULT_GARDEN.enabled,
-      volume: typeof j.volume === 'number' && j.volume >= 0 && j.volume <= 1 ? j.volume : DEFAULT_GARDEN.volume,
+      volume: okVol(j.volume) ? j.volume : DEFAULT_GARDEN.volume,
+      mix: parseMix(j.mix),
     }
-  } catch { return { ...DEFAULT_GARDEN } }
+  } catch { return { ...DEFAULT_GARDEN, mix: { ...DEFAULT_MIX } } }
 }
 export function loadGardenSettings(): GardenSoundSettings {
-  try { return parseGardenSettings(localStorage.getItem(GKEY)) } catch { return { ...DEFAULT_GARDEN } }
+  try { return parseGardenSettings(localStorage.getItem(GKEY)) } catch { return parseGardenSettings(null) }
 }
 export function saveGardenSettings(s: GardenSoundSettings): void {
   try { localStorage.setItem(GKEY, JSON.stringify(s)) } catch { /* แค่ไม่จำ */ }

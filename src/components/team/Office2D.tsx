@@ -396,6 +396,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     else ambient.stop()
   }, [soundPreset, soundVol])
   useEffect(() => { if (soundPreset === 'garden') ambient.setWater(water) }, [soundPreset, water])
+  const mixKey = JSON.stringify(garden.mix)
+  useEffect(() => { ambient.setMix(JSON.parse(mixKey)) }, [mixKey])
   useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []

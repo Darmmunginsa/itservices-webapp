@@ -28,7 +28,7 @@ import { roomOf, groupByRoom, ROOMS, teamsChatLink, teamsCallLink, initials } fr
 import { parseMap, isWalkable, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, setTile, resizeMap, blankMap, validateMap, ZONE_STATUS, DEFAULT_MAP, PLANT_TILES, TILE_PALETTE, isFurnitureTile } from '../src/utils/officeMap'
 import { isPopout, popoutUrl, popoutFeatures, unreadTitle } from '../src/utils/popout'
 import { parseAlertSettings, bellState } from '../src/utils/officeAlerts'
-import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS, parseGardenSettings, soundFor, waterLevel } from '../src/utils/focusMusic'
+import { parseMusicSettings, shouldPlay, effectiveVolume, chordHz, CHORDS, CHIME_HZ, PRESETS, parseGardenSettings, soundFor, waterLevel, GARDEN_LAYERS } from '../src/utils/focusMusic'
 import { PROPS, propTiles, propBlocked, canPlaceProp, propAt, parseProps, serializeProp, DEFAULT_PROPS, PROP_GROUPS } from '../src/utils/officeProps'
 import { canHear, volumeFor, peersToConnect, isCaller, encodeRoom, decodeRoom, tileDistance, joinMuted, MAX_PEERS } from '../src/utils/voiceProximity'
 import { dmThread, voiceState, activeCallPartner, incomingAsks, conversations, totalUnread, textOf, ASK_TTL_MS } from '../src/utils/officeDM'
@@ -2382,6 +2382,11 @@ eq(waterLevel({ x: 30, y: 5 }, WF), 1, 'standing next to the waterfall = full wa
 eq(waterLevel({ x: 33, y: 11 }, WF) < waterLevel({ x: 33, y: 6 }, WF), true, 'walking away makes the water quieter')
 eq(waterLevel({ x: 2, y: 2 }, WF), 0.2, 'far away it never drops below a faint background')
 eq(waterLevel({ x: 2, y: 2 }, []), 0.2, 'no water features = faint background only')
+eq(GARDEN_LAYERS.map(l => l.key).join(','), 'falls,stream,wind,birds,ducks', 'five garden sounds, including a flowing stream')
+eq(GARDEN_LAYERS.every(l => GS.mix[l.key] > 0), true, 'every garden sound is on by default')
+const GMIX = parseGardenSettings(JSON.stringify({ enabled: true, volume: 0.5, mix: { stream: 0.2, birds: 0, ducks: 7, wind: 'x' } }))
+eq([GMIX.mix.stream, GMIX.mix.birds, GMIX.mix.ducks, GMIX.mix.wind, GMIX.mix.falls].join(','), '0.2,0,1,1,1', 'each sound keeps its own level; bad values fall back to the default')
+eq(parseGardenSettings(JSON.stringify({ enabled: false, volume: 0.3 })).mix.stream, 0.7, 'old saved settings without a mix still load')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
