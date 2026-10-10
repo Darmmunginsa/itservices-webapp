@@ -27,7 +27,7 @@ import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
-import { propBlocked, propDef, type Prop } from '../../utils/officeProps'
+import { propBlocked, propDef, seatsOf, seatAt, seatApproach, nextToSeat, type Prop, type Seat } from '../../utils/officeProps'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
@@ -130,33 +130,20 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     setMeMoving(true)
     window.clearTimeout(stillTimer.current)
     stillTimer.current = window.setTimeout(() => setMeMoving(false), 320)
+  }, [setMyFace])
+  // ── นั่งห้อยขา: ตำแหน่งจริงยังเป็นช่องที่ยืนข้าง ๆ (โซน/เสียงคิดจากช่องนั้น) · ตัวละครไปโผล่บนที่นั่ง ──
+  const [seat, setSeat] = useState<Seat | null>(null)
+  const seatRef = useRef<Seat | null>(null)
+  const pendingSit = useRef<Seat | null>(null)
+  const sitDown = useCallback((s: Seat | null) => {
+    if ((seatRef.current?.x ?? -1) === (s?.x ?? -1) && (seatRef.current?.y ?? -1) === (s?.y ?? -1)) return
+    seatRef.current = s; setSeat(s); dirty.current = true
   }, [])
   const prevOthers = useRef(new Map<string, Pos>())
   const [motion, setMotion] = useState<Record<string, { face: Facing; until: number }>>({})
   const [avatars, setAvatars] = useState<Map<string, string>>(() => new Map())
   const [dressing, setDressing] = useState(false)
   const [savingAvatar, setSavingAvatar] = useState(false)
-  // โหลดตัวละครทุกคน (และรีเฟรชทุก 1 นาที เผื่อเพื่อนเพิ่งแต่งตัวใหม่) · ยังไม่มีคอลัมน์ Avatar = ใช้ตัวละครเริ่มต้นจากอีเมล
-  useEffect(() => {
-    let alive = true
-    const load = () => getAllAvatars().then(m0 => { if (alive) setAvatars(m0) }).catch(() => { /* ยังไม่มีคอลัมน์ */ })
-    load()
-    const t = window.setInterval(load, 60_000)
-    return () => { alive = false; window.clearInterval(t) }
-  }, [])
-  const avatarOf = (email: string): Avatar => parseAvatar(avatars.get(email), email)
-  const myAvatar = avatarOf(me)
-  /** ชื่อที่โชว์ของใครก็ได้ — ชื่อเล่นที่ตั้งไว้ หรือชื่อแรกของชื่อจริง */
-  const nickOf = (email: string, realName: string) => displayName(avatarOf(email.toLowerCase()), realName)
-  const saveAvatar = (a: Avatar) => {
-    if (!meEmail) return
-    const json = serializeAvatar(a)
-    setSavingAvatar(true)
-    saveMyAvatar(meEmail, meName, json)
-      .then(() => { setAvatars(m0 => new Map(m0).set(me, json)); setDressing(false); onDecorInfo('👤 บันทึกตัวละครแล้ว — ทุกคนเห็นตัวใหม่ของคุณ') })
-      .catch(() => cb.current.onError('บันทึกตัวละครไม่สำเร็จ — เพิ่มคอลัมน์ Avatar ใน HD_OfficeDecor (ดู docs/Team-Status.md)'))
-      .finally(() => setSavingAvatar(false))
-  }
   // แผนที่สำหรับเดิน = ผังออฟฟิศ + ตัวโต๊ะส่วนตัว 3×3 ที่ขวางทาง (อัปเดตเมื่อโหลดโต๊ะของทีม)
   const walkRef = useRef<OfficeMap>(map)
   // ไมค์เปิดอยู่ไหม — ฝากไปกับตำแหน่ง (ช่อง Room = "desk:mic") ให้คนอื่นรู้ว่าต่อสายได้
@@ -173,6 +160,18 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ถ้าเอาไปเป็น deps effect "เข้าออฟฟิศ" จะรันซ้ำแล้วดึงตำแหน่งกลับจุดเดิมกลางทางเดิน
   const cb = useRef({ onZoneChange, onError })
   useEffect(() => { cb.current = { onZoneChange, onError } }, [onZoneChange, onError])
+  // โหลดตัวละครทุกคน (และรีเฟรชทุก 1 นาที เผื่อเพื่อนเพิ่งแต่งตัวใหม่) · ยังไม่มีคอลัมน์ Avatar = ใช้ตัวละครเริ่มต้นจากอีเมล
+  useEffect(() => {
+    let alive = true
+    const load = () => getAllAvatars().then(m0 => { if (alive) setAvatars(m0) }).catch(() => { /* ยังไม่มีคอลัมน์ */ })
+    load()
+    const t = window.setInterval(load, 60_000)
+    return () => { alive = false; window.clearInterval(t) }
+  }, [])
+  const avatarOf = (email: string): Avatar => parseAvatar(avatars.get(email), email)
+  const myAvatar = avatarOf(me)
+  /** ชื่อที่โชว์ของใครก็ได้ — ชื่อเล่นที่ตั้งไว้ หรือชื่อแรกของชื่อจริง */
+  const nickOf = (email: string, realName: string) => displayName(avatarOf(email.toLowerCase()), realName)
   const fail = useCallback((msg: string) => {
     // บอกครั้งเดียว — poll ทุก 3 วิ ถ้าลิสต์ยังไม่ได้สร้างจะเด้งไม่หยุด
     if (errored.current) return
@@ -254,7 +253,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       if (!dirty.current || !posRef.current) return
       dirty.current = false
       const p = posRef.current
-      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current) }).catch(() => { dirty.current = true })
+      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current, seatRef.current) }).catch(() => { dirty.current = true })
     }
     const f = setInterval(flush, FLUSH_MS)
     const h = setInterval(() => { if (!dirty.current) heartbeat(rowId).catch(() => {}) }, HEARTBEAT_MS)
@@ -274,13 +273,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     stopWalk()
     const next = step(walkRef.current, cur, dir)
     setMyFace(dir)
+    pendingSit.current = null
+    sitDown(null)
     if (next === cur) return
     markMoved(cur, next)
     posRef.current = next
     dirty.current = true
     setPos(next)
     enterZone(zoneAt(map, next.x, next.y))
-  }, [map, enterZone, stopWalk, markMoved])
+  }, [map, enterZone, stopWalk, markMoved, sitDown, setMyFace, setPos])
 
   // คีย์บอร์ด — เฉพาะตอนแผนที่โฟกัส (พิมพ์แชทอยู่จะไม่เดิน)
   useEffect(() => {
@@ -309,19 +310,27 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const walkTo = useCallback((target: Pos) => {
     if (!posRef.current) return
     stopWalk()
+    sitDown(null)
     const path = findPath(walkRef.current, posRef.current, target)
     if (!path.length) return
     const queue = [...path]
     const tick = () => {
       const p = queue.shift()
-      if (!p) { stopWalk(); return }
+      if (!p) {
+        stopWalk()
+        // เดินมาถึงข้างที่นั่ง → นั่งเลย
+        const ps = pendingSit.current
+        pendingSit.current = null
+        if (ps && posRef.current && nextToSeat(posRef.current, ps)) sitDown(ps)
+        return
+      }
       markMoved(posRef.current, p)
       posRef.current = p; dirty.current = true; setPos(p)
       enterZone(zoneAt(map, p.x, p.y))
     }
     tick()
     walkTimer.current = window.setInterval(tick, 110)
-  }, [map, enterZone, stopWalk, markMoved])
+  }, [map, enterZone, stopWalk, markMoved, sitDown, setPos])
   useEffect(() => stopWalk, [stopWalk])
 
   async function submit() {
@@ -353,7 +362,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
-  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted }))
+  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted, seat: decodeRoom(r.Room).seat }))
+  const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
 
   // ── เสียงตามระยะ ──
   const onMicChange = useCallback((on: boolean) => { micRef.current = on; dirty.current = true }, [])
@@ -369,9 +379,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     if (looking && inThread) return
     if (!looking) setUnread(u => u + 1)
     if (!looking) notifyNew(`💬 ${r.FromName || r.FromEmail.split('@')[0]}`, dmNotice(r), `hd-dm-${r.FromEmail}`)
-  }, [])
+  }, [setUnread])
   const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming })
-  const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [])
+  const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [setTab, setDmWith])
 
   const onVoiceMoved = useCallback(() => (onInfo ?? cb.current.onError)('🎧 ย้ายเสียงไปใช้ที่หน้าต่างอื่นแล้ว (ใช้เสียงได้ทีละหน้าต่าง)'), [onInfo])
   const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith, onMoved: onVoiceMoved })
@@ -425,7 +435,47 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const fullscreen = () => stageRef.current?.requestFullscreen?.().catch(() => {})
 
   // ── ตกแต่งโต๊ะ ──
+  /** แจ้งข้อความทั่วไป (ไม่ใช่ error) */
   const onDecorInfo = useCallback((msg: string) => (onInfo ?? cb.current.onError)(msg), [onInfo])
+  const saveAvatar = (a: Avatar) => {
+    if (!meEmail) return
+    const json = serializeAvatar(a)
+    setSavingAvatar(true)
+    saveMyAvatar(meEmail, meName, json)
+      .then(() => { setAvatars(m0 => new Map(m0).set(me, json)); setDressing(false); onDecorInfo('👤 บันทึกตัวละครแล้ว — ทุกคนเห็นตัวใหม่ของคุณ') })
+      .catch(() => cb.current.onError('บันทึกตัวละครไม่สำเร็จ — เพิ่มคอลัมน์ Avatar ใน HD_OfficeDecor (ดู docs/Team-Status.md)'))
+      .finally(() => setSavingAvatar(false))
+  }
+  // ที่นั่งบนผัง (ม้านั่ง โซฟา โต๊ะปิกนิก) · ใครนั่งตรงไหนอยู่
+  const seats = seatsOf(mapProps)
+  const takenBy = (s: Seat) => online.find(o => o.seat && o.seat.x === s.x && o.seat.y === s.y)
+  const sitOn = (s: Seat) => {
+    const cur = posRef.current
+    if (!cur) return
+    const who = takenBy(s)
+    if (who) { onDecorInfo(`มีคนนั่งตรงนั้นแล้ว 😄 (${nickOf(who.email, who.UserName)})`); return }
+    if (nextToSeat(cur, s)) { stopWalk(); sitDown(s); return }
+    const to = seatApproach((x, y) => isWalkable(walkRef.current, x, y), s)
+    if (!to) return
+    walkTo(to)
+    pendingSit.current = s
+  }
+  /** E = นั่ง/ลุก — นั่งที่ว่างที่อยู่ติดตัว */
+  const toggleSit = () => {
+    if (seatRef.current) { sitDown(null); return }
+    const cur = posRef.current
+    const s = cur && seats.find(x => nextToSeat(cur, x) && !takenBy(x))
+    if (s) sitDown(s)
+    else onDecorInfo('เดินไปข้างม้านั่ง/โซฟาก่อน แล้วกด E หรือคลิกที่นั่ง')
+  }
+  const toggleSitRef = useRef(toggleSit)
+  useEffect(() => { toggleSitRef.current = toggleSit })
+  useEffect(() => {
+    if (!focused) return
+    const down = (e: KeyboardEvent) => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleSitRef.current() } }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  }, [focused])
   // ช่องที่สิ่งของชิ้นใหญ่ขวาง — โต๊ะส่วนตัววางทับไม่ได้ และเดินผ่านไม่ได้
   const propKey = [...propBlocked(mapProps)].sort().join(';')
   const propMap = walkMapFor(map.rows, propKey)
@@ -525,7 +575,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   useEffect(() => { ambient.setMix(JSON.parse(mixKey)) }, [mixKey])
   useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
-  const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }) }, [visibleChat.length, tab])
@@ -704,12 +753,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {map.rows.map((row, y) => row.split('').map((ch, x) => {
               // ใช้กฎกลางของผัง — เดิมเขียนรายชื่อตัวอักษรตายตัว พอเพิ่มหญ้า/ทางเดินหิน คลิกเดินเข้าสวนจึงไม่ได้
               const walk = isWalkable(propMap, x, y)
+              const st = seatAt(seats, x, y)
               return (
                 <div key={`${x},${y}`} onClick={e => {
                     if (decor.decorating) { e.stopPropagation(); decor.onTileClick({ x, y }); return }
+                    if (st) { e.stopPropagation(); boardRef.current?.focus(); sitOn(st); return }
                     if (walk) { e.stopPropagation(); boardRef.current?.focus(); walkTo({ x, y }) }
                   }}
-                  className={`absolute ${decor.decorating ? 'cursor-crosshair' : walk ? 'cursor-pointer hd-tile-walk' : ''}`}
+                  title={st && !decor.decorating ? 'คลิกเพื่อนั่ง (หรือยืนข้าง ๆ แล้วกด E)' : undefined}
+                  className={`absolute ${decor.decorating ? 'cursor-crosshair' : walk || st ? 'cursor-pointer hd-tile-walk' : ''}`}
                   style={{ left: x * TILE, top: y * TILE, width: TILE, height: TILE, zIndex: isFurnitureTile(ch) ? 1 : undefined }}>
                   <OfficeTile rows={map.rows} x={x} y={y} size={TILE} />
                 </div>
@@ -793,17 +845,19 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {online.map(r => {
               const e = r.email.toLowerCase()
               const m = memberBy.get(e)
-              const p = clampToMap(walkMap, { x: r.X, y: r.Y }, hashIndex(r.email))
+              const p0 = clampToMap(walkMap, { x: r.X, y: r.Y }, hashIndex(r.email))
+              const os = r.seat ? seatAt(seats, r.seat.x, r.seat.y) : null
+              const p = os ?? p0
               const mo = motion[e]
               return (
                 <button key={r.id} onClick={ev => { ev.stopPropagation(); openDM(r.UserEmail) }}
                   title={`${nickOf(e, r.UserName)}${m?.slot ? ` · ${STATUS_META[m.slot.StatusType as StatusType]?.label} · ${m.slot.Title}` : ' · ว่าง'} — คลิกเพื่อแชทส่วนตัว`}
                   className="absolute z-10 flex flex-col items-center cursor-pointer"
-                  style={{ left: p.x * TILE, top: p.y * TILE + TILE - 62, width: TILE, transition: 'left 2.4s linear, top 2.4s linear' }}>
+                  style={{ left: p.x * TILE, top: os ? p.y * TILE + os.sy - 44 : p.y * TILE + TILE - 62, width: TILE, transition: 'left 2.4s linear, top 2.4s linear', zIndex: os?.behind ? 0 : undefined }}>
                   <NameTag name={nickOf(e, r.UserName)} color={statusDot(m?.slot)} />
                   <span className="relative">
                     {speakingSet.has(e) && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
-                    <AvatarSprite a={avatarOf(e)} facing={mo?.face ?? 'down'} moving={!!mo && mo.until > robotNow} />
+                    <AvatarSprite a={avatarOf(e)} facing={os ? os.face : mo?.face ?? 'down'} moving={!os && !!mo && mo.until > robotNow} sitting={!!os} />
                     {r.mic && <span className="absolute right-0 top-3 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-900 flex items-center justify-center shadow" title={r.muted ? 'ปิดไมค์อยู่' : 'เปิดไมค์อยู่'}>
                       {r.muted ? <MicOff size={8} className="text-red-600" /> : <Mic size={8} className="text-green-600" />}</span>}
                   </span>
@@ -816,11 +870,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               const m = memberBy.get(me)
               return (
                 <div ref={meRef} className="absolute z-10 flex flex-col items-center pointer-events-none"
-                  style={{ left: pos.x * TILE, top: pos.y * TILE + TILE - 62, width: TILE, transition: 'left .12s linear, top .12s linear' }}>
+                  style={{ left: (seat ?? pos).x * TILE, top: seat ? seat.y * TILE + seat.sy - 44 : pos.y * TILE + TILE - 62, width: TILE, transition: 'left .12s linear, top .12s linear', zIndex: seat?.behind ? 0 : undefined }}>
                   <NameTag name={myAvatar.nick || 'ฉัน'} color={statusDot(m?.slot)} mine />
                   <span className="relative">
                     {voice.meSpeaking && <span className="absolute left-1/2 bottom-0.5 -translate-x-1/2 w-7 h-2.5 rounded-full hd-speaking" />}
-                    <AvatarSprite a={myAvatar} facing={myFace} moving={meMoving} />
+                    <AvatarSprite a={myAvatar} facing={seat ? seat.face : myFace} moving={meMoving && !seat} sitting={!!seat} />
                     {voice.micOn && voice.muted && !voice.talking && <span className="absolute right-0 top-3 w-3.5 h-3.5 rounded-full bg-red-600 flex items-center justify-center shadow" title="ปิดไมค์อยู่"><MicOff size={8} className="text-white" /></span>}
                   </span>
                 </div>

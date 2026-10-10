@@ -1,6 +1,8 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { seatsOf, seatAt, seatApproach, nextToSeat } from '../src/utils/officeProps'
+import { encodeRoom, decodeRoom } from '../src/utils/voiceProximity'
 import { claimBeats } from '../src/utils/voiceProximity'
 import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom, displayName, cleanNick } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
@@ -2171,9 +2173,9 @@ eq(peersToConnect(VM, inMeeting, [{ ...inMeeting, email: 'A@X' }]).length, 0, 'n
 eq(isCaller('a@x', 'b@x') !== isCaller('b@x', 'a@x'), true, 'exactly one side of every pair places the call')
 eq(isCaller('B@x', 'a@x'), false, 'caller choice ignores case')
 eq(encodeRoom('desk', true), 'desk:mic', 'mic flag rides in the Room field')
-eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true,"muted":false}', '…and decodes back')
+eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true,"muted":false,"seat":null}', '…and decodes back')
 eq(encodeRoom('meeting', true, true), 'meeting:muted', 'joined but muted has its own marker')
-eq(JSON.stringify(decodeRoom('meeting:muted')), '{"zone":"meeting","mic":true,"muted":true}', 'a muted person is still in the call (still hears) but shows 🔇')
+eq(JSON.stringify(decodeRoom('meeting:muted')), '{"zone":"meeting","mic":true,"muted":true,"seat":null}', 'a muted person is still in the call (still hears) but shows 🔇')
 eq(encodeRoom('desk', false, true), 'desk', 'not in voice → muted flag is irrelevant')
 eq(joinMuted(0), false, 'alone: join with the mic on')
 eq(joinMuted(1), false, 'one other person: a conversation, mic on')
@@ -2499,6 +2501,21 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   const ms = planMissions(OM, R, parseCleanRequests([{ Title: 'coffee:5,1', UserName: 'Somchai Jaidee', UserEmail: 'Somchai@x.com', Room: 'robot', Created: new Date(at).toISOString() }]))
   const lbl = robotLabel(robotNow(R, ms, (ms[0].start + 1) * 900)!, (email, real) => email === 'somchai@x.com' ? 'Bank' : real)
   eq(!!lbl && lbl.includes('Bank') && !lbl.includes('Somchai'), true, 'the robot calls you by your nickname, not your real name')
+}
+
+// -- นั่งห้อยขา --
+{
+  const ST = seatsOf([{ kind: 'bench', x: 31, y: 7 }, { kind: 'sofa', x: 2, y: 2 }, { kind: 'picnic', x: 10, y: 10 }, { kind: 'fountain', x: 20, y: 5 }])
+  eq(ST.length, 2 + 3 + 4, 'benches seat 2, sofas 3, picnic tables 4, fountains none')
+  eq(ST.filter(x => x.kind === 'picnic').map(x => x.face).join(','), 'down,down,up,up', 'picnic: the far bench faces the viewer, the near bench shows backs')
+  const b = seatAt(ST, 32, 7)!
+  eq(JSON.stringify(seatApproach(() => true, b)), JSON.stringify({ x: 32, y: 8 }), 'you walk up to a bench from the front')
+  eq(JSON.stringify(seatApproach((x, y) => !(x === 32 && y === 8), b)), JSON.stringify({ x: 31, y: 7 }), 'if the front is blocked, you come from the side')
+  eq(nextToSeat({ x: 32, y: 8 }, b) && !nextToSeat({ x: 33, y: 8 }, b), true, 'you can only sit when standing right next to the seat')
+  const r1 = decodeRoom(encodeRoom('garden', true, true, { x: 32, y: 7 }))
+  eq(JSON.stringify(r1), JSON.stringify({ zone: 'garden', mic: true, muted: true, seat: { x: 32, y: 7 } }), 'sitting is shared with everyone along with the mic state')
+  eq(JSON.stringify(decodeRoom('desk:mic')), JSON.stringify({ zone: 'desk', mic: true, muted: false, seat: null }), 'old positions without a seat still read correctly')
+  eq(encodeRoom('garden', true, false, { x: 1, y: 2 }).endsWith(':mic'), true, 'older screens can still tell the mic is on')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

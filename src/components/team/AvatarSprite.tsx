@@ -4,7 +4,9 @@ import { shade, type Avatar, type Facing } from '../../utils/officeAvatar'
 // ── ตัวละครแบบ Gather (หัวโตน่ารัก มุม 3/4 เดียวกับออฟฟิศ) ──
 // viewBox 40×52 · หันได้ 4 ทิศ (ซ้าย = กลับด้านของขวา) · เดินแล้วแกว่งแขนขา ตัวเด้งตามจังหวะ
 
-interface Props { a: Avatar; facing?: Facing; moving?: boolean; size?: number }
+interface Props { a: Avatar; facing?: Facing; moving?: boolean; size?: number
+  /** นั่งห้อยขา (บนม้านั่ง/โซฟา) — ขาสั้นลงแกว่งช้า ๆ ไม่มีเงาที่พื้น */
+  sitting?: boolean }
 
 const HEAD = { cx: 20, cy: 15, r: 11 }
 
@@ -122,7 +124,7 @@ function top(a: Avatar, up: boolean): ReactElement {
 
 const sleeveLong = (t: Avatar['top']) => t === 'hoodie' || t === 'shirt' || t === 'suit' || t === 'lab'
 
-function AvatarSpriteBase({ a, facing = 'down', moving = false, size = 36 }: Props) {
+function AvatarSpriteBase({ a, facing = 'down', moving = false, size = 36, sitting = false }: Props) {
   const up = facing === 'up', side = facing === 'left' || facing === 'right'
   const view = up ? 'up' : side ? 'side' : 'front'
   const skinDk = shade(a.skin, -0.12)
@@ -140,26 +142,26 @@ function AvatarSpriteBase({ a, facing = 'down', moving = false, size = 36 }: Pro
   return (
     <svg viewBox="0 0 40 52" width={size} height={size * 1.3} overflow="visible" aria-hidden="true"
       style={facing === 'left' ? { transform: 'scaleX(-1)' } : undefined}>
-      <ellipse cx="20" cy="49" rx="10" ry="2.6" fill="#000" opacity=".2" />
-      <g className={moving ? 'hd-av-bob' : undefined}>
+      {!sitting && <ellipse cx="20" cy="49" rx="10" ry="2.6" fill="#000" opacity=".2" />}
+      <g className={moving && !sitting ? 'hd-av-bob' : undefined}>
         {/* ขา + กางเกง/กระโปรง */}
-        <g className={moving ? 'hd-av-legL' : undefined} style={{ transformOrigin: '16.5px 37px' }}>
-          <rect x="14.5" y="36" width="4.5" height="10" rx="2" fill={legs} />
-          {a.bottom === 'jeans' && <path d="M16.8 37 v8" stroke={shade(bc, 0.35)} strokeWidth=".5" />}
-          <ellipse cx="16.6" cy="46.6" rx="3.2" ry="1.8" fill={a.shoes} />
+        <g className={sitting ? 'hd-av-dangleL' : moving ? 'hd-av-legL' : undefined} style={{ transformOrigin: '16.5px 37px' }}>
+          <rect x="14.5" y="36" width="4.5" height={sitting ? 7 : 10} rx="2" fill={legs} />
+          {a.bottom === 'jeans' && <path d={`M16.8 37 v${sitting ? 5 : 8}`} stroke={shade(bc, 0.35)} strokeWidth=".5" />}
+          <ellipse cx="16.6" cy={sitting ? 43.4 : 46.6} rx="3.2" ry="1.8" fill={a.shoes} />
         </g>
-        <g className={moving ? 'hd-av-legR' : undefined} style={{ transformOrigin: '23.5px 37px' }}>
-          <rect x="21" y="36" width="4.5" height="10" rx="2" fill={legs} />
-          {a.bottom === 'jeans' && <path d="M23.2 37 v8" stroke={shade(bc, 0.35)} strokeWidth=".5" />}
-          <ellipse cx="23.4" cy="46.6" rx="3.2" ry="1.8" fill={a.shoes} />
+        <g className={sitting ? 'hd-av-dangleR' : moving ? 'hd-av-legR' : undefined} style={{ transformOrigin: '23.5px 37px' }}>
+          <rect x="21" y="36" width="4.5" height={sitting ? 7 : 10} rx="2" fill={legs} />
+          {a.bottom === 'jeans' && <path d={`M23.2 37 v${sitting ? 5 : 8}`} stroke={shade(bc, 0.35)} strokeWidth=".5" />}
+          <ellipse cx="23.4" cy={sitting ? 43.4 : 46.6} rx="3.2" ry="1.8" fill={a.shoes} />
         </g>
         {a.top !== 'dress' && a.bottom === 'shorts' && <path d="M13 35 h14 v5 h-6 l-1 -2 l-1 2 h-6z" fill={bc} />}
         {a.top !== 'dress' && a.bottom === 'skirt' && <path d="M12.5 34 h15 l2.5 7.5 h-20z" fill={bc} />}
         {a.top !== 'dress' && (a.bottom === 'pants' || a.bottom === 'jeans') && <rect x="13" y="34" width="14" height="4" rx="1.5" fill={bc} />}
         {/* แขนหลัง → ตัว → แขนหน้า */}
-        {!side && arm(8, 'hd-av-armL')}
+        {!side && arm(8, sitting ? '' : 'hd-av-armL')}
         {top(a, up)}
-        {side ? arm(18.5, 'hd-av-armL') : arm(28.6, 'hd-av-armR')}
+        {side ? arm(18.5, sitting ? '' : 'hd-av-armL') : arm(28.6, sitting ? '' : 'hd-av-armR')}
         {/* คอ + หัว */}
         <rect x="17.5" y="22" width="5" height="3.5" fill={skinDk} />
         {hairBack(a, up)}

@@ -327,5 +327,9 @@ html[data-fx='on'] .urgent-badge {
 .hd-av-armR { animation: hd-avarm .36s ease-in-out infinite; }
 @keyframes hd-avarm { 0%, 100% { transform: rotate(18deg) } 50% { transform: rotate(-18deg) } }
 .hd-av-halo { animation: hd-avhalo 2.4s ease-in-out infinite; }
+/* นั่งห้อยขา — แกว่งขาสลับช้า ๆ */
+.hd-av-dangleL { animation: hd-avdangle 1.8s ease-in-out infinite; }
+.hd-av-dangleR { animation: hd-avdangle 1.8s ease-in-out infinite; animation-delay: -.9s; }
+@keyframes hd-avdangle { 0%, 100% { transform: rotate(-12deg) } 50% { transform: rotate(12deg) } }
 @keyframes hd-avhalo { 50% { transform: translateY(-1.2px) } }
-@media (prefers-reduced-motion: reduce) { .hd-av-bob, .hd-av-legL, .hd-av-legR, .hd-av-armL, .hd-av-armR, .hd-av-halo { animation: none } }
+@media (prefers-reduced-motion: reduce) { .hd-av-bob, .hd-av-legL, .hd-av-legR, .hd-av-armL, .hd-av-armR, .hd-av-halo, .hd-av-dangleL, .hd-av-dangleR { animation: none } }
