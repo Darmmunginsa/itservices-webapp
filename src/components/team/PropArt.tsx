@@ -41,60 +41,168 @@ const Duck = ({ x, y, flip = false }: { x: number; y: number; flip?: boolean }) 
 const ART: Record<string, ReactElement> = {
   // ═════ น้ำตก + บ่อปลา 8×4 (288×144) ═════
   waterfall: <g>
-    {sh(150, 138, 140, 8, .25)}
-    {/* หน้าผาหิน */}
-    <path d="M6 70 Q4 20 40 10 Q70 -2 110 8 L178 8 Q222 -4 252 10 Q286 22 282 70 Z" fill="#78716c" />
-    <path d="M14 66 Q16 30 46 20 Q80 10 112 18 L176 18 Q214 8 246 20 Q274 32 272 66Z" fill="#a8a29e" />
-    {[[30, 30, 14], [62, 22, 12], [228, 26, 15], [258, 40, 11], [24, 52, 10], [264, 58, 9]].map(([x, y, r], i) => (
-      <g key={i}><ellipse cx={x} cy={y} rx={r} ry={r * 0.7} fill="#57534e" /><ellipse cx={x - r * .3} cy={y - r * .25} rx={r * .45} ry={r * .3} fill="#d6d3d1" opacity=".6" /></g>
+    <defs>
+      {/* ม่านน้ำ: ใสที่ขอบ ขาวขุ่นตรงกลาง เข้มขึ้นด้านล่างที่น้ำหนาขึ้น */}
+      <linearGradient id="wf-curtain" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stopColor="#bae6fd" stopOpacity=".55" /><stop offset=".18" stopColor="#f0f9ff" stopOpacity=".92" />
+        <stop offset=".5" stopColor="#e0f2fe" stopOpacity=".88" /><stop offset=".82" stopColor="#f0f9ff" stopOpacity=".92" />
+        <stop offset="1" stopColor="#7dd3fc" stopOpacity=".5" />
+      </linearGradient>
+      <linearGradient id="wf-depth" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#0c4a6e" stopOpacity=".35" /><stop offset=".25" stopColor="#0c4a6e" stopOpacity="0" />
+        <stop offset=".85" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#fff" stopOpacity=".7" />
+      </linearGradient>
+      {/* สายน้ำที่ตกลงมา — ลายเส้นขาวเลื่อนลงทั้งแผ่น (1 แอนิเมชันต่อชั้น — เบาเครื่อง) */}
+      <pattern id="wf-streak" width="24" height="46" patternUnits="userSpaceOnUse">
+        <rect x="1" y="0" width="1.6" height="18" rx=".8" fill="#fff" opacity=".9" />
+        <rect x="6" y="20" width="1.2" height="22" rx=".6" fill="#fff" opacity=".7" />
+        <rect x="10.5" y="6" width="2" height="14" rx="1" fill="#fff" opacity=".85" />
+        <rect x="15" y="26" width="1.4" height="16" rx=".7" fill="#fff" opacity=".75" />
+        <rect x="19.5" y="2" width="1.2" height="24" rx=".6" fill="#fff" opacity=".6" />
+        <rect x="3.5" y="30" width="1" height="12" rx=".5" fill="#38bdf8" opacity=".5" />
+        <rect x="13" y="38" width="1" height="8" rx=".5" fill="#38bdf8" opacity=".45" />
+        <animateTransform attributeName="patternTransform" type="translate" values="0 0;0 46" dur=".9s" repeatCount="indefinite" />
+      </pattern>
+      <pattern id="wf-streak2" width="17" height="30" patternUnits="userSpaceOnUse">
+        <rect x="2" y="0" width="1" height="12" rx=".5" fill="#fff" opacity=".55" />
+        <rect x="8" y="14" width="1.4" height="12" rx=".7" fill="#fff" opacity=".6" />
+        <rect x="13" y="4" width="1" height="9" rx=".5" fill="#e0f2fe" opacity=".6" />
+        <animateTransform attributeName="patternTransform" type="translate" values="3 0;3 30" dur=".55s" repeatCount="indefinite" />
+      </pattern>
+      {/* บ่อ: ตื้นใสที่ขอบ ลึกเข้มตรงกลาง */}
+      <radialGradient id="wf-pond" cx=".5" cy=".35" r=".75">
+        <stop offset="0" stopColor="#bae6fd" /><stop offset=".25" stopColor="#38bdf8" />
+        <stop offset=".7" stopColor="#0e7490" /><stop offset="1" stopColor="#155e75" />
+      </radialGradient>
+      <radialGradient id="wf-mist"><stop offset="0" stopColor="#fff" stopOpacity=".85" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
+      <linearGradient id="wf-rock" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#a8a29e" /><stop offset=".55" stopColor="#78716c" /><stop offset="1" stopColor="#44403c" />
+      </linearGradient>
+      <linearGradient id="wf-wet" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stopColor="#1c1917" stopOpacity="0" /><stop offset=".5" stopColor="#1c1917" stopOpacity=".45" /><stop offset="1" stopColor="#1c1917" stopOpacity="0" />
+      </linearGradient>
+    </defs>
+    {sh(146, 138, 140, 8, .25)}
+
+    {/* ═ หน้าผาหินเป็นชั้น ๆ (หลัง → หน้า) ═ */}
+    <path d="M4 78 Q0 30 30 14 Q60 0 104 6 L186 6 Q232 -2 260 14 Q290 32 284 78 Z" fill="#57534e" />
+    <path d="M10 76 Q8 36 36 22 Q66 10 104 14 L186 14 Q226 8 252 22 Q278 38 276 76 Z" fill="url(#wf-rock)" />
+    {/* ชั้นหิน (strata) และรอยแตก */}
+    {['M20 40 Q50 32 96 36', 'M14 58 Q44 50 92 56', 'M196 34 Q232 30 266 40', 'M200 54 Q238 50 272 60', 'M40 26 Q70 18 100 22', 'M192 22 Q222 16 248 26'].map((d, i) => (
+      <path key={i} d={d} stroke="#44403c" strokeWidth="1.4" fill="none" opacity=".55" strokeLinecap="round" />
     ))}
-    {/* มอสและเฟิร์นบนหิน */}
-    {[[20, 18], [74, 10], [210, 12], [270, 30], [12, 44]].map(([x, y], i) => (
-      <g key={i}><ellipse cx={x} cy={y} rx="10" ry="5" fill="#15803d" /><ellipse cx={x - 3} cy={y - 2} rx="5" ry="2.5" fill="#4ade80" opacity=".7" /></g>
+    {['M60 30 l-4 12 l5 8', 'M234 36 l3 10 l-4 9', 'M30 48 l6 9'].map((d, i) => (
+      <path key={i} d={d} stroke="#292524" strokeWidth="1" fill="none" opacity=".5" />
     ))}
-    {/* บ่อ */}
-    <path d="M4 82 Q10 62 60 64 L230 64 Q284 62 284 90 Q286 132 230 138 L60 138 Q2 134 4 82Z" fill="#a8a29e" />
-    <path d="M12 86 Q16 70 62 72 L228 72 Q276 70 276 92 Q278 126 228 130 L62 130 Q10 128 12 86Z" fill="#0ea5e9" />
-    <path d="M12 86 Q16 70 62 72 L228 72 Q276 70 276 92 Q278 126 228 130 L62 130 Q10 128 12 86Z" fill="url(#hd-pond)" />
-    {/* สายน้ำตก 3 สาย ไหลลงตลอด */}
-    {[[100, 22], [134, 30], [170, 22]].map(([x, wdt], i) => (
+    {/* ก้อนหินนูน: เงาล่าง + หน้าบนรับแสงจากซ้ายบน */}
+    {[[26, 34, 15, 10], [62, 24, 13, 8], [84, 50, 11, 8], [222, 28, 15, 9], [254, 44, 13, 9], [206, 56, 10, 7], [22, 62, 12, 8], [266, 66, 11, 7]].map(([x, y, rx, ry], i) => (
       <g key={i}>
-        <rect x={x} y="14" width={wdt} height="64" rx="4" fill="#e0f2fe" opacity=".95" />
-        <rect x={x} y="14" width={wdt} height="64" rx="4" fill="url(#hd-falls)" />
-        <ellipse cx={x + wdt / 2} cy="80" rx={wdt * 0.9} ry="6" fill="#fff" opacity=".85">
-          <animate attributeName="rx" values={`${wdt * .75};${wdt};${wdt * .75}`} dur={`${1.2 + i * .3}s`} repeatCount="indefinite" />
-        </ellipse>
+        <ellipse cx={x + 1.5} cy={y + 2.5} rx={rx} ry={ry} fill="#292524" opacity=".45" />
+        <ellipse cx={x} cy={y} rx={rx} ry={ry} fill="#78716c" />
+        <ellipse cx={x - rx * .25} cy={y - ry * .3} rx={rx * .65} ry={ry * .5} fill="#a8a29e" />
+        <ellipse cx={x - rx * .4} cy={y - ry * .45} rx={rx * .25} ry={ry * .18} fill="#e7e5e4" opacity=".7" />
       </g>
     ))}
-    {/* ละอองน้ำ */}
-    {[118, 150, 184].map((x, i) => (
-      <circle key={i} cx={x} cy="76" r="3" fill="#fff" opacity=".6">
-        <animate attributeName="cy" values="80;66;80" dur={`${1.6 + i * .4}s`} repeatCount="indefinite" />
-        <animate attributeName="opacity" values=".7;0;.7" dur={`${1.6 + i * .4}s`} repeatCount="indefinite" />
+    {/* ลำธารด้านบนที่ไหลมาถึงขอบผา */}
+    <path d="M112 4 Q146 -2 178 4 L182 16 Q146 12 108 16 Z" fill="#0e7490" />
+    <path d="M116 6 Q146 2 174 6 L176 13 Q146 10 114 13 Z" fill="#38bdf8" opacity=".75" />
+    <path d="M122 8 q8 -1.5 16 0 M150 7 q8 -1.5 16 0" stroke="#e0f2fe" strokeWidth="1" fill="none" opacity=".8" />
+    {/* หินเปียกข้างม่านน้ำ (มันวาวเข้ม) */}
+    <path d="M92 18 Q100 50 94 84 L104 84 Q108 50 104 18Z" fill="url(#wf-wet)" />
+    <path d="M186 18 Q180 50 186 84 L196 84 Q192 50 198 18Z" fill="url(#wf-wet)" />
+
+    {/* ═ น้ำตกเล็กแบบขั้นบันไดทางซ้าย ═ */}
+    <path d="M58 40 h14 l1 10 h-16z M54 52 h20 l2 12 h-24z" fill="url(#wf-curtain)" />
+    <path d="M58 40 h14 l1 10 h-16z M54 52 h20 l2 12 h-24z" fill="url(#wf-streak2)" />
+    <path d="M57 40 h16 M53 52 h22" stroke="#f0f9ff" strokeWidth="2" strokeLinecap="round" />
+
+    {/* ═ บ่อ ═ */}
+    {/* ขอบบ่อหินก้อนกลม */}
+    <path d="M2 86 Q6 64 60 66 L232 66 Q288 64 286 92 Q288 136 232 140 L60 140 Q0 136 2 86Z" fill="#78716c" />
+    <path d="M10 88 Q14 72 62 74 L230 74 Q278 72 278 94 Q280 128 230 132 L62 132 Q8 130 10 88Z" fill="url(#wf-pond)" />
+    {/* ขอบน้ำตื้นสว่าง */}
+    <path d="M10 88 Q14 72 62 74 L230 74 Q278 72 278 94 Q280 128 230 132 L62 132 Q8 130 10 88Z" fill="none" stroke="#a5f3fc" strokeWidth="2.5" opacity=".55" />
+    {[[14, 80, 7], [30, 70, 6], [50, 68, 5], [244, 69, 6], [264, 74, 7], [280, 96, 6], [276, 120, 7], [258, 134, 6], [36, 135, 6], [12, 118, 7], [6, 100, 5], [140, 136, 5], [196, 137, 6], [92, 137, 5]].map(([x, y, r], i) => (
+      <g key={i}><ellipse cx={x} cy={y} rx={r * 1.25} ry={r} fill="#57534e" /><ellipse cx={x - r * .3} cy={y - r * .3} rx={r * .7} ry={r * .5} fill="#a8a29e" /></g>
+    ))}
+    {/* ═ ม่านน้ำตกหลัก — โค้งออกจากขอบผาแล้วบานลง ═ */}
+    <path d="M106 15 Q146 10 184 15 Q190 48 196 90 L96 90 Q102 48 106 15Z" fill="url(#wf-curtain)" />
+    <path d="M106 15 Q146 10 184 15 Q190 48 196 90 L96 90 Q102 48 106 15Z" fill="url(#wf-streak)" />
+    <path d="M110 15 Q146 11 180 15 Q186 48 191 90 L101 90 Q106 48 110 15Z" fill="url(#wf-streak2)" />
+    <path d="M106 15 Q146 10 184 15 Q190 48 196 90 L96 90 Q102 48 106 15Z" fill="url(#wf-depth)" />
+    {/* ริมขอบผาที่น้ำม้วนตัวลง — แถบสว่าง */}
+    <path d="M106 15 Q146 9 184 15" stroke="#f0f9ff" strokeWidth="3.2" fill="none" strokeLinecap="round" />
+    <path d="M108 17.5 Q146 12.5 182 17.5" stroke="#0369a1" strokeWidth="1" fill="none" opacity=".35" />
+
+    {/* เงาสะท้อนม่านน้ำบนผิวน้ำ */}
+    <path d="M102 86 L190 86 L184 112 L108 112Z" fill="url(#wf-streak2)" opacity=".35" />
+    {/* ฟองน้ำขาวที่ตีนน้ำตก */}
+    <ellipse cx="146" cy="88" rx="56" ry="9" fill="#f0f9ff" opacity=".9" />
+    {[[104, 86, 9], [120, 90, 8], [138, 85, 10], [158, 90, 9], [176, 86, 10], [190, 89, 7], [112, 94, 6], [168, 95, 7], [146, 96, 8]].map(([x, y, r], i) => (
+      <circle key={i} cx={x} cy={y} r={r} fill="#fff" opacity={i % 2 ? .75 : .95} />
+    ))}
+    {/* ฟองปั่นป่วน — เต้นเป็นจังหวะ */}
+    {[[122, 86, 1.1], [152, 88, 1.4], [178, 87, 1.7]].map(([x, y, d], i) => (
+      <circle key={i} cx={x} cy={y} r="6" fill="#fff">
+        <animate attributeName="r" values="4;8;4" dur={`${d}s`} repeatCount="indefinite" />
       </circle>
     ))}
-    {/* วงน้ำกระเพื่อม */}
-    {[[60, 108], [230, 112], [150, 118]].map(([x, y], i) => (
-      <ellipse key={i} cx={x} cy={y} rx="6" ry="2" fill="none" stroke="#e0f2fe" strokeWidth="1.2">
-        <animate attributeName="rx" values="3;16" dur="3s" begin={`${i}s`} repeatCount="indefinite" />
-        <animate attributeName="ry" values="1;5" dur="3s" begin={`${i}s`} repeatCount="indefinite" />
-        <animate attributeName="opacity" values=".9;0" dur="3s" begin={`${i}s`} repeatCount="indefinite" />
+    {/* ไอน้ำฟุ้ง */}
+    <ellipse cx="146" cy="78" rx="62" ry="16" fill="url(#wf-mist)" opacity=".7">
+      <animate attributeName="opacity" values=".45;.8;.45" dur="4s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="128" cy="70" rx="26" ry="10" fill="url(#wf-mist)" opacity=".5">
+      <animateTransform attributeName="transform" type="translate" values="0 0;-6 -6;0 0" dur="5s" repeatCount="indefinite" />
+    </ellipse>
+    <ellipse cx="66" cy="66" rx="14" ry="6" fill="url(#wf-mist)" opacity=".6" />
+    {/* วงน้ำกระเพื่อมออกจากตีนน้ำตก */}
+    {[0, 1, 2].map(i => (
+      <ellipse key={i} cx="146" cy="100" rx="40" ry="8" fill="none" stroke="#e0f2fe" strokeWidth="1.2">
+        <animate attributeName="rx" values="40;110" dur="3.6s" begin={`${i * 1.2}s`} repeatCount="indefinite" />
+        <animate attributeName="ry" values="8;26" dur="3.6s" begin={`${i * 1.2}s`} repeatCount="indefinite" />
+        <animate attributeName="opacity" values=".8;0" dur="3.6s" begin={`${i * 1.2}s`} repeatCount="indefinite" />
       </ellipse>
     ))}
-    {/* ใบบัว + ดอกบัว */}
-    {[[40, 96, 8], [250, 100, 9], [88, 120, 7]].map(([x, y, r], i) => (
-      <g key={i}><circle cx={x} cy={y} r={r} fill="#16a34a" /><path d={`M${x} ${y} L${x + r} ${y - 2} L${x + r} ${y + 2}z`} fill="#0ea5e9" /></g>
+    {/* ประกายแสงบนผิวน้ำ */}
+    {[[48, 104], [230, 108], [80, 122], [210, 124]].map(([x, y], i) => (
+      <path key={i} d={`M${x} ${y} q5 -1.5 10 0`} stroke="#fff" strokeWidth="1" fill="none" opacity=".6" />
     ))}
-    <g transform="translate(250 96)">{[0, 60, 120, 180, 240, 300].map(a => <ellipse key={a} cx="0" cy="-3" rx="2" ry="4" fill="#f9a8d4" transform={`rotate(${a})`} />)}<circle r="1.6" fill="#fde047" /></g>
+
+    {/* ใบบัว (มีรอยแยก) + ดอกบัว */}
+    {[[40, 100, 8], [250, 104, 9], [88, 124, 7], [226, 122, 6]].map(([x, y, r], i) => (
+      <g key={i}>
+        <ellipse cx={x + 1} cy={y + 1.5} rx={r} ry={r * .62} fill="#0c4a6e" opacity=".35" />
+        <ellipse cx={x} cy={y} rx={r} ry={r * .62} fill="#16a34a" />
+        <ellipse cx={x - r * .2} cy={y - r * .15} rx={r * .6} ry={r * .32} fill="#4ade80" opacity=".55" />
+        <path d={`M${x} ${y} L${x + r} ${y - 2} L${x + r} ${y + 2}z`} fill="#0e7490" />
+      </g>
+    ))}
+    <g transform="translate(250 99)">{[0, 60, 120, 180, 240, 300].map(a => <ellipse key={a} cx="0" cy="-3" rx="2" ry="4" fill="#f9a8d4" transform={`rotate(${a})`} />)}<circle r="1.6" fill="#fde047" /></g>
     {/* ปลาคาร์ฟ 3 ตัว */}
-    <Koi path="M40 110 C 80 90, 140 125, 200 104 S 250 120, 230 112 S 120 130, 40 110" dur={16} color="#f97316" spot="#fff7ed" />
-    <Koi path="M220 96 C 170 118, 110 92, 70 112 S 30 100, 60 96 S 180 86, 220 96" dur={19} color="#fafafa" spot="#ef4444" />
-    <Koi path="M120 118 C 160 108, 200 124, 240 116 S 200 100, 160 108 S 90 128, 120 118" dur={13} color="#fbbf24" spot="#f97316" />
+    <Koi path="M40 112 C 80 96, 140 126, 200 108 S 250 122, 230 114 S 120 130, 40 112" dur={16} color="#f97316" spot="#fff7ed" />
+    <Koi path="M220 102 C 170 120, 110 98, 70 116 S 30 104, 60 102 S 180 94, 220 102" dur={19} color="#fafafa" spot="#ef4444" />
+    <Koi path="M120 122 C 160 112, 200 126, 240 118 S 200 106, 160 112 S 90 128, 120 122" dur={13} color="#fbbf24" spot="#f97316" />
     {/* เป็ด 2 ตัว */}
-    <Duck x={196} y={96} />
-    <Duck x={72} y={92} flip />
+    <Duck x={210} y={100} />
+    <Duck x={64} y={96} flip />
+
+    {/* เฟิร์นห้อยข้างผา + ต้นไม้ริมผา */}
+    {[[94, 22, -1], [198, 20, 1], [40, 16, -1], [244, 14, 1]].map(([x, y, d], i) => (
+      <g key={i}>
+        {[0, 1, 2, 3].map(j => (
+          <path key={j} d={`M${x} ${y} q${d * (6 + j * 3)} ${4 + j * 3} ${d * (4 + j * 4)} ${12 + j * 4}`} stroke={j % 2 ? '#16a34a' : '#15803d'} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+        ))}
+      </g>
+    ))}
+    {[[16, 22], [76, 10], [214, 10], [272, 26], [8, 52], [280, 56]].map(([x, y], i) => (
+      <g key={i}>
+        <ellipse cx={x + 1} cy={y + 3} rx="12" ry="6" fill="#14532d" />
+        <ellipse cx={x} cy={y} rx="11" ry="6" fill="#15803d" />
+        <ellipse cx={x - 3} cy={y - 2} rx="6" ry="3" fill="#4ade80" opacity=".7" />
+      </g>
+    ))}
     {/* ดอกไม้ริมบ่อ */}
-    {[[8, 100], [14, 116], [278, 104], [272, 122]].map(([x, y], i) => (
+    {[[8, 104], [16, 124], [280, 108], [270, 128]].map(([x, y], i) => (
       <g key={i}><circle cx={x} cy={y} r="4" fill="#15803d" />{[0, 1, 2].map(j => <circle key={j} cx={x - 2 + j * 2} cy={y - 3 + (j % 2) * 2} r="1.6" fill={['#f472b6', '#facc15', '#a78bfa', '#fb7185'][i]} />)}</g>
     ))}
   </g>,
