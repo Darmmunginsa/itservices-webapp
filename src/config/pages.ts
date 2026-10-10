@@ -30,7 +30,7 @@ export const PAGES: PageDef[] = [
   { key: 'submit',    path: '/submit',    labelKey: 'nav.submit',     icon: Send,          group: 'main',      defaultRoles: ALL },
   { key: 'my-work',   path: '/my-work',   labelKey: 'nav.myWork',     icon: ClipboardList, group: 'main',      defaultRoles: ALL },
   { key: 'tracking',  path: '/tracking',  labelKey: 'nav.tracking',   icon: Pin,           group: 'main',      defaultRoles: ALL },
-  { key: 'team-status', path: '/team-status', labelKey: 'nav.teamStatus', icon: UserCheck,  group: 'main',      defaultRoles: AGENT_UP },
+  { key: 'team-status', path: '/team-status', labelKey: 'nav.teamStatus', icon: UserCheck,  group: 'main',      defaultRoles: AGENT_UP, edit: 'จัดการผังออฟฟิศ 2D และเลือกคนที่แสดงในสถานะทีม' },
 
   { key: 'projects',  path: '/projects',  labelKey: 'nav.projects',   icon: FolderOpen,    group: 'work',      defaultRoles: ALL, edit: 'สร้างโครงการใหม่ได้' },
   { key: 'dashboard', path: '/dashboard', labelKey: 'nav.dashboard',  icon: BarChart2,     group: 'work',      defaultRoles: AGENT_UP, edit: 'มอบหมาย / รับงานแทนทีมได้' },

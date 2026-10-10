@@ -6,6 +6,9 @@ import { Header } from '../components/layout/Header'
 import { ViewToggle, useViewMode } from '../components/common/ViewToggle'
 import { VirtualOffice } from '../components/team/VirtualOffice'
 import { Office2D } from '../components/team/Office2D'
+import { OfficeMapEditor } from '../components/admin/OfficeMapEditor'
+import { TeamStatusVisibility } from '../components/team/TeamStatusVisibility'
+import { useCanEdit } from '../hooks/useCanEdit'
 import { getOfficeMapRows, getOfficeProps } from '../services/office'
 import type { Prop } from '../utils/officeProps'
 import { DEFAULT_MAP, ZONE_STATUS, ZONE_LABEL, type Zone } from '../utils/officeMap'
@@ -69,6 +72,9 @@ export default function TeamStatus() {
   // หน้าหลัก = "สถานะ & ไทม์ไลน์" เสมอ · ออฟฟิศ 2D เปิดในหน้าต่างแยกเท่านั้น
   // (ออฟฟิศมีได้ที่เดียว → ไมค์/สายเสียงไม่ซ้อนกันหลายหน้าต่าง และสลับเมนูในหน้าหลักแล้วเสียงไม่หลุด)
   const [mode, setMode] = useState<'office' | 'board'>(popout ? 'office' : 'board')
+  // สิทธิ์ "แก้ไขได้" ของหน้านี้ (ตั้งที่ Admin → สิทธิ์เข้าหน้า) — จัดการผังออฟฟิศ + เลือกคนที่แสดง · Admin ได้เสมอ
+  const canManage = useCanEdit('team-status', ['Admin'])
+  const [manage, setManage] = useState<null | 'map' | 'people'>(null)
   const pickMode = (m: 'office' | 'board') => {
     if (m === 'office' && !popout) {
       if (!openPopout('/team-status')) addToast('error', 'เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต pop-up ให้เว็บนี้แล้วกดอีกครั้ง')
@@ -277,7 +283,27 @@ export default function TeamStatus() {
             title={k === 'office' && !popout ? 'เปิดออฟฟิศ 2D ในหน้าต่างใหม่ (มีแชท เสียง แชร์จอ) — เปิดซ้ำ = กลับไปหน้าต่างเดิม' : undefined}
             className={`px-3 py-1.5 rounded-lg border ${mode === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}{k === 'office' && !popout && <ExternalLink size={11} className="inline ml-1 -mt-0.5" />}</button>
         ))}
+        {canManage && (
+          <button onClick={() => setManage(m => (m ? null : 'map'))}
+            className={`ml-auto px-3 py-1.5 rounded-lg border ${manage ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-amber-400 hover:text-amber-600'}`}>
+            ⚙️ จัดการสถานะทีม
+          </button>
+        )}
       </div>
+
+      {/* จัดการ (คนที่มีสิทธิ์แก้ไขหน้านี้) — ผังออฟฟิศ 2D + เลือกคนที่แสดง */}
+      {canManage && manage && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-amber-200 dark:border-amber-900/50 p-4 space-y-3">
+          <div className="flex flex-wrap gap-1 text-xs">
+            {([['map', '🗺️ ผังออฟฟิศ 2D'], ['people', '👥 คนที่แสดงในสถานะทีม']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setManage(k)}
+                className={`px-3 py-1.5 rounded-lg border ${manage === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}</button>
+            ))}
+            <button onClick={() => setManage(null)} className="ml-auto px-3 py-1.5 rounded-lg text-gray-500 hover:text-gray-700">ปิด</button>
+          </div>
+          {manage === 'map' ? <OfficeMapEditor /> : <TeamStatusVisibility />}
+        </div>
+      )}
 
       {/* ซ่อนแทนปิด — สลับไปดู "สถานะ & ไทม์ไลน์" แล้วเสียง/แชร์จอ/แชทยังไม่หลุด */}
       </>)}

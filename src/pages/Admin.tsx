@@ -9,6 +9,7 @@ import { Modal } from '../components/common/Modal'
 import { SkeletonRow } from '../components/common/Skeleton'
 import { PagePermissionsPanel } from '../components/admin/PagePermissionsPanel'
 import { OfficeMapEditor } from '../components/admin/OfficeMapEditor'
+import { TeamStatusVisibility } from '../components/team/TeamStatusVisibility'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
 import { appLink, escapeHtml } from '../utils/emailTemplate'
@@ -72,7 +73,6 @@ export default function Admin() {
   // Leave quota state (per-employee)
   const [agentsList, setAgentsList] = useState<AgentProfile[]>([])
   const [savingApprover, setSavingApprover] = useState<number | null>(null)
-  const [savingTeamStatus, setSavingTeamStatus] = useState<number | null>(null)
   const [quotaEmail, setQuotaEmail] = useState('')      // พนักงานที่เลือก
   const [quotas, setQuotas] = useState<LeaveQuota[]>([]) // โควต้าของพนักงานที่เลือก
   const [quotaLoading, setQuotaLoading] = useState(false)
@@ -92,17 +92,6 @@ export default function Admin() {
   }
 
   // เปิด/ปิดการแสดงรายคนในหน้า "สถานะทีม" (เช่น ซ่อนผู้บริหาร)
-  async function setShowInTeamStatus(agentId: number, show: boolean) {
-    setSavingTeamStatus(agentId)
-    try {
-      await spUpdate('HD_AgentProfiles', agentId, { ShowInTeamStatus: show })
-      setAgentsList(prev => prev.map(a => a.id === agentId ? { ...a, ShowInTeamStatus: show } : a))
-      addToast('success', show ? 'แสดงในสถานะทีมแล้ว' : 'ซ่อนจากสถานะทีมแล้ว')
-    } catch {
-      addToast('error', 'บันทึกไม่สำเร็จ — ตรวจว่ามีคอลัมน์ ShowInTeamStatus (Yes/No) ใน HD_AgentProfiles')
-    } finally { setSavingTeamStatus(null) }
-  }
-
   function loadQuotas(email: string) {
     if (!email) { setQuotas([]); return }
     setQuotaLoading(true)
@@ -718,38 +707,7 @@ export default function Admin() {
             <Users size={18} className="text-primary-600" />
             <h2 className="text-sm font-semibold">แสดงในหน้า "สถานะทีม"</h2>
           </div>
-          <p className="text-xs text-gray-400 mb-3">
-            ปิดสวิตช์เพื่อซ่อนคนนั้นจากรายชื่อและไทม์ไลน์ (เช่น ผู้บริหาร) — คนที่ถูกซ่อนยังเปิดดูสถานะทีมได้ตามปกติ
-            · ต้องมีคอลัมน์ <code>ShowInTeamStatus</code> (Yes/No) ใน HD_AgentProfiles
-          </p>
-          <div className="space-y-1.5 max-h-96 overflow-y-auto">
-            {agentsList.map(a => {
-              const shown = a.ShowInTeamStatus !== false
-              return (
-                <div key={a.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
-                      {a.Title} <span className="text-xs font-normal text-gray-400">({a.Role})</span>
-                    </p>
-                    <p className="text-xs text-gray-400 truncate">{a.EmailText}</p>
-                  </div>
-                  <span className={`text-xs ${shown ? 'text-green-600' : 'text-gray-400'}`}>
-                    {shown ? 'แสดง' : 'ซ่อน'}
-                  </span>
-                  <button
-                    onClick={() => setShowInTeamStatus(a.id, !shown)}
-                    disabled={savingTeamStatus === a.id}
-                    title={shown ? 'ซ่อนจากสถานะทีม' : 'แสดงในสถานะทีม'}
-                    className="disabled:opacity-50">
-                    {shown
-                      ? <ToggleRight size={26} className="text-green-600" />
-                      : <ToggleLeft size={26} className="text-gray-400" />}
-                  </button>
-                </div>
-              )
-            })}
-            {agentsList.length === 0 && <p className="text-xs text-gray-400 py-3">ยังไม่มีข้อมูลพนักงาน</p>}
-          </div>
+          <TeamStatusVisibility />
         </Card>
         )}
 
