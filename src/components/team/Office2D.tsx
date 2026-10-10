@@ -669,8 +669,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               <button type="button" title="หุ่นยนต์ทำความสะอาด"
                 onClick={e => { e.stopPropagation(); onDecorInfo(ROBOT_LINES[Math.floor(robotNow / ROBOT_STEP_MS) % ROBOT_LINES.length]) }}
                 className="absolute z-[9] flex items-center justify-center cursor-pointer"
-                style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
-                <span style={{ display: 'inline-flex', transform: `rotate(${robot.deg}deg)`, transition: 'transform .3s ease' }}><RobotSprite /></span>
+                style={{ left: robot.pos.x * TILE, top: robot.pos.y * TILE - 10, width: TILE, height: TILE, transition: `left ${ROBOT_STEP_MS}ms linear, top ${ROBOT_STEP_MS}ms linear` }}>
+                {/* หันตามก้าวแนวนอนล่าสุด */}
+                <span style={{ display: 'inline-flex', transform: robot.left ? 'scaleX(-1)' : undefined }}><RobotSprite /></span>
               </button>
             )}
             {/* คนอื่น — เลื่อนไปตำแหน่งใหม่ช้า ๆ ให้ดูเหมือนเดิน */}

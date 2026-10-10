@@ -61,12 +61,19 @@ export function robotRoute(m: OfficeMap, steps = 1500, seed = 2026): Pos[] {
 }
 
 /** ตอนนี้หุ่นอยู่ช่องไหน + หันไปทางไหน (องศา, 0 = ขวา) */
-export function robotAt(route: Pos[], now: number): { pos: Pos; deg: number } | null {
+export function robotAt(route: Pos[], now: number): { pos: Pos; deg: number; left: boolean } | null {
   if (!route.length) return null
-  const i = Math.floor(now / ROBOT_STEP_MS) % route.length
-  const a = route[i], b = route[(i + 1) % route.length]
+  const n = route.length
+  const i = Math.floor(now / ROBOT_STEP_MS) % n
+  const a = route[i], b = route[(i + 1) % n]
   const deg = b.x > a.x ? 0 : b.x < a.x ? 180 : b.y > a.y ? 90 : -90
-  return { pos: a, deg }
+  // หันซ้าย/ขวาตามก้าวแนวนอนล่าสุด — เดินขึ้นลงไม่กลับตัวไปมา
+  let left = false
+  for (let k = 0; k < Math.min(n, 60); k++) {
+    const p = route[(i - k + n) % n], q = route[(i - k + 1 + n) % n]
+    if (q.x !== p.x) { left = q.x < p.x; break }
+  }
+  return { pos: a, deg, left }
 }
 
 export const ROBOT_LINES = [

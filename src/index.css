@@ -302,9 +302,16 @@ html[data-fx='on'] .urgent-badge {
 @media (prefers-reduced-motion: reduce) { .hd-decor-hi, .hd-decor-sel { animation: none } }
 /* หยุดลวดลายเคลื่อนไหวบนแผนที่ตอนไม่มีใครดู (ดู useMotionPause) */
 .hd-paused *, .hd-paused *::before, .hd-paused *::after { animation-play-state: paused !important; }
-/* หุ่นยนต์ดูดฝุ่น */
-.hd-robot-brush { animation: hd-spin .5s linear infinite; }
-@keyframes hd-spin { to { transform: rotate(360deg) } }
+/* หุ่นยนต์ทำความสะอาด — เดินเด้ง · ก้าวขาสลับ · ไม้กวาดปัดไปมา · ฝุ่นฟุ้ง */
+.hd-robot-walk { animation: hd-rwalk .6s ease-in-out infinite; }
+@keyframes hd-rwalk { 50% { transform: translateY(-1.2px) } }
+.hd-robot-legL { animation: hd-rleg .6s ease-in-out infinite; transform-box: fill-box; transform-origin: top; }
+.hd-robot-legR { animation: hd-rleg .6s ease-in-out infinite reverse; transform-box: fill-box; transform-origin: top; }
+@keyframes hd-rleg { 0%, 100% { transform: rotate(14deg) } 50% { transform: rotate(-14deg) } }
+.hd-robot-broom { animation: hd-sweep .6s ease-in-out infinite; }
+@keyframes hd-sweep { 0%, 100% { transform: rotate(-12deg) } 50% { transform: rotate(14deg) } }
+.hd-robot-dust { animation: hd-dust .6s ease-out infinite; }
+@keyframes hd-dust { 0% { opacity: .9; transform: translate(0, 0) } 100% { opacity: 0; transform: translate(4px, -3px) } }
 .hd-robot-led { animation: hd-led 1.6s steps(2, jump-none) infinite; }
-@keyframes hd-led { 50% { opacity: .25 } }
-@media (prefers-reduced-motion: reduce) { .hd-robot-brush, .hd-robot-led { animation: none } }
+@keyframes hd-led { 50% { opacity: .35 } }
+@media (prefers-reduced-motion: reduce) { .hd-robot-walk, .hd-robot-legL, .hd-robot-legR, .hd-robot-broom, .hd-robot-dust, .hd-robot-led { animation: none } }
