@@ -63,11 +63,19 @@ export default function TeamStatus() {
   // card = ออฟฟิศเสมือน · table = รายการ
   const [view, setView] = useViewMode('team-status')
   // office = ออฟฟิศ 2D เดินได้ (ค่าเริ่มต้น) · board = สถานะ/ไทม์ไลน์
-  const [mode, setMode] = useState<'office' | 'board'>(() => (localStorage.getItem('ts-mode') === 'board' ? 'board' : 'office'))
   // หน้าต่างที่ดึงออกไปอีกจอ — ชื่อแท็บเป็นของตัวเอง และไม่มีปุ่ม "เปิดอีกหน้าต่าง" ซ้อน
   const popout = isPopout(useLocation().search)
   useEffect(() => { if (popout) document.title = 'สถานะทีม — Helpdesk' }, [popout])
-  const pickMode = (m: 'office' | 'board') => { localStorage.setItem('ts-mode', m); setMode(m) }
+  // หน้าหลัก = "สถานะ & ไทม์ไลน์" เสมอ · ออฟฟิศ 2D เปิดในหน้าต่างแยกเท่านั้น
+  // (ออฟฟิศมีได้ที่เดียว → ไมค์/สายเสียงไม่ซ้อนกันหลายหน้าต่าง และสลับเมนูในหน้าหลักแล้วเสียงไม่หลุด)
+  const [mode, setMode] = useState<'office' | 'board'>(popout ? 'office' : 'board')
+  const pickMode = (m: 'office' | 'board') => {
+    if (m === 'office' && !popout) {
+      if (!openPopout('/team-status')) addToast('error', 'เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต pop-up ให้เว็บนี้แล้วกดอีกครั้ง')
+      return
+    }
+    setMode(m)
+  }
   const [mapRows, setMapRows] = useState<string[]>(DEFAULT_MAP)
   const [mapProps, setMapProps] = useState<Prop[]>([])
   useEffect(() => {
@@ -260,26 +268,20 @@ export default function TeamStatus() {
         )}
       </div>
 
-      {/* สลับ ออฟฟิศ 2D / กระดานสถานะ · ดึงออกไปอีกจอ */}
+      {/* สลับ กระดานสถานะ / ออฟฟิศ 2D (หน้าหลัก: ออฟฟิศเปิดหน้าต่างแยก) */}
       <div className="flex gap-1 text-xs items-center flex-wrap">
-        {([['office', '🏢 ออฟฟิศ'], ['board', '📋 สถานะ & ไทม์ไลน์']] as const).map(([k, label]) => (
+        {([['board', '📋 สถานะ & ไทม์ไลน์'], ['office', '🏢 ออฟฟิศ']] as const).map(([k, label]) => (
           <button key={k} onClick={() => pickMode(k)}
-            className={`px-3 py-1.5 rounded-lg border ${mode === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}</button>
+            title={k === 'office' && !popout ? 'เปิดออฟฟิศ 2D ในหน้าต่างใหม่ (มีแชท เสียง แชร์จอ) — เปิดซ้ำ = กลับไปหน้าต่างเดิม' : undefined}
+            className={`px-3 py-1.5 rounded-lg border ${mode === k ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'border-gray-200 dark:border-gray-700 text-gray-500'}`}>{label}{k === 'office' && !popout && <ExternalLink size={11} className="inline ml-1 -mt-0.5" />}</button>
         ))}
-        {!popout && (
-          <button onClick={() => { if (!openPopout('/team-status')) addToast('error', 'เบราว์เซอร์บล็อกหน้าต่างใหม่ — อนุญาต pop-up ให้เว็บนี้แล้วลองอีกครั้ง') }}
-            title="เปิดออฟฟิศ + แชทในหน้าต่างแยก ไว้วางอีกจอคู่กับงานอื่น (มีแจ้งเตือนเมื่อมีแชทใหม่)"
-            className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-primary-400 hover:text-primary-600">
-            <ExternalLink size={12} /> เปิดอีกหน้าต่าง
-          </button>
-        )}
       </div>
 
       {/* ซ่อนแทนปิด — สลับไปดู "สถานะ & ไทม์ไลน์" แล้วเสียง/แชร์จอ/แชทยังไม่หลุด */}
-      <div className={mode === 'office' ? undefined : 'hidden'}>
+      {popout && <div className={mode === 'office' ? undefined : 'hidden'}>
         <Office2D mapRows={mapRows} mapProps={mapProps} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
           onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} onInfo={msg => addToast('success', msg)} />
-      </div>
+      </div>}
 
       {mode === 'board' && (<>
       {/* เลือกวัน + สรุป */}
