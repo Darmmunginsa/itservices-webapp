@@ -1,7 +1,8 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
-import { seatsOf, seatAt, seatApproach, nextToSeat } from '../src/utils/officeProps'
+import { seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom } from '../src/utils/officeProps'
+import { meetingSeats, deskSeats } from '../src/utils/officeSeats'
 import { encodeRoom, decodeRoom } from '../src/utils/voiceProximity'
 import { claimBeats } from '../src/utils/voiceProximity'
 import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom, displayName, cleanNick } from '../src/utils/officeAvatar'
@@ -2516,6 +2517,18 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(JSON.stringify(r1), JSON.stringify({ zone: 'garden', mic: true, muted: true, seat: { x: 32, y: 7 } }), 'sitting is shared with everyone along with the mic state')
   eq(JSON.stringify(decodeRoom('desk:mic')), JSON.stringify({ zone: 'desk', mic: true, muted: false, seat: null }), 'old positions without a seat still read correctly')
   eq(encodeRoom('garden', true, false, { x: 1, y: 2 }).endsWith(':mic'), true, 'older screens can still tell the mic is on')
+}
+
+// -- เก้าอี้โต๊ะประชุม + โต๊ะส่วนตัว --
+{
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  const MS = meetingSeats(OM)
+  eq(MS.length > 0 && MS.every(x => isWalkable(OM, x.x, x.y) && x.walk), true, 'meeting chairs sit on floor tiles around the table')
+  eq(MS.every(x => (x.face === 'down' ? OM.rows[x.y + 1][x.x] : OM.rows[x.y - 1][x.x]) === 'T'), true, 'everyone at the meeting table faces the table')
+  const DS = deskSeats([{ email: 'Me@x.com', desk: { x: 8, y: 6, style: 'classic', rot: 0 } }, { email: 'b@x.com', desk: { x: 20, y: 6, style: 'classic', rot: 90 } }, { email: 'c@x.com', desk: null }])
+  eq(JSON.stringify(DS.map(x => [x.x, x.y, x.face, x.owner])), JSON.stringify([[8, 7, 'up', 'me@x.com'], [19, 6, 'right', 'b@x.com']]), 'each desk has its chair on the open side, facing the desk, owned by its owner')
+  eq(canSitFrom({ x: 8, y: 7 }, DS[0]) && !canSitFrom({ x: 8, y: 8 }, DS[0]), true, 'for a chair you stand on it to sit')
+  eq(JSON.stringify(seatApproach(() => true, DS[0])), JSON.stringify({ x: 8, y: 7 }), 'clicking a chair walks you onto it')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

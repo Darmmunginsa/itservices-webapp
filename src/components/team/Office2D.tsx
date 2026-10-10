@@ -27,7 +27,8 @@ import { getMySound, saveMySound } from '../../services/officeSound'
 import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
-import { propBlocked, propDef, seatsOf, seatAt, seatApproach, nextToSeat, type Prop, type Seat } from '../../utils/officeProps'
+import { propBlocked, propDef, seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom, type Prop, type Seat } from '../../utils/officeProps'
+import { meetingSeats, deskSeats } from '../../utils/officeSeats'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
@@ -321,7 +322,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         // เดินมาถึงข้างที่นั่ง → นั่งเลย
         const ps = pendingSit.current
         pendingSit.current = null
-        if (ps && posRef.current && nextToSeat(posRef.current, ps)) sitDown(ps)
+        if (ps && posRef.current && canSitFrom(posRef.current, ps)) sitDown(ps)
         return
       }
       markMoved(posRef.current, p)
@@ -446,36 +447,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       .catch(() => cb.current.onError('บันทึกตัวละครไม่สำเร็จ — เพิ่มคอลัมน์ Avatar ใน HD_OfficeDecor (ดู docs/Team-Status.md)'))
       .finally(() => setSavingAvatar(false))
   }
-  // ที่นั่งบนผัง (ม้านั่ง โซฟา โต๊ะปิกนิก) · ใครนั่งตรงไหนอยู่
-  const seats = seatsOf(mapProps)
-  const takenBy = (s: Seat) => online.find(o => o.seat && o.seat.x === s.x && o.seat.y === s.y)
-  const sitOn = (s: Seat) => {
-    const cur = posRef.current
-    if (!cur) return
-    const who = takenBy(s)
-    if (who) { onDecorInfo(`มีคนนั่งตรงนั้นแล้ว 😄 (${nickOf(who.email, who.UserName)})`); return }
-    if (nextToSeat(cur, s)) { stopWalk(); sitDown(s); return }
-    const to = seatApproach((x, y) => isWalkable(walkRef.current, x, y), s)
-    if (!to) return
-    walkTo(to)
-    pendingSit.current = s
-  }
-  /** E = นั่ง/ลุก — นั่งที่ว่างที่อยู่ติดตัว */
-  const toggleSit = () => {
-    if (seatRef.current) { sitDown(null); return }
-    const cur = posRef.current
-    const s = cur && seats.find(x => nextToSeat(cur, x) && !takenBy(x))
-    if (s) sitDown(s)
-    else onDecorInfo('เดินไปข้างม้านั่ง/โซฟาก่อน แล้วกด E หรือคลิกที่นั่ง')
-  }
-  const toggleSitRef = useRef(toggleSit)
-  useEffect(() => { toggleSitRef.current = toggleSit })
-  useEffect(() => {
-    if (!focused) return
-    const down = (e: KeyboardEvent) => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleSitRef.current() } }
-    window.addEventListener('keydown', down)
-    return () => window.removeEventListener('keydown', down)
-  }, [focused])
   // ช่องที่สิ่งของชิ้นใหญ่ขวาง — โต๊ะส่วนตัววางทับไม่ได้ และเดินผ่านไม่ได้
   const propKey = [...propBlocked(mapProps)].sort().join(';')
   const propMap = walkMapFor(map.rows, propKey)
@@ -488,6 +459,41 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ตัวโต๊ะส่วนตัว (6 ช่อง/คน) ขวางทางเดิน — สร้างแผนที่เดินใหม่เมื่อชุดโต๊ะเปลี่ยนเท่านั้น
   const blockedKey = [...new Set([...blockedTiles(allDecor.map(d => d.decor.desk)), ...(propKey ? propKey.split(';') : [])])].sort().join(';')
   const walkMap = walkMapFor(map.rows, blockedKey)
+  // ที่นั่งบนผัง (ม้านั่ง โซฟา โต๊ะปิกนิก) · ใครนั่งตรงไหนอยู่
+  const seats = [...seatsOf(mapProps), ...meetingSeats(map), ...deskSeats(allDecor.map(d => ({ email: d.email, desk: d.decor.desk })))]
+  const takenBy = (s: Seat) => online.find(o => o.seat && o.seat.x === s.x && o.seat.y === s.y)
+  const sitOn = (s: Seat) => {
+    const cur = posRef.current
+    if (!cur) return
+    if (s.owner && s.owner !== me) { onDecorInfo(`เก้าอี้โต๊ะของ ${nickOf(s.owner, allDecor.find(d => d.email === s.owner)?.name ?? s.owner)} — นั่งได้เฉพาะเจ้าของโต๊ะ`); return }
+    const who = takenBy(s)
+    if (who) { onDecorInfo(`มีคนนั่งตรงนั้นแล้ว 😄 (${nickOf(who.email, who.UserName)})`); return }
+    if (canSitFrom(cur, s)) { stopWalk(); sitDown(s); return }
+    const to = seatApproach((x, y) => isWalkable(walkRef.current, x, y), s)
+    if (!to) return
+    walkTo(to)
+    pendingSit.current = s
+  }
+  /** E = นั่ง/ลุก — นั่งที่ว่างที่อยู่ติดตัว */
+  const toggleSit = () => {
+    if (seatRef.current) { sitDown(null); return }
+    const cur = posRef.current
+    const mine = (x: Seat) => !x.owner || x.owner === me
+    const here = cur && seats.find(x => canSitFrom(cur, x) && mine(x) && !takenBy(x))
+    if (here) { sitDown(here); return }
+    // เก้าอี้บนพื้นที่อยู่ติดตัว — ก้าวขึ้นไปนั่ง
+    const near = cur && seats.find(x => x.walk && nextToSeat(cur, x) && mine(x) && !takenBy(x))
+    if (near) { sitOn(near); return }
+    onDecorInfo('เดินไปที่เก้าอี้ ม้านั่ง หรือโซฟาก่อน แล้วกด E หรือคลิกที่นั่ง')
+  }
+  const toggleSitRef = useRef(toggleSit)
+  useEffect(() => { toggleSitRef.current = toggleSit })
+  useEffect(() => {
+    if (!focused) return
+    const down = (e: KeyboardEvent) => { if ((e.key === 'e' || e.key === 'E') && !e.repeat && !e.ctrlKey && !e.metaKey) { e.preventDefault(); toggleSitRef.current() } }
+    window.addEventListener('keydown', down)
+    return () => window.removeEventListener('keydown', down)
+  }, [focused])
   // ── หุ่นยนต์ดูดฝุ่น: เส้นทางเดียวกันทุกเครื่อง · ตำแหน่งตามนาฬิกา ──
   const { route, dock: dockPos } = robotPlan(walkMap)
   const [robotNow, setRobotNow] = useState(() => Date.now())

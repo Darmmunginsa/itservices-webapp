@@ -134,8 +134,16 @@ export const DEFAULT_PROPS: Prop[] = [
 ]
 
 // ── ที่นั่ง: เดินไปข้าง ๆ แล้วนั่งห้อยขาได้ (ม้านั่ง โซฟา โต๊ะปิกนิก) ──
-export type SeatFace = 'down' | 'up'
-export interface Seat { x: number; y: number; face: SeatFace; kind: string; /** ระดับที่นั่งในช่อง (px จากขอบบน) */ sy: number; /** อยู่หลังโต๊ะ — วาดตัวละครใต้ชิ้นของ */ behind: boolean }
+export type SeatFace = 'down' | 'up' | 'left' | 'right'
+export interface Seat {
+  x: number; y: number; face: SeatFace; kind: string
+  /** ระดับที่นั่งในช่อง (px จากขอบบน) */ sy: number
+  /** อยู่หลังโต๊ะ — วาดตัวละครใต้ชิ้นของ */ behind: boolean
+  /** ช่องที่นั่งเดินทับได้ (เก้าอี้บนพื้น) — ต้องเดินไปยืนบนช่องนั้นก่อนนั่ง · false = ที่นั่งขวางทาง (ม้านั่ง/โซฟา) ยืนข้าง ๆ แล้วนั่ง */
+  walk: boolean
+  /** เก้าอี้โต๊ะส่วนตัว — นั่งได้เฉพาะเจ้าของ (อีเมลตัวเล็ก) */
+  owner?: string
+}
 /** ช่องที่นั่งได้ในแต่ละชิ้น (นับจากมุมซ้ายบน) + หันหน้าทางไหนตอนนั่ง */
 const SEATS: Record<string, { dx: number; dy: number; face: SeatFace; sy: number; behind?: boolean }[]> = {
   bench: [{ dx: 0, dy: 0, face: 'down', sy: 19 }, { dx: 1, dy: 0, face: 'down', sy: 19 }],
@@ -146,17 +154,20 @@ export const SEAT_KINDS = Object.keys(SEATS)
 
 export function seatsOf(props: Prop[]): Seat[] {
   const out: Seat[] = []
-  for (const p of props) for (const s of SEATS[p.kind] ?? []) out.push({ x: p.x + s.dx, y: p.y + s.dy, face: s.face, kind: p.kind, sy: s.sy, behind: !!s.behind })
+  for (const p of props) for (const s of SEATS[p.kind] ?? []) out.push({ x: p.x + s.dx, y: p.y + s.dy, face: s.face, kind: p.kind, sy: s.sy, behind: !!s.behind, walk: false })
   return out
 }
 export const seatAt = (seats: Seat[], x: number, y: number): Seat | null => seats.find(s => s.x === x && s.y === y) ?? null
 
 /** ช่องที่ต้องยืนก่อนนั่ง — ด้านหน้าที่นั่งก่อน (นั่งหันลง = ยืนข้างล่าง) แล้วค่อยข้าง ๆ */
 export function seatApproach(walkable: (x: number, y: number) => boolean, s: Seat): { x: number; y: number } | null {
-  const front = s.face === 'down' ? [0, 1] : [0, -1]
+  if (s.walk) return walkable(s.x, s.y) ? { x: s.x, y: s.y } : null
+  const front = s.face === 'down' ? [0, 1] : s.face === 'up' ? [0, -1] : s.face === 'left' ? [-1, 0] : [1, 0]
   const order = [front, [-1, 0], [1, 0], [-front[0], -front[1]]]
   for (const [dx, dy] of order) if (walkable(s.x + dx, s.y + dy)) return { x: s.x + dx, y: s.y + dy }
   return null
 }
 /** อยู่ติดที่นั่งไหม (4 ทิศ) */
 export const nextToSeat = (p: { x: number; y: number }, s: Seat): boolean => Math.abs(p.x - s.x) + Math.abs(p.y - s.y) === 1
+/** นั่งได้จากตรงที่ยืนอยู่ไหม — เก้าอี้บนพื้นต้องยืนบนช่องนั้น · ม้านั่ง/โซฟาต้องยืนติด */
+export const canSitFrom = (p: { x: number; y: number }, s: Seat): boolean => (s.walk ? p.x === s.x && p.y === s.y : nextToSeat(p, s))
