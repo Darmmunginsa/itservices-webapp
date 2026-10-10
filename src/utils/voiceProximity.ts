@@ -68,3 +68,9 @@ export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: b
 /** ห้องคนเยอะ — เข้าร่วมเสียงแบบปิดไมค์ไว้ก่อน ไม่โผล่มาส่งเสียงกลางวง */
 export const CROWD_SIZE = 3
 export const joinMuted = (othersInEarshot: number): boolean => othersInEarshot + 1 >= CROWD_SIZE
+
+/** สิทธิ์ใช้เสียงของหน้าต่างหนึ่ง (คนเดียวเปิดหลายหน้าต่าง) — prio: 2 = กดเอง · 1 = เปิดอัตโนมัติในหน้าต่างที่โฟกัส · 0 = อัตโนมัติ ไม่โฟกัส */
+export interface VoiceClaim { id: string; ts: number; prio: number }
+/** a ชนะ b ไหม — กดเองชนะอัตโนมัติ · โฟกัสชนะไม่โฟกัส · เท่ากัน = ใหม่กว่าชนะ */
+export const claimBeats = (a: VoiceClaim, b: VoiceClaim): boolean =>
+  a.prio !== b.prio ? a.prio > b.prio : a.ts !== b.ts ? a.ts > b.ts : a.id > b.id

@@ -371,7 +371,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming })
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [])
 
-  const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith })
+  const onVoiceMoved = useCallback(() => (onInfo ?? cb.current.onError)('🎧 ย้ายเสียงไปใช้ที่หน้าต่างอื่นแล้ว (ใช้เสียงได้ทีละหน้าต่าง)'), [onInfo])
+  const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith, onMoved: onVoiceMoved })
 
   // ปิด/เปิดไมค์ → บอกคนอื่นผ่านตำแหน่ง (ป้าย 🔇 บนตัวเรา) · กดค้างพูดไม่นับ (สั้นเกินกว่าจะส่งทัน)
   useEffect(() => { mutedRef.current = voice.muted; dirty.current = true }, [voice.muted])
@@ -405,7 +406,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const micForCall = useRef(false)
   const { micOn, start: startMic, stop: stopMic } = voice
   useEffect(() => {
-    if (dm.callWith && !micOn) { micForCall.current = true; startMic() }
+    // เปิดแบบ auto — ถ้ามีอีกหน้าต่างใช้เสียงอยู่/โฟกัสอยู่ หน้าต่างนั้นได้สายไป ไม่เปิดซ้อน (เปิดซ้อน = ไม่ได้ยินกันทั้งคู่)
+    if (dm.callWith && !micOn && !micForCall.current) { micForCall.current = true; startMic({ auto: true }) }
     if (!dm.callWith && micForCall.current) { micForCall.current = false; if (micOn) stopMic() }
   }, [dm.callWith, micOn, startMic, stopMic])
   const dmUnread = totalUnread(dm.convs)

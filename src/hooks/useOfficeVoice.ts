@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OfficeMap, Pos } from '../utils/officeMap'
-import { peersToConnect, volumeFor, isCaller } from '../utils/voiceProximity'
+import { peersToConnect, volumeFor, isCaller, claimBeats, type VoiceClaim } from '../utils/voiceProximity'
 import { sendSignal, takeSignals } from '../services/voiceSignal'
 
 // ── เสียงตามระยะในออฟฟิศ 2D — WebRTC เครื่องต่อเครื่อง ──
@@ -22,6 +22,13 @@ const SCREEN_MAX_BITRATE = 1_500_000
 const SCREEN_FPS = 15
 
 export type PeerState = 'connecting' | 'connected' | 'failed'
+
+// ── หน้าต่างคุมเสียงได้หน้าต่างเดียวต่อคน ──
+// เปิดออฟฟิศหลายหน้าต่าง (หน้าหลัก + หน้าต่างแยก) แล้วต่อเสียงพร้อมกัน = สายพันกัน แย่งข้อความแนะนำตัว ไม่ได้ยินกันทั้งคู่
+// จึงให้หน้าต่างที่จะใช้เสียง "ประกาศสิทธิ์" ผ่าน BroadcastChannel · ใครชนะ: กดเองชนะเปิดอัตโนมัติ · หน้าต่างที่โฟกัสชนะหน้าต่างที่ไม่โฟกัส · เท่ากัน = ใหม่กว่าชนะ
+const REJOIN_KEY = 'hd-voice-rejoin'
+/** รหัสของหน้าต่างนี้ (1 หน้าต่าง = 1 ออฟฟิศ) */
+const WIN_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 export interface PeerView { email: string; state: PeerState; speaking: boolean; volume: number; screen: MediaStream | null }
 
@@ -51,6 +58,8 @@ interface Args {
   onMicChange: (on: boolean) => void
   /** สายส่วนตัว (จากแชทส่วนตัว) — มีค่า = ต่อกับคนนี้คนเดียว ไม่สนระยะ และไม่รับสายจากคนรอบตัว */
   privatePeer?: string | null
+  /** เสียงถูกย้ายไปหน้าต่างอื่น */
+  onMoved?: () => void
 }
 
 /** รอรวบ ICE candidate ให้ครบแล้วค่อยส่ง SDP ทีเดียว — ลดข้อความเหลือ 1 ต่อฝั่ง */
@@ -71,7 +80,7 @@ const level = (an: AnalyserNode, buf: Uint8Array<ArrayBuffer>): number => {
   return Math.sqrt(sum / buf.length)
 }
 
-export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChange, privatePeer = null }: Args) {
+export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChange, privatePeer = null, onMoved }: Args) {
   const me = meEmail.toLowerCase()
   const [micOn, setMicOn] = useState(false)
   const [muted, setMuted] = useState(false)
@@ -90,6 +99,10 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
   const ctx = useRef<AudioContext | null>(null)
   const myAnalyser = useRef<AnalyserNode | null>(null)
   const busy = useRef(false)
+  const myClaim = useRef<VoiceClaim | null>(null)
+  const chan = useRef<BroadcastChannel | null>(null)
+  const movedCb = useRef(onMoved)
+  useEffect(() => { movedCb.current = onMoved }, [onMoved])
   // ค่าล่าสุดสำหรับ loop — ไม่เอาเข้า deps ไม่งั้น interval ถูกตั้งใหม่ทุก 3 วิที่ตำแหน่งคนอื่นเปลี่ยน
   const live = useRef({ map, mePos, others, onError, privatePeer })
   useEffect(() => { live.current = { map, mePos, others, onError, privatePeer } }, [map, mePos, others, onError, privatePeer])
@@ -287,13 +300,20 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     ctx.current?.close().catch(() => {})
     ctx.current = null
     setMicOn(false); setMuted(false); setTalking(false); setMeSpeaking(false); publish()
+    myClaim.current = null
     onMicChange(false)
   }, [closePeer, publish, onMicChange])
 
-  const start = useCallback(async (opts?: { muted?: boolean }) => {
+  /** auto = เปิดเองตอนรับสายส่วนตัว (ไม่ได้กด) — ยอมให้หน้าต่างที่ผู้ใช้กดเอง/กำลังใช้อยู่ */
+  const start = useCallback(async (opts?: { muted?: boolean; auto?: boolean }) => {
     if (!navigator.mediaDevices?.getUserMedia) { onError('เบราว์เซอร์นี้ใช้ไมค์ไม่ได้ (ต้องเปิดผ่าน https)'); return }
+    const claim: VoiceClaim = { id: WIN_ID, ts: Date.now(), prio: opts?.auto ? (document.hasFocus() ? 1 : 0) : 2 }
+    myClaim.current = claim
+    try { chan.current?.postMessage({ type: 'take', claim }) } catch { /* ปิดไปแล้ว */ }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      // ระหว่างรอไมค์ มีหน้าต่างอื่นที่สิทธิ์ดีกว่าประกาศมา — ไม่ต้องเปิดแล้ว
+      if (myClaim.current !== claim) { s.getTracks().forEach(t => t.stop()); return }
       // เริ่มแบบปิดไมค์ (ห้องคนเยอะ) — ปิด track ก่อนต่อสายใด ๆ จะได้ไม่หลุดเสียงแม้เสี้ยววินาที
       const startMuted = !!opts?.muted
       s.getAudioTracks().forEach(t => { t.enabled = !startMuted })
@@ -324,6 +344,53 @@ export function useOfficeVoice({ map, meEmail, mePos, others, onError, onMicChan
     stream.current.getAudioTracks().forEach(t => { t.enabled = on })
     setTalking(on)
   }, [muted])
+
+  // ช่องคุยระหว่างหน้าต่างของคนเดียวกัน — ใครได้สิทธิ์เสียง
+  const stopRef = useRef(stop)
+  useEffect(() => { stopRef.current = stop }, [stop])
+  useEffect(() => {
+    if (!me || typeof BroadcastChannel === 'undefined') return
+    const ch = new BroadcastChannel(`hd-voice:${me}`)
+    chan.current = ch
+    ch.onmessage = (ev: MessageEvent<{ type: string; claim: VoiceClaim }>) => {
+      const c = ev.data?.claim
+      if (ev.data?.type !== 'take' || !c || c.id === WIN_ID) return
+      const mine = myClaim.current
+      if (!mine) return
+      if (claimBeats(c, mine)) {
+        myClaim.current = null
+        if (stream.current) { stopRef.current(); movedCb.current?.() }
+      } else {
+        // เราสิทธิ์ดีกว่า — บอกหน้าต่างนั้นให้ถอยไป
+        ch.postMessage({ type: 'take', claim: mine })
+      }
+    }
+    return () => { ch.close(); chan.current = null }
+  }, [me])
+
+  // รีเฟรช/ปิดหน้า: บอกอีกฝั่งว่าวางสาย (จะได้ไม่ค้างรอ) + จำไว้ว่าอยู่ในเสียง → โหลดเสร็จเข้าเสียงให้เอง (เฉพาะแท็บนี้)
+  useEffect(() => {
+    const leave = () => {
+      if (!stream.current) return
+      try { sessionStorage.setItem(REJOIN_KEY, JSON.stringify({ muted: !stream.current.getAudioTracks().some(t => t.enabled), at: Date.now() })) } catch { /* */ }
+      for (const email of [...peers.current.keys()]) sendSignal(me, email, 'bye').catch(() => {})
+    }
+    window.addEventListener('pagehide', leave)
+    return () => window.removeEventListener('pagehide', leave)
+  }, [me])
+  const startRef = useRef(start)
+  useEffect(() => { startRef.current = start }, [start])
+  useEffect(() => {
+    if (!me) return
+    let raw: string | null = null
+    try { raw = sessionStorage.getItem(REJOIN_KEY); sessionStorage.removeItem(REJOIN_KEY) } catch { /* */ }
+    if (!raw) return
+    try {
+      const j = JSON.parse(raw) as { muted?: boolean; at?: number }
+      // รีเฟรชภายใน 2 นาที = กลับเข้าเสียง (ไมค์อนุญาตไว้แล้ว ไม่ถามซ้ำ)
+      if (Date.now() - (j.at ?? 0) < 120_000) Promise.resolve().then(() => startRef.current({ muted: !!j.muted }))
+    } catch { /* */ }
+  }, [me])
 
   // loop ต่อสาย
   useEffect(() => {

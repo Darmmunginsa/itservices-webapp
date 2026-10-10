@@ -275,10 +275,11 @@ export default function TeamStatus() {
         )}
       </div>
 
-      {mode === 'office' && (
+      {/* ซ่อนแทนปิด — สลับไปดู "สถานะ & ไทม์ไลน์" แล้วเสียง/แชร์จอ/แชทยังไม่หลุด */}
+      <div className={mode === 'office' ? undefined : 'hidden'}>
         <Office2D mapRows={mapRows} mapProps={mapProps} members={members} meEmail={user?.email ?? ''} meName={user?.displayName || user?.email || ''}
           onZoneChange={onZoneChange} onError={msg => addToast('error', msg)} onInfo={msg => addToast('success', msg)} />
-      )}
+      </div>
 
       {mode === 'board' && (<>
       {/* เลือกวัน + สรุป */}

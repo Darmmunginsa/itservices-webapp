@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { claimBeats } from '../src/utils/voiceProximity'
 import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
 import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
@@ -2473,6 +2474,15 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(bad.hair === A1.hair && bad.skin === A1.skin && bad.acc === 'crown', true, 'bad parts fall back to the default, good parts are kept')
   eq(JSON.stringify(parseAvatar(null, 'somchai@x.com')), JSON.stringify(A1), 'no saved character = the starting one')
   eq([facingFrom({ x: 1, y: 1 }, { x: 0, y: 1 }), facingFrom({ x: 1, y: 1 }, { x: 1, y: 0 }), facingFrom({ x: 1, y: 1 }, { x: 1, y: 1 }, 'left')].join(','), 'left,up,left', 'characters face where they walk, and keep facing when still')
+}
+
+// -- ใช้เสียงได้ทีละหน้าต่าง --
+{
+  const manual = { id: 'a', ts: 100, prio: 2 }, autoFocus = { id: 'b', ts: 200, prio: 1 }, autoBg = { id: 'c', ts: 300, prio: 0 }
+  eq(claimBeats(manual, autoFocus) && claimBeats(manual, autoBg), true, 'the window where you pressed join keeps the voice, auto-start elsewhere cannot steal it')
+  eq(claimBeats(autoFocus, autoBg), true, 'when a call auto-starts, the focused window takes it')
+  eq(claimBeats({ ...manual, id: 'z', ts: 150 }, manual), true, 'pressing join in another window moves the voice there')
+  eq(claimBeats(manual, manual), false, 'a window never beats itself')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
