@@ -333,11 +333,11 @@ html[data-fx='on'] .urgent-badge {
 @keyframes hd-avdangle { 0%, 100% { transform: rotate(-12deg) } 50% { transform: rotate(12deg) } }
 @keyframes hd-avhalo { 50% { transform: translateY(-1.2px) } }
 @media (prefers-reduced-motion: reduce) { .hd-av-bob, .hd-av-legL, .hd-av-legR, .hd-av-armL, .hd-av-armR, .hd-av-halo, .hd-av-dangleL, .hd-av-dangleR { animation: none } }
-/* นกในสวน — จิกพื้นเป็นจังหวะ · กระโดดขยับที่ช้า ๆ · คนเข้าใกล้ = บินหนี */
+/* นกในสวน — จิกพื้นเป็นจังหวะ · กระโดดขยับที่ช้า ๆ · คนเข้าใกล้ = บินหนี (บินขึ้นแล้วจาง ไม่ใช่หายวับ) */
 .hd-bird-peck { animation: hd-peck 1.8s ease-in-out infinite; }
 @keyframes hd-peck { 0%, 55%, 100% { transform: rotate(0) } 62% { transform: rotate(38deg) } 69% { transform: rotate(0) } 76% { transform: rotate(38deg) } 83% { transform: rotate(0) } }
 .hd-bird-hop { animation: hd-hop 9s ease-in-out infinite; }
 @keyframes hd-hop { 0%, 30% { transform: translate(0, 0) } 33% { transform: translate(3px, -4px) } 36%, 65% { transform: translate(6px, 0) } 68% { transform: translate(3px, -4px) } 71%, 100% { transform: translate(0, 0) } }
 .hd-bird-away { animation: hd-flyaway .7s ease-in forwards; }
 @keyframes hd-flyaway { to { transform: translate(14px, -46px) scale(.7); opacity: 0 } }
-@media (prefers-reduced-motion: reduce) { .hd-bird-peck, .hd-bird-hop { animation: none } .hd-bird-away { animation: none; opacity: 0 } }
+/* นกขยับเบา ๆ และช้า — ให้เห็นแม้เครื่องตั้ง "ลดภาพเคลื่อนไหว" ไว้ (ผู้ใช้ขอให้นกจิก/เดิน/บินได้จริง) */
