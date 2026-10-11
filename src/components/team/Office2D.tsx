@@ -137,6 +137,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [seat, setSeat] = useState<Seat | null>(null)
   const seatRef = useRef<Seat | null>(null)
   const pendingSit = useRef<Seat | null>(null)
+  // ให้อาหารนก (ในสวน) — ส่งไปพร้อมตำแหน่ง ให้คนอื่นเห็นเมล็ดกับนกมารุมด้วย · ขยับตัว = เลิกให้ (นกแยกย้าย)
+  const [feeding, setFeeding] = useState(false)
+  const feedRef = useRef(false)
+  const setFeed = useCallback((on: boolean) => {
+    if (feedRef.current === on) return
+    feedRef.current = on; setFeeding(on); dirty.current = true
+  }, [setFeeding])
   const sitDown = useCallback((s: Seat | null) => {
     if ((seatRef.current?.x ?? -1) === (s?.x ?? -1) && (seatRef.current?.y ?? -1) === (s?.y ?? -1)) return
     seatRef.current = s; setSeat(s); dirty.current = true
@@ -255,7 +262,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       if (!dirty.current || !posRef.current) return
       dirty.current = false
       const p = posRef.current
-      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current, seatRef.current) }).catch(() => { dirty.current = true })
+      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current, seatRef.current, feedRef.current) }).catch(() => { dirty.current = true })
     }
     const f = setInterval(flush, FLUSH_MS)
     const h = setInterval(() => { if (!dirty.current) heartbeat(rowId).catch(() => {}) }, HEARTBEAT_MS)
@@ -278,12 +285,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     pendingSit.current = null
     sitDown(null)
     if (next === cur) return
+    setFeed(false)
     markMoved(cur, next)
     posRef.current = next
     dirty.current = true
     setPos(next)
     enterZone(zoneAt(map, next.x, next.y))
-  }, [map, enterZone, stopWalk, markMoved, sitDown, setMyFace, setPos])
+  }, [map, enterZone, stopWalk, markMoved, sitDown, setMyFace, setPos, setFeed])
 
   // คีย์บอร์ด — เฉพาะตอนแผนที่โฟกัส (พิมพ์แชทอยู่จะไม่เดิน)
   useEffect(() => {
@@ -315,6 +323,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     sitDown(null)
     const path = findPath(walkRef.current, posRef.current, target)
     if (!path.length) return
+    setFeed(false)
     const queue = [...path]
     const tick = () => {
       const p = queue.shift()
@@ -332,7 +341,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     }
     tick()
     walkTimer.current = window.setInterval(tick, 110)
-  }, [map, enterZone, stopWalk, markMoved, sitDown, setPos])
+  }, [map, enterZone, stopWalk, markMoved, sitDown, setPos, setFeed])
   useEffect(() => stopWalk, [stopWalk])
 
   async function submit() {
@@ -364,7 +373,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
-  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted, seat: decodeRoom(r.Room).seat }))
+  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted, seat: decodeRoom(r.Room).seat, feed: decodeRoom(r.Room).feed }))
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
 
   // ── เสียงตามระยะ ──
@@ -710,6 +719,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         )}
         {myZone === 'focus' && <FocusMusicCard s={music} onChange={changeMusic} ducked={inCall} />}
         {myZone === 'garden' && <GardenSoundCard s={garden} onChange={changeGarden} water={water} ducked={inCall} />}
+        {myZone === 'garden' && (
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <button onClick={() => setFeed(!feeding)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${feeding ? 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-700'}`}>
+              🌾 {feeding ? 'กำลังให้อาหารนก… (กดอีกครั้งเพื่อหยุด)' : 'ให้อาหารนก'}
+            </button>
+            {feeding && <span className="text-gray-500">นกบินมารุมกินแล้ว — เดินออกไปเมื่อไรนกจะแยกย้ายกลับที่เดิม</span>}
+          </div>
+        )}
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
@@ -776,7 +794,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             }))}
             {/* ── นกจิกพื้น + ใบไม้ร่วงบนหญ้าในสวน ── */}
             <GardenLife rows={map.rows} blocked={new Set(propKey ? propKey.split(';') : [])} tile={TILE}
-              people={[...(pos ? [pos] : []), ...online.map(o => ({ x: o.x, y: o.y }))]} />
+              people={[...(pos ? [pos] : []), ...online.map(o => ({ x: o.x, y: o.y }))]}
+              feeders={[...(feeding && pos ? [pos] : []), ...online.filter(o => o.feed).map(o => ({ x: o.x, y: o.y }))]} />
             {/* ── สิ่งของชิ้นใหญ่ (น้ำตก ศาลา ม้านั่ง ...) — ภาพเดียวทั้งชิ้น · คลิกทะลุไปช่องข้างใต้ ── */}
             {mapProps.map((pr, i) => {
               const d = propDef(pr.kind)

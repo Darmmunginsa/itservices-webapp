@@ -54,19 +54,23 @@ export const isCaller = (me: string, other: string): boolean => me.toLowerCase()
 //   "meeting:mic"    เข้าร่วมเสียง ไมค์เปิด
 //   "meeting:muted"  เข้าร่วมเสียง ปิดไมค์อยู่ (ยังได้ยินคนอื่น — คนอื่นเห็นป้าย 🔇)
 // ไม่ต้องสร้างคอลัมน์ใหม่ — ถ้าเพิ่มคอลัมน์แล้วลิสต์ยังไม่มี การบันทึกตำแหน่งจะพังทั้งแถว
-/** ช่อง Room ของตำแหน่ง: "โซน[|sX,Y][:mic|:muted]" — |s = นั่งอยู่ที่ช่องนั้น (ใส่ก่อนเรื่องไมค์ เครื่องรุ่นเก่ายังอ่านไมค์ได้) */
-export function encodeRoom(zone: string, mic: boolean, muted = false, seat?: { x: number; y: number } | null): string {
-  const base = seat ? `${zone}|s${seat.x},${seat.y}` : zone
+/** ช่อง Room ของตำแหน่ง: "โซน[|f][|sX,Y][:mic|:muted]" — |f = กำลังให้อาหารนก · |s = นั่งอยู่ที่ช่องนั้น (ใส่ก่อนเรื่องไมค์ เครื่องรุ่นเก่ายังอ่านไมค์ได้) */
+export function encodeRoom(zone: string, mic: boolean, muted = false, seat?: { x: number; y: number } | null, feed = false): string {
+  const base = `${zone}${feed ? '|f' : ''}${seat ? `|s${seat.x},${seat.y}` : ''}`
   return mic ? `${base}:${muted ? 'muted' : 'mic'}` : base
 }
 
-export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: boolean; seat: { x: number; y: number } | null } {
+export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: boolean; seat: { x: number; y: number } | null; feed: boolean } {
   let s = (raw ?? '').trim()
   let mic = false, muted = false
   if (s.endsWith(':mic')) { s = s.slice(0, -4); mic = true }
   else if (s.endsWith(':muted')) { s = s.slice(0, -6); mic = true; muted = true }
+  let seat: { x: number; y: number } | null = null
   const m = /^(.*)\|s(\d+),(\d+)$/.exec(s)
-  return m ? { zone: m[1], mic, muted, seat: { x: +m[2], y: +m[3] } } : { zone: s, mic, muted, seat: null }
+  if (m) { s = m[1]; seat = { x: +m[2], y: +m[3] } }
+  const feed = s.endsWith('|f')
+  if (feed) s = s.slice(0, -2)
+  return { zone: s, mic, muted, seat, feed }
 }
 
 /** ห้องคนเยอะ — เข้าร่วมเสียงแบบปิดไมค์ไว้ก่อน ไม่โผล่มาส่งเสียงกลางวง */
