@@ -17,12 +17,8 @@ export function NotificationBell() {
   const firstLoad = useRef(true)
   const boxRef = useRef<HTMLDivElement>(null)
 
-  // ขอสิทธิ์ desktop notification ครั้งแรก
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {})
-    }
-  }, [])
+  // ไม่ขอสิทธิ์ desktop notification เองตอนเปิดหน้า — เดิมเด้งถามทุกครั้งที่ยังไม่ได้ตอบ (ปิดกล่อง = ถามใหม่ทุกหน้า)
+  // อนุญาตได้จากเมนูกระดิ่งในออฟฟิศ · อนุญาตแล้วป้ายแจ้งเตือนด้านล่างทำงานตามปกติ
 
   // Poll
   useEffect(() => {
