@@ -35,7 +35,7 @@ import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
 import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
-import { decodeRoom, encodeRoom, joinMuted, HEAR_RADIUS } from '../../utils/voiceProximity'
+import { decodeRoom, encodeRoom, joinMuted, shareGroups, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
 //
@@ -140,6 +140,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ให้อาหารนก (ในสวน) — ส่งไปพร้อมตำแหน่ง ให้คนอื่นเห็นเมล็ดกับนกมารุมด้วย · ขยับตัว = เลิกให้ (นกแยกย้าย)
   const [feeding, setFeeding] = useState(false)
   const feedRef = useRef(false)
+  const shareRef = useRef(false)
   const setFeed = useCallback((on: boolean) => {
     if (feedRef.current === on) return
     feedRef.current = on; setFeeding(on); dirty.current = true
@@ -262,7 +263,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       if (!dirty.current || !posRef.current) return
       dirty.current = false
       const p = posRef.current
-      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current, seatRef.current, feedRef.current) }).catch(() => { dirty.current = true })
+      savePresence(rowId, { x: p.x, y: p.y, room: encodeRoom(zoneAt(map, p.x, p.y), micRef.current, mutedRef.current, seatRef.current, feedRef.current, shareRef.current) }).catch(() => { dirty.current = true })
     }
     const f = setInterval(flush, FLUSH_MS)
     const h = setInterval(() => { if (!dirty.current) heartbeat(rowId).catch(() => {}) }, HEARTBEAT_MS)
@@ -373,7 +374,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   const memberBy = useMemo(() => new Map(members.map(m => [m.email.toLowerCase(), m])), [members])
   const myZone: Zone = pos ? zoneAt(map, pos.x, pos.y) : 'desk'
-  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted, seat: decodeRoom(r.Room).seat, feed: decodeRoom(r.Room).feed }))
+  const online = others.filter(r => isOnline(r.LastSeen, now)).map(r => ({ ...r, email: r.UserEmail, x: r.X, y: r.Y, mic: decodeRoom(r.Room).mic, muted: decodeRoom(r.Room).muted, seat: decodeRoom(r.Room).seat, feed: decodeRoom(r.Room).feed, share: decodeRoom(r.Room).share }))
   const inMyZone = pos ? sameZone(map, { x: pos.x, y: pos.y, email: meEmail }, online) : []
 
   // ── เสียงตามระยะ ──
@@ -399,6 +400,33 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   // ปิด/เปิดไมค์ → บอกคนอื่นผ่านตำแหน่ง (ป้าย 🔇 บนตัวเรา) · กดค้างพูดไม่นับ (สั้นเกินกว่าจะส่งทัน)
   useEffect(() => { mutedRef.current = voice.muted; dirty.current = true }, [voice.muted])
+  // กำลังแชร์จอ → บอกคนอื่นผ่านตำแหน่ง (คนนอกวงเห็นภาพย่อ + ได้แจ้งเตือน)
+  useEffect(() => { shareRef.current = voice.sharing; dirty.current = true }, [voice.sharing])
+  // วงแชร์จอที่ฉันไม่ได้อยู่ — โชว์ภาพย่อเหนือกลุ่ม (ไม่ใช่ภาพจอจริง: เนื้อหาจอเห็นเฉพาะคนในวงที่ต่อสายอยู่)
+  const groups = shareGroups(map, [
+    ...(pos ? [{ email: me, x: pos.x, y: pos.y, mic: voice.micOn, share: voice.sharing, UserName: meName }] : []),
+    ...online.map(o => ({ email: o.email, x: o.x, y: o.y, mic: o.mic, share: o.share, UserName: o.UserName })),
+  ], me).filter(g => !g.meInside)
+  // มีคนเริ่มแชร์จอ → เตือนคนที่ "ว่าง" อยู่ (ไม่มีสถานะไม่ว่าง) และยังไม่ได้อยู่ในวงนั้น
+  const seenSharers = useRef<Set<string> | null>(null)
+  const shareKey = groups.map(g => g.sharer.email.toLowerCase()).sort().join(',')
+  const amFree = !memberBy.get(me)?.slot
+  useEffect(() => {
+    const now = new Set(shareKey ? shareKey.split(',') : [])
+    const prev = seenSharers.current
+    seenSharers.current = now
+    if (!prev || !amFree) return          // รอบแรกแค่จำ · ไม่ว่างอยู่ = ไม่กวน
+    for (const e of now) {
+      if (prev.has(e)) continue
+      const who = online.find(o => o.email.toLowerCase() === e)
+      const name = who ? nickOf(e, who.UserName) : e.split('@')[0]
+      const zone = who ? ZONE_LABEL[zoneAt(map, who.x, who.y)] : ''
+      const info = onInfo ?? cb.current.onError
+      info(`🖥️ ${name} กำลังแชร์จอที่${zone} — คลิกภาพจอเหนือหัวเพื่อเดินไปดู (เข้าร่วมเสียงด้วยถึงจะเห็นจอ)`)
+      notifyNew(`🖥️ ${name} กำลังแชร์จอ`, `ที่${zone} — เปิดออฟฟิศแล้วเดินเข้าไปดูได้`, `hd-share-${e}`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareKey, amFree])
 
   // เข้าร่วมเสียง: ห้องที่มีคนได้ยินเรา 2 คนขึ้นไป → เริ่มแบบปิดไมค์
   const joinVoice = () => {
@@ -870,6 +898,33 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 )}
               </button>
             )}
+            {/* วงแชร์จอ (ที่ฉันไม่ได้อยู่) — ภาพย่อจอเหนือกลุ่ม · คลิก = เดินไปร่วมดู */}
+            {groups.map(g => {
+              const all = [g.sharer, ...g.viewers]
+              const cx = (Math.min(...all.map(p => p.x)) + Math.max(...all.map(p => p.x)) + 1) / 2 * TILE
+              const top = Math.max(2, Math.min(...all.map(p => p.y)) * TILE - 92)
+              const name = nickOf(g.sharer.email, g.sharer.UserName)
+              return (
+                <button key={`share-${g.sharer.email}`} type="button" onClick={e => { e.stopPropagation(); boardRef.current?.focus(); walkTo({ x: g.sharer.x, y: g.sharer.y + 1 }) }}
+                  title={`${name} กำลังแชร์จอ — คลิกเพื่อเดินไปดู`}
+                  className="absolute z-20 -translate-x-1/2 flex flex-col items-center cursor-pointer hd-share-pop" style={{ left: cx, top }}>
+                  <span className="rounded-lg border-2 border-slate-700 bg-slate-800 p-[3px] shadow-lg">
+                    <svg viewBox="0 0 64 36" width="64" height="36" aria-hidden="true">
+                      <rect width="64" height="36" rx="2" fill="url(#hd-screen)" />
+                      <rect x="5" y="5" width="22" height="3" rx="1.5" fill="#fff" opacity=".8" />
+                      <rect className="hd-share-line" x="5" y="12" width="38" height="2.4" rx="1.2" fill="#fff" opacity=".55" />
+                      <rect className="hd-share-line" x="5" y="17" width="30" height="2.4" rx="1.2" fill="#fff" opacity=".45" style={{ animationDelay: '.4s' }} />
+                      <rect className="hd-share-line" x="5" y="22" width="34" height="2.4" rx="1.2" fill="#fff" opacity=".4" style={{ animationDelay: '.8s' }} />
+                      <rect x="46" y="12" width="13" height="16" rx="1.5" fill="#fff" opacity=".25" />
+                      <circle cx="58" cy="5" r="2.4" fill="#ef4444"><animate attributeName="opacity" values="1;.2;1" dur="1.4s" repeatCount="indefinite" /></circle>
+                    </svg>
+                  </span>
+                  <span className="mt-0.5 text-[9px] px-1.5 py-px rounded-full bg-slate-800 text-white whitespace-nowrap shadow">
+                    🖥️ {name} แชร์จอ{g.viewers.length ? ` · ${g.viewers.length} คนดูอยู่` : ''}
+                  </span>
+                </button>
+              )
+            })}
             {/* คนอื่น — ตัวละครเดินไปตำแหน่งใหม่ (หันตามทาง แกว่งแขนขา) · ชื่ออยู่เหนือหัวแบบ Gather */}
             {online.map(r => {
               const e = r.email.toLowerCase()

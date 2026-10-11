@@ -54,13 +54,13 @@ export const isCaller = (me: string, other: string): boolean => me.toLowerCase()
 //   "meeting:mic"    เข้าร่วมเสียง ไมค์เปิด
 //   "meeting:muted"  เข้าร่วมเสียง ปิดไมค์อยู่ (ยังได้ยินคนอื่น — คนอื่นเห็นป้าย 🔇)
 // ไม่ต้องสร้างคอลัมน์ใหม่ — ถ้าเพิ่มคอลัมน์แล้วลิสต์ยังไม่มี การบันทึกตำแหน่งจะพังทั้งแถว
-/** ช่อง Room ของตำแหน่ง: "โซน[|f][|sX,Y][:mic|:muted]" — |f = กำลังให้อาหารนก · |s = นั่งอยู่ที่ช่องนั้น (ใส่ก่อนเรื่องไมค์ เครื่องรุ่นเก่ายังอ่านไมค์ได้) */
-export function encodeRoom(zone: string, mic: boolean, muted = false, seat?: { x: number; y: number } | null, feed = false): string {
-  const base = `${zone}${feed ? '|f' : ''}${seat ? `|s${seat.x},${seat.y}` : ''}`
+/** ช่อง Room ของตำแหน่ง: "โซน[|f][|v][|sX,Y][:mic|:muted]" — |f = ให้อาหารนก · |v = กำลังแชร์จอ · |s = นั่งอยู่ที่ช่องนั้น (ใส่ก่อนเรื่องไมค์ เครื่องรุ่นเก่ายังอ่านไมค์ได้) */
+export function encodeRoom(zone: string, mic: boolean, muted = false, seat?: { x: number; y: number } | null, feed = false, share = false): string {
+  const base = `${zone}${feed ? '|f' : ''}${share ? '|v' : ''}${seat ? `|s${seat.x},${seat.y}` : ''}`
   return mic ? `${base}:${muted ? 'muted' : 'mic'}` : base
 }
 
-export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: boolean; seat: { x: number; y: number } | null; feed: boolean } {
+export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: boolean; seat: { x: number; y: number } | null; feed: boolean; share: boolean } {
   let s = (raw ?? '').trim()
   let mic = false, muted = false
   if (s.endsWith(':mic')) { s = s.slice(0, -4); mic = true }
@@ -68,9 +68,11 @@ export function decodeRoom(raw?: string): { zone: string; mic: boolean; muted: b
   let seat: { x: number; y: number } | null = null
   const m = /^(.*)\|s(\d+),(\d+)$/.exec(s)
   if (m) { s = m[1]; seat = { x: +m[2], y: +m[3] } }
+  const share = s.endsWith('|v')
+  if (share) s = s.slice(0, -2)
   const feed = s.endsWith('|f')
   if (feed) s = s.slice(0, -2)
-  return { zone: s, mic, muted, seat, feed }
+  return { zone: s, mic, muted, seat, feed, share }
 }
 
 /** ห้องคนเยอะ — เข้าร่วมเสียงแบบปิดไมค์ไว้ก่อน ไม่โผล่มาส่งเสียงกลางวง */
@@ -82,3 +84,19 @@ export interface VoiceClaim { id: string; ts: number; prio: number }
 /** a ชนะ b ไหม — กดเองชนะอัตโนมัติ · โฟกัสชนะไม่โฟกัส · เท่ากัน = ใหม่กว่าชนะ */
 export const claimBeats = (a: VoiceClaim, b: VoiceClaim): boolean =>
   a.prio !== b.prio ? a.prio > b.prio : a.ts !== b.ts ? a.ts > b.ts : a.id > b.id
+
+/**
+ * วงแชร์จอที่คนนอกวงควรเห็น — คนแชร์ + คนในโซนเดียวกันที่เข้าร่วมเสียง (ซึ่งต่อสายกับคนแชร์อยู่ = ดูจอได้)
+ * meInside = ฉันอยู่ในวงนั้นแล้ว (ไม่ต้องเตือน/โชว์ภาพย่อ)
+ */
+export function shareGroups<T extends { email: string; x: number; y: number; mic: boolean; share: boolean }>(
+  m: OfficeMap, people: T[], me: string,
+): { sharer: T; viewers: T[]; meInside: boolean }[] {
+  const meL = me.toLowerCase()
+  return people.filter(p => p.share).map(sharer => {
+    const z = zoneAt(m, sharer.x, sharer.y)
+    const crew = people.filter(p => p !== sharer && p.mic && zoneAt(m, p.x, p.y) === z)
+    const meInside = sharer.email.toLowerCase() === meL || crew.some(p => p.email.toLowerCase() === meL)
+    return { sharer, viewers: crew.filter(p => p.email.toLowerCase() !== meL), meInside }
+  })
+}

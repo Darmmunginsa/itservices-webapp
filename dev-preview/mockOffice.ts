@@ -9,7 +9,9 @@ export interface ChatRow { id: number; Title: string; Message?: string; UserEmai
 const map = parseMap(DEFAULT_MAP)
 const now = () => new Date().toISOString()
 const rows: PresenceRow[] = [
-  { id: 2, Title: 'aree@x', UserEmail: 'aree@x', UserName: 'อารีย์ สุขใจ', X: 14, Y: 3, Room: 'meeting', LastSeen: now() },
+  // อารีย์แชร์จอให้นกดูในห้องประชุม — ให้เห็นภาพย่อ "กำลังแชร์จอ" เหนือกลุ่ม
+  { id: 2, Title: 'aree@x', UserEmail: 'aree@x', UserName: 'อารีย์ สุขใจ', X: 14, Y: 3, Room: 'meeting|v:mic', LastSeen: now() },
+  { id: 6, Title: 'nok@x', UserEmail: 'nok@x', UserName: 'นก ดูจอ', X: 19, Y: 3, Room: 'meeting:mic', LastSeen: now() },
   { id: 3, Title: 'boss@x', UserEmail: 'boss@x', UserName: 'บอส ใหญ่', X: 13, Y: 10, Room: 'cafe', LastSeen: now() },
   { id: 4, Title: 'kong@x', UserEmail: 'kong@x', UserName: 'ก้อง ทำงาน', X: 5, Y: 5, Room: 'desk', LastSeen: now() },
   { id: 5, Title: 'old@x', UserEmail: 'old@x', UserName: 'คนออฟไลน์', X: 2, Y: 7, Room: 'desk', LastSeen: '2020-01-01T00:00:00Z' },

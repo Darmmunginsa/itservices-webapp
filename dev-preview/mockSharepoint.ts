@@ -5,3 +5,6 @@ export async function spCreate(): Promise<{ id: number }> { return { id: 1 } }
 export async function spUpdate(): Promise<void> {}
 export async function spDelete(): Promise<void> {}
 export async function spAttachmentBlob(): Promise<{ url: string; type: string }> { throw new Error('mock') }
+export async function spGetAttachments(): Promise<{ FileName: string; ServerRelativeUrl: string }[]> { return [] }
+export async function spUploadAttachment(): Promise<void> {}
+export async function spDeleteAttachment(): Promise<void> {}

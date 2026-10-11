@@ -3,7 +3,7 @@
 //   npm run check:report
 import { seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom } from '../src/utils/officeProps'
 import { meetingSeats, deskSeats } from '../src/utils/officeSeats'
-import { encodeRoom, decodeRoom } from '../src/utils/voiceProximity'
+import { encodeRoom, decodeRoom, shareGroups } from '../src/utils/voiceProximity'
 import { claimBeats } from '../src/utils/voiceProximity'
 import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom, displayName, cleanNick } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
@@ -2174,9 +2174,9 @@ eq(peersToConnect(VM, inMeeting, [{ ...inMeeting, email: 'A@X' }]).length, 0, 'n
 eq(isCaller('a@x', 'b@x') !== isCaller('b@x', 'a@x'), true, 'exactly one side of every pair places the call')
 eq(isCaller('B@x', 'a@x'), false, 'caller choice ignores case')
 eq(encodeRoom('desk', true), 'desk:mic', 'mic flag rides in the Room field')
-eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true,"muted":false,"seat":null,"feed":false}', '…and decodes back')
+eq(JSON.stringify(decodeRoom('meeting:mic')), '{"zone":"meeting","mic":true,"muted":false,"seat":null,"feed":false,"share":false}', '…and decodes back')
 eq(encodeRoom('meeting', true, true), 'meeting:muted', 'joined but muted has its own marker')
-eq(JSON.stringify(decodeRoom('meeting:muted')), '{"zone":"meeting","mic":true,"muted":true,"seat":null,"feed":false}', 'a muted person is still in the call (still hears) but shows 🔇')
+eq(JSON.stringify(decodeRoom('meeting:muted')), '{"zone":"meeting","mic":true,"muted":true,"seat":null,"feed":false,"share":false}', 'a muted person is still in the call (still hears) but shows 🔇')
 eq(encodeRoom('desk', false, true), 'desk', 'not in voice → muted flag is irrelevant')
 eq(joinMuted(0), false, 'alone: join with the mic on')
 eq(joinMuted(1), false, 'one other person: a conversation, mic on')
@@ -2514,8 +2514,8 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
   eq(JSON.stringify(seatApproach((x, y) => !(x === 32 && y === 8), b)), JSON.stringify({ x: 31, y: 7 }), 'if the front is blocked, you come from the side')
   eq(nextToSeat({ x: 32, y: 8 }, b) && !nextToSeat({ x: 33, y: 8 }, b), true, 'you can only sit when standing right next to the seat')
   const r1 = decodeRoom(encodeRoom('garden', true, true, { x: 32, y: 7 }))
-  eq(JSON.stringify(r1), JSON.stringify({ zone: 'garden', mic: true, muted: true, seat: { x: 32, y: 7 }, feed: false }), 'sitting is shared with everyone along with the mic state')
-  eq(JSON.stringify(decodeRoom('desk:mic')), JSON.stringify({ zone: 'desk', mic: true, muted: false, seat: null, feed: false }), 'old positions without a seat still read correctly')
+  eq(JSON.stringify(r1), JSON.stringify({ zone: 'garden', mic: true, muted: true, seat: { x: 32, y: 7 }, feed: false, share: false }), 'sitting is shared with everyone along with the mic state')
+  eq(JSON.stringify(decodeRoom('desk:mic')), JSON.stringify({ zone: 'desk', mic: true, muted: false, seat: null, feed: false, share: false }), 'old positions without a seat still read correctly')
   eq(encodeRoom('garden', true, false, { x: 1, y: 2 }).endsWith(':mic'), true, 'older screens can still tell the mic is on')
 }
 
@@ -2532,9 +2532,26 @@ eq(parseSound(JSON.stringify({ garden: { volume: 0.9 } }))?.focus.volume, FS.vol
 }
 
 // -- ให้อาหารนก --
-eq(JSON.stringify(decodeRoom(encodeRoom('garden', true, false, null, true))), JSON.stringify({ zone: 'garden', mic: true, muted: false, seat: null, feed: true }), 'feeding the birds is shared with everyone')
-eq(JSON.stringify(decodeRoom(encodeRoom('garden', false, false, { x: 31, y: 7 }, true))), JSON.stringify({ zone: 'garden', mic: false, muted: false, seat: { x: 31, y: 7 }, feed: true }), 'you can feed the birds while sitting on a bench')
+eq(JSON.stringify(decodeRoom(encodeRoom('garden', true, false, null, true))), JSON.stringify({ zone: 'garden', mic: true, muted: false, seat: null, feed: true, share: false }), 'feeding the birds is shared with everyone')
+eq(JSON.stringify(decodeRoom(encodeRoom('garden', false, false, { x: 31, y: 7 }, true))), JSON.stringify({ zone: 'garden', mic: false, muted: false, seat: { x: 31, y: 7 }, feed: true, share: false }), 'you can feed the birds while sitting on a bench')
 eq(decodeRoom('garden:mic').feed, false, 'old positions are not feeding')
+
+// -- เตือนคนนอกวงเมื่อมีคนแชร์จอ --
+{
+  const OM = { rows: DEFAULT_MAP, width: DEFAULT_MAP[0].length, height: DEFAULT_MAP.length }
+  eq(decodeRoom(encodeRoom('meeting', true, false, null, false, true)).share, true, 'screen sharing is shared with everyone')
+  eq(decodeRoom('meeting:mic').share, false, 'old positions are not sharing')
+  const P = [
+    { email: 'aree@x', x: 14, y: 3, mic: true, share: true },
+    { email: 'nok@x', x: 19, y: 3, mic: true, share: false },
+    { email: 'boss@x', x: 14, y: 4, mic: false, share: false },
+    { email: 'me@x', x: 3, y: 7, mic: true, share: false },
+  ]
+  const G = shareGroups(OM, P, 'me@x')
+  eq(G.length === 1 && G[0].sharer.email === 'aree@x' && G[0].viewers.map(v => v.email).join() === 'nok@x', true, 'the group is the sharer plus people in the room who joined voice')
+  eq(G[0].meInside, false, 'someone elsewhere is outside the group, so gets the alert and thumbnail')
+  eq(shareGroups(OM, P.map(p => p.email === 'me@x' ? { ...p, x: 20, y: 4 } : p), 'me@x')[0].meInside, true, 'once I walk in with voice on, I am inside and the alert stops')
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

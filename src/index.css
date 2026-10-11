@@ -341,3 +341,9 @@ html[data-fx='on'] .urgent-badge {
 .hd-bird-away { animation: hd-flyaway .7s ease-in forwards; }
 @keyframes hd-flyaway { to { transform: translate(14px, -46px) scale(.7); opacity: 0 } }
 /* นกขยับเบา ๆ และช้า — ให้เห็นแม้เครื่องตั้ง "ลดภาพเคลื่อนไหว" ไว้ (ผู้ใช้ขอให้นกจิก/เดิน/บินได้จริง) */
+/* ภาพย่อ "กำลังแชร์จอ" เหนือกลุ่ม — เด้งขึ้นมา + ลอยเบา ๆ · เส้นข้อความในจอขยับให้รู้ว่าสด */
+.hd-share-pop { animation: hd-sharein .35s ease-out, hd-sharebob 3s ease-in-out .35s infinite; }
+@keyframes hd-sharein { from { transform: translate(-50%, 6px) scale(.6); opacity: 0 } to { transform: translate(-50%, 0) scale(1); opacity: 1 } }
+@keyframes hd-sharebob { 0%, 100% { transform: translate(-50%, 0) } 50% { transform: translate(-50%, -2px) } }
+.hd-share-line { animation: hd-shareline 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: left; }
+@keyframes hd-shareline { 0%, 100% { transform: scaleX(1) } 50% { transform: scaleX(.6) } }
