@@ -18,6 +18,7 @@ import { loadMusicSettings, saveMusicSettings, effectiveVolume, loadGardenSettin
 import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
+import { GardenLife } from './GardenLife'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
 import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
@@ -773,6 +774,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 </div>
               )
             }))}
+            {/* ── นกจิกพื้น + ใบไม้ร่วงบนหญ้าในสวน ── */}
+            <GardenLife rows={map.rows} blocked={new Set(propKey ? propKey.split(';') : [])} tile={TILE}
+              people={[...(pos ? [pos] : []), ...online.map(o => ({ x: o.x, y: o.y }))]} />
             {/* ── สิ่งของชิ้นใหญ่ (น้ำตก ศาลา ม้านั่ง ...) — ภาพเดียวทั้งชิ้น · คลิกทะลุไปช่องข้างใต้ ── */}
             {mapProps.map((pr, i) => {
               const d = propDef(pr.kind)
