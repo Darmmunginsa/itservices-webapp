@@ -225,7 +225,7 @@ const featherTex = (drake: boolean) => canvasTex(128, 128, x => {
   }
 })
 
-export interface DuckRig { group: THREE.Group; body: THREE.Group; head: THREE.Group; feet: THREE.Group[] }
+export interface DuckRig { group: THREE.Group; body: THREE.Group; head: THREE.Group; feet: THREE.Group[]; wings: { pivot: THREE.Group; wing: THREE.Mesh; d: number }[] }
 /** เป็ดคู่: ขาวทั้งตัว (seed คี่) + มัลลาร์ดตัวเมีย — body = ส่วนที่เอียง (มุดหัว/ดำน้ำ) · หมุนรอบกลางตัวบนผิวน้ำ */
 export function buildDuck(seed: number): DuckRig {
   const drake = seed % 2 === 1
@@ -239,11 +239,15 @@ export function buildDuck(seed: number): DuckRig {
     torso.geometry.computeVertexNormals() }
   torso.position.y = 0.07; body.add(torso)
   // ปีกพับข้างตัว + แถบน้ำเงินเหลือบ (speculum)
+  const wings: DuckRig['wings'] = []
   for (const d of [-1, 1]) {
     const wing = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), plum)
-    wing.scale.set(1.55, 0.42, 0.42); wing.position.set(-0.04, 0.12, d * 0.095); wing.rotation.z = 0.12; body.add(wing)
+    // บานพับปีกที่ไหล่ — กระพือ = หมุนรอบแกนยาวลำตัว
+    const pivot = new THREE.Group(); pivot.position.set(-0.02, 0.15, d * 0.06); body.add(pivot)
+    wing.scale.set(1.55, 0.42, 0.42); wing.position.set(-0.02, -0.03, d * 0.035); wing.rotation.z = 0.12; pivot.add(wing)
+    wings.push({ pivot, wing, d })
     const spec = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.005), std({ color: '#2b3fbf', roughness: 0.2, metalness: 0.5, emissive: '#1d2a8a', emissiveIntensity: 0.2 }))
-    spec.position.set(-0.1, 0.125, d * 0.142); spec.rotation.y = d * 0.12; if (!drake) body.add(spec)
+    spec.position.set(-0.08, -0.025, d * 0.082); spec.rotation.y = d * 0.12; if (!drake) pivot.add(spec)
   }
   // หาง: ขนดำงอนขึ้น (ตัวผู้มีขนม้วน)
   const tailM = std({ color: drake ? '#f2f1ec' : '#6d5134', roughness: 0.6 })
@@ -269,7 +273,7 @@ export function buildDuck(seed: number): DuckRig {
     feet.push(f)
   }
   g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true })
-  return { group: g, body, head, feet }
+  return { group: g, body, head, feet, wings }
 }
 
 export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: number) => void } {
@@ -463,7 +467,7 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
     return {
       rig, ring, drops, R,
       x: cx + (i ? 1.6 : -1.6), z: 3.1, heading: i ? Math.PI : 0, tx: cx, tz: 3.1,
-      mode: 'swim' as 'swim' | 'dabble' | 'dive', since: 0, next: 6 + i * 5, splashAt: -9, sx: 0, sz: 0,
+      mode: 'swim' as 'swim' | 'dabble' | 'dive' | 'preen' | 'flap', since: 0, next: 6 + i * 5, splashAt: -9, sx: 0, sz: 0,
     }
   })
   const newTarget = (d: (typeof ducks)[number]) => { for (let k = 0; k < 20; k++) { const x = cx + (d.R() - 0.5) * rx * 1.6, z = cz + (d.R() - 0.5) * rz * 1.5; if (inPond(x, z)) { d.tx = x; d.tz = z; return } } }
@@ -489,7 +493,29 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
       rig.head.rotation.z = Math.sin(t * 0.7 + i * 2) * 0.12                          // พยักหน้า/มองรอบ
       rig.head.rotation.y = Math.sin(t * 0.45 + i) * 0.35
       rig.feet.forEach((f, k) => { f.rotation.z = Math.sin(t * 6 + k * Math.PI) * 0.6 })
-      if (t > d.next) { d.mode = d.R() < 0.5 ? 'dive' : 'dabble'; d.since = t; if (d.mode === 'dabble') splash(d, t) }
+      if (t > d.next) { const r = d.R(); d.mode = r < 0.28 ? 'dive' : r < 0.55 ? 'dabble' : r < 0.8 ? 'preen' : 'flap'; d.since = t; if (d.mode === 'dabble') splash(d, t) }
+    } else if (d.mode === 'preen') {
+      // ไซ้ขน ~3.5 วิ: หันคอไปด้านหลังข้างหนึ่ง จิกขนปีกถี่ ๆ สลับยกปีกนิด ๆ
+      const side = Math.floor(d.since) % 2 ? 1 : -1
+      const k = el < 0.4 ? el / 0.4 : el > 3.1 ? Math.max(0, 1 - (el - 3.1) / 0.4) : 1
+      rig.head.rotation.y = side * 2.3 * k
+      rig.head.rotation.z = (-0.55 + Math.sin(t * 16) * 0.12) * k
+      rig.wings.forEach(w => { w.pivot.rotation.x = w.d === side ? -w.d * (0.25 + Math.sin(t * 3) * 0.1) * k : 0 })
+      rig.body.rotation.x = side * 0.12 * k
+      rig.group.position.y = 0.02 + Math.sin(t * 2.2 + i) * 0.006
+      if (el > 3.5) { d.mode = 'swim'; d.next = t + 7 + d.R() * 8; rig.body.rotation.x = 0; rig.wings.forEach(w => { w.pivot.rotation.x = 0 }) }
+    } else if (d.mode === 'flap') {
+      // กระพือปีก ~1.8 วิ: ยืดตัวขึ้นจากน้ำ ปีกกางตีถี่ แล้วกระโดดบินไปข้างหน้าเล็กน้อย ลงน้ำมีน้ำกระเซ็น
+      const k = Math.min(1, el / 0.25) * (el > 1.55 ? Math.max(0, 1 - (el - 1.55) / 0.25) : 1)
+      const flap = Math.sin(el * 26)
+      rig.wings.forEach(w => { w.pivot.rotation.x = -w.d * (0.6 + flap * 0.9) * k; w.wing.scale.z = 0.42 + 0.75 * k })
+      rig.body.rotation.z = 0.55 * k                                               // ยืดอกตั้งขึ้น
+      const hop = el > 0.5 && el < 1.4 ? Math.sin(((el - 0.5) / 0.9) * Math.PI) : 0
+      rig.group.position.y = 0.02 + k * 0.05 + hop * 0.22
+      if (el > 0.5 && el < 1.4) { const nx = d.x + Math.cos(d.heading) * 0.55 * dt, nz = d.z - Math.sin(d.heading) * 0.55 * dt; if (inPond(nx, nz)) { d.x = nx; d.z = nz } }
+      rig.feet.forEach((f, j) => { f.rotation.z = Math.sin(t * 14 + j * Math.PI) * 0.8 * k })
+      if (el < dt * 1.5 || (el > 1.4 && el - dt <= 1.4)) splash(d, t)
+      if (el > 1.8) { d.mode = 'swim'; d.next = t + 8 + d.R() * 8; rig.body.rotation.z = 0; rig.wings.forEach(w => { w.pivot.rotation.x = 0; w.wing.scale.z = 0.42 }) }
     } else if (d.mode === 'dabble') {
       // มุดหัวหากิน ~3 วิ: ก้นกระดกชี้ฟ้า ตีนตีน้ำ
       const k = el < 0.4 ? el / 0.4 : el > 2.8 ? Math.max(0, 1 - (el - 2.8) / 0.4) : 1

@@ -11,4 +11,4 @@ const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.01, 50);
 const ctl = new OrbitControls(cam, r.domElement); ctl.target.set(0, 0, 0)
 scene.add(new THREE.HemisphereLight('#eaf4ff', '#557', 1)); const sun = new THREE.DirectionalLight('#fff', 2); sun.position.set(2, 5, 3); scene.add(sun)
 const ducks = [1, 2].map(s => { const d = buildDuck(s); d.group.position.set(0, 0, s === 1 ? -0.3 : 0.3); d.group.scale.setScalar(2); scene.add(d.group); return d }); cam.position.set(1.2, 0.9, 1.6)
-r.setAnimationLoop(() => { ctl.update(); r.render(scene, cam) })
+r.setAnimationLoop(t => { const s = t / 1000; const [a, b] = ducks; a.wings.forEach(w => { w.pivot.rotation.x = -w.d * (0.6 + Math.sin(s * 26) * 0.9); w.wing.scale.z = 1.17 }); a.body.rotation.z = 0.55; b.head.rotation.y = 2.3; b.head.rotation.z = -0.55 + Math.sin(s * 16) * 0.12; ctl.update(); r.render(scene, cam) })
