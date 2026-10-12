@@ -21,7 +21,7 @@ import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
 import { GardenLife } from './GardenLife'
 import { MiniOffice, type MiniPerson } from './MiniOffice'
-import { useDocPip, pipSupported } from '../../hooks/useDocPip'
+import { useDocPip, pipBlockReason } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
 import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
@@ -911,8 +911,14 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               👤 แต่งตัวละคร
             </button>
           )}
-          {pipSupported() && (
-            <button onClick={() => { if (pip.win) pip.close(); else openPip().then(ok => { if (!ok) cb.current.onError('เปิดหน้าต่างลอยไม่ได้ — ใช้ Chrome หรือ Edge รุ่นล่าสุด') }) }}
+          {/* แสดงเสมอ — เบราว์เซอร์ไม่รองรับ = กดแล้วบอกเหตุผลที่ชัด (เดิมซ่อนปุ่มไป ผู้ใช้ไม่รู้ว่ามีหรือทำไมไม่มี) */}
+          {(
+            <button onClick={() => {
+              if (pip.win) { pip.close(); return }
+              const why = pipBlockReason()
+              if (why) { cb.current.onError(`เปิดหน้าต่างลอยไม่ได้ — ${why}`); return }
+              openPip().then(ok => { if (!ok) cb.current.onError('เปิดหน้าต่างลอยไม่ได้ — เบราว์เซอร์ปฏิเสธ (ลองกดอีกครั้ง หรือดูว่าถูกบล็อกโดยนโยบายองค์กรไหม)') })
+            }}
               title="หน้าต่างเล็กลอยอยู่บนสุดเสมอ — ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด และกดเปิด/ปิดไมค์ได้"
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${pip.win ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600'}`}>
               🗗 {pip.win ? 'ปิดหน้าต่างลอย' : 'หน้าต่างลอย'}

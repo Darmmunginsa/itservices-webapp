@@ -9,6 +9,18 @@ const api = (): DocPip | null => (typeof window !== 'undefined' && 'documentPict
 
 export const pipSupported = (): boolean => !!api()
 
+/** ทำไมเปิดหน้าต่างลอยไม่ได้ — บอกผู้ใช้ให้ตรงจุด (null = เปิดได้) */
+export function pipBlockReason(): string | null {
+  if (api()) return null
+  const framed = (() => { try { return window.top !== window.self } catch { return true } })()
+  if (framed) return 'หน้านี้เปิดอยู่ในกรอบของหน้าอื่น (iframe) — เปิด Helpdesk ตรง ๆ ในแท็บของตัวเองแล้วลองใหม่'
+  if (!window.isSecureContext) return 'ต้องเปิดผ่าน https'
+  const ua = navigator.userAgent
+  const edge = /Edg\/(\d+)/.exec(ua), chrome = /Chrome\/(\d+)/.exec(ua)
+  if (edge || chrome) return `เบราว์เซอร์รุ่นนี้ยังไม่รองรับ (${edge ? `Edge ${edge[1]}` : `Chrome ${chrome![1]}`}) — อัปเดตเป็นรุ่น 116 ขึ้นไป หรืออาจถูกปิดโดยนโยบายองค์กร`
+  return 'ใช้ได้เฉพาะ Chrome หรือ Edge (Firefox / Safari ยังไม่รองรับหน้าต่างลอยแบบนี้)'
+}
+
 function copyStyles(to: Document) {
   for (const sheet of [...document.styleSheets]) {
     try {
