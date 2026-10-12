@@ -14,6 +14,7 @@ import { PAGES, ALWAYS_KEYS } from './config/pages'
 import type { AgentProfile } from './types/common'
 
 import { Sidebar } from './components/layout/Sidebar'
+import { PinnedProjectsDrawer } from './components/layout/PinnedProjectsDrawer'
 import { BottomNav } from './components/layout/BottomNav'
 import { Ticker } from './components/layout/Ticker'
 import { ToastContainer } from './components/common/Toast'
@@ -267,6 +268,7 @@ function AppContent() {
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950" style={{ background: 'var(--app-bg)' }}>
       <Sidebar />
+      <PinnedProjectsDrawer />
       <div className="flex-1 md:ml-56 flex flex-col min-h-screen min-w-0 overflow-x-hidden">
         <Ticker />
         <main className="flex-1 pb-16 md:pb-0">

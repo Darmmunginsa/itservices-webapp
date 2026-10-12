@@ -1,15 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
-import { FolderOpen, ChevronRight, ChevronDown, X } from 'lucide-react'
+import { ChevronRight, ChevronDown, X } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { useT } from '../../i18n/useT'
-import { spGet } from '../../services/sharepoint'
 import { PAGES, GROUP_TITLE } from '../../config/pages'
-import type { FocusItem } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { user, allowedPages } = useAppStore()
+  const { user, allowedPages } = useAppStore()  // โครงการที่ปักหมุด ย้ายไปเป็นลิ้นชักขวาจอ (PinnedProjectsDrawer)
   const t = useT()
 
   // เมนูสร้างจาก PAGES registry + กรองด้วยสิทธิ์รายคน (Admin กำหนดใน HD_PagePermissions)
@@ -25,16 +23,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   function toggleGroup(t: string) {
     setCollapsed(prev => { const next = { ...prev, [t]: !prev[t] }; localStorage.setItem('navCollapsed', JSON.stringify(next)); return next })
   }
-
-  // โครงการที่ Pin ไว้ที่ Navigator
-  const [pinnedProjects, setPinnedProjects] = useState<FocusItem[]>([])
-  useEffect(() => {
-    if (!user?.email) return
-    spGet<FocusItem>('HD_Focus', `FocusedEmail eq '${user.email}' and FocusType eq 'Project'`,
-      'Id,Title,RefID,FocusType,PinTarget', undefined, 100)
-      .then(rows => setPinnedProjects(rows.filter(r => r.PinTarget === 'Navigator')))
-      .catch(() => {})
-  }, [user?.email])
 
   const linkCls = ({ isActive }: { isActive: boolean }) => cn(
     'flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm transition-colors group',
@@ -72,19 +60,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           )
         })}
 
-        {/* โครงการที่ Pin (Navigator shortcuts) */}
-        {pinnedProjects.length > 0 && (
-          <div className="mb-1 mt-1 border-t border-gray-100 dark:border-gray-800 pt-2">
-            <p className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">📌 {t('nav.pinnedProjects')}</p>
-            {pinnedProjects.map(p => (
-              <Link key={p.id} to={`/projects/${p.RefID}`} onClick={onNavigate}
-                className="flex items-center gap-3 px-4 py-2 mx-2 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-primary-600 transition-colors">
-                <FolderOpen size={15} className="flex-shrink-0 text-primary-500" />
-                <span className="flex-1 truncate">{p.Title}</span>
-              </Link>
-            ))}
-          </div>
-        )}
       </nav>
 
       {/* เวอร์ชันแทนชื่อคน — ชื่อ/ตำแหน่งดูได้ที่เมนูโปรไฟล์มุมบนอยู่แล้ว
