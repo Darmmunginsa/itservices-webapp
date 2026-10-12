@@ -8,7 +8,7 @@ import { floorTexture, groundTexture, skyTexture } from './textures3d'
 import { buildPlant3D, buildFlowerBed3D, buildDesk3D, waterMaterial } from './detail3d'
 import { createEffects, fpsWatch, type Effects, type Quality } from './effects3d'
 import { buildPlantReal, buildHedgeReal, buildMeetingChair, buildCoffeeStation } from './realism3d'
-import { lightAt, skyAt, buildClouds, buildTreeRing, buildGrass } from './environment3d'
+import { lightAt, skyAt, buildClouds, buildTreeRing, buildGrass, buildStepStones } from './environment3d'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
 import type { Desk } from '../../utils/officeDecor'
@@ -550,6 +550,10 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     // หญ้าพลิ้วลม (ช่องหญ้าที่ไม่มีของวางทับ)
     const grassTiles: { x: number; y: number }[] = []
     rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'g' && !blocked.has(`${x},${y}`) && !falls.has(`${x},${y}`)) grassTiles.push({ x, y }) }))
+    const pathTiles: { x: number; y: number }[] = []
+    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'p' && !falls.has(`${x},${y}`)) pathTiles.push({ x, y }) }))
+    const stones = buildStepStones(pathTiles)
+    if (stones) world.add(stones)
     const grass = buildGrass(grassTiles)
     if (grass) { world.add(grass.mesh); st.ticks.push(grass.tick) }
     // ต้นไม้ล้อมตึก + เมฆลอย

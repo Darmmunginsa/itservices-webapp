@@ -59,15 +59,11 @@ export const floorTexture = (ch: string): THREE.Texture | null => {
         const R = rnd(23); x.strokeStyle = 'rgba(40,100,30,.35)'
         for (let i = 0; i < 160; i++) { const px = R() * s, py = R() * s; x.beginPath(); x.moveTo(px, py); x.lineTo(px + (R() - .5) * 3, py - 3 - R() * 3); x.stroke() }
       })
-    case 'p':   // ทางเดินหิน
-      return make('stone', 128, (x, s) => {
-        x.fillStyle = '#9aa58c'; x.fillRect(0, 0, s, s)
-        const R = rnd(29)
-        for (let i = 0; i < 9; i++) {
-          const cx = (i % 3 + .5) * s / 3 + (R() - .5) * 8, cy = (Math.floor(i / 3) + .5) * s / 3 + (R() - .5) * 8
-          x.fillStyle = ['#d6d3d1', '#cfcac4', '#e2ded9'][i % 3]; x.beginPath(); x.ellipse(cx, cy, s / 7.5, s / 8.5, R() * 3, 0, Math.PI * 2); x.fill()
-          x.strokeStyle = 'rgba(0,0,0,.15)'; x.stroke()
-        }
+    case 'p':   // ทางเดินหิน: พื้นกรวดละเอียด + มอส/หญ้าแทรก (แผ่นหินจริงวางทับเป็น 3D)
+      return make('stone', 256, (x, s) => {
+        noise(x, s, '#6f6a60', ['#827c70', '#5c574e', '#948e80', '#4d4942'], 5200, 29, 1.6)
+        const R = rnd(37)
+        for (let i = 0; i < 26; i++) { x.fillStyle = ['rgba(92,140,60,.55)', 'rgba(70,120,48,.5)'][i % 2]; x.beginPath(); x.ellipse(R() * s, R() * s, 6 + R() * 14, 3 + R() * 8, R() * 3, 0, Math.PI * 2); x.fill() }
       })
     case 'f':   // แปลงดอกไม้ (ดิน)
       return make('soil', 128, (x, s) => noise(x, s, '#6b4226', ['#7a4a2a', '#5a3820', '#8a5a35'], 900, 31, 1.3))
