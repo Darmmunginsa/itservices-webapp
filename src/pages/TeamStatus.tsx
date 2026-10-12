@@ -118,12 +118,19 @@ export default function TeamStatus() {
     // ShowInTeamStatus = false → Admin ซ่อนคนนั้นไว้ (เช่น ผู้บริหาร)
     // ไม่มีคอลัมน์/ยังไม่ตั้งค่า = แสดงตามปกติ จึงไม่กระทบของเดิม
     // '*' ครอบคลุม ShowInTeamStatus ถ้ามี (ไม่มีก็ไม่พัง) + รูปจาก AttachmentFiles ในคำขอเดียว
+    // ทุกทางที่โหลดต้องกรองคนที่ Admin ซ่อนไว้ — เดิมทางสำรอง (โหลดรูปไม่ได้) ไม่ได้ดึงคอลัมน์ซ่อน จึงโผล่ทุกคน
+    const shown = (rows: AgentRow[]) => setAgents(rows.filter(a => a.ShowInTeamStatus !== false))
     spGet<AgentRow>('HD_AgentProfiles', undefined, '*,AttachmentFiles/FileName', 'Title asc', 500, 'AttachmentFiles')
-      .then(rows => setAgents(rows.filter(a => a.ShowInTeamStatus !== false)))
+      .then(shown)
       .catch(() => {
-        // expand ไม่ได้ (สิทธิ์/ลิสต์แปลก) → ชุดเดิมไม่มีรูป
-        spGet<AgentRow>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role', 'Title asc')
-          .then(setAgents).catch(() => {})
+        // expand ไม่ได้ (สิทธิ์/ลิสต์แปลก) → ไม่มีรูป แต่ยังกรองคนที่ซ่อน
+        spGet<AgentRow>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role,ShowInTeamStatus', 'Title asc', 500)
+          .then(shown)
+          .catch(() => {
+            // ยังไม่มีคอลัมน์ ShowInTeamStatus เลย (ยังไม่เคยซ่อนใคร) → แสดงทุกคน
+            spGet<AgentRow>('HD_AgentProfiles', undefined, 'Id,Title,EmailText,SupportGroup,Role', 'Title asc', 500)
+              .then(setAgents).catch(() => {})
+          })
       })
   }, [])
 
