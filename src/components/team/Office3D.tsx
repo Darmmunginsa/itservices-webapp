@@ -6,6 +6,8 @@ import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
 import { deskSurface, type Desk } from '../../utils/officeDecor'
 import { buildProp3D } from './props3d'
+import { buildDecor3D, buildRobot3D, buildBird3D, type RobotRig, type BirdRig } from './decor3d'
+import { birdHomes, birdFeedSpot, type BirdHome } from '../../utils/gardenBirds'
 
 // ── ออฟฟิศ 3D (เฟส 1): ห้อง ผนัง พื้น เฟอร์นิเจอร์ สวนแบบเรียบ + ตัวละครเดินได้ ──
 // สไตล์การ์ตูน ทรงเรียบ สร้างจากรูปทรงพื้นฐานทั้งหมด (ไม่มีไฟล์โมเดล ไม่มีลิขสิทธิ์) · 1 ช่อง = 1 หน่วย · แกน x = คอลัมน์, z = แถว
@@ -16,10 +18,18 @@ export interface Person3D {
   moving: boolean; sitting: boolean; speaking: boolean; statusColor: string; me: boolean
 }
 
+export interface Item3D { kind: string; x: number; y: number; rot: number; flip: boolean; onDesk: boolean }
+export interface Robot3D { x: number; y: number; left: boolean; holding: 'broom' | 'cup' | 'none'; label: string | null }
+
 interface Props {
   rows: string[]
   props: Prop[]
   desks: { email: string; desk: Desk }[]
+  /** ของแต่งโต๊ะของทุกคน */
+  items: Item3D[]
+  robot: Robot3D | null
+  /** คนที่กำลังให้อาหารนก */
+  feeders: { x: number; y: number }[]
   people: Person3D[]
   onTileClick: (x: number, y: number) => void
   onFocusChange: (focused: boolean) => void
@@ -106,16 +116,22 @@ function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
 
 const FACE_ROT: Record<Facing, number> = { down: 0, up: Math.PI, left: -Math.PI / 2, right: Math.PI / 2 }
 
-export default function Office3D({ rows, props, desks, people, onTileClick, onFocusChange }: Props) {
+export default function Office3D({ rows, props, desks, items, robot, feeders, people, onTileClick, onFocusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls
     world: THREE.Group; avatars: Map<string, AvatarRig>; floor: THREE.InstancedMesh | null; tiles: { x: number; y: number }[]
     /** สิ่งของที่ขยับได้ (น้ำตก ชิงช้า ...) */
     ticks: ((t: number) => void)[]
+    robot: RobotRig & { label: CSS2DObject }
+    birds: { rig: BirdRig; home: BirdHome; i: number; away: number }[]
   } | null>(null)
   const peopleRef = useRef(people)
   useEffect(() => { peopleRef.current = people }, [people])
+  const robotRef = useRef(robot)
+  useEffect(() => { robotRef.current = robot }, [robot])
+  const feedRef = useRef(feeders)
+  useEffect(() => { feedRef.current = feeders }, [feeders])
   const clickRef = useRef(onTileClick)
   useEffect(() => { clickRef.current = onTileClick }, [onTileClick])
 
@@ -152,7 +168,13 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
     sun.shadow.bias = -0.0005
     scene.add(sun, sun.target)
     const world = new THREE.Group(); scene.add(world)
-    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floor: null, tiles: [], ticks: [] }
+    // หุ่นยนต์ (สร้างครั้งเดียว ขยับตามตำแหน่งที่ส่งมา)
+    const rr = buildRobot3D()
+    const rel = document.createElement('div')
+    rel.style.cssText = 'font: 600 9px system-ui, sans-serif; padding: 1px 6px; border-radius: 999px; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; white-space: nowrap'
+    const rlabel = new CSS2DObject(rel); rlabel.position.set(0, 1.3, 0); rr.group.add(rlabel)
+    rr.group.visible = false; scene.add(rr.group)
+    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floor: null, tiles: [], ticks: [], robot: { ...rr, label: rlabel }, birds: [] }
 
     const resize = () => {
       const w = host.clientWidth, h = host.clientHeight
@@ -193,6 +215,37 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
       const t = clock.elapsedTime
       const st = sceneRef.current!
       for (const tk of st.ticks) tk(t)
+      // หุ่นยนต์: เลื่อนไปช่องถัดไปแบบนุ่ม · เดินแกว่งขา · ไม้กวาดปัด / ถือแก้ว
+      const rb = robotRef.current, R = st.robot
+      R.group.visible = !!rb
+      if (rb) {
+        tmp.set(rb.x + 0.5, 0, rb.y + 0.5)
+        if (R.group.position.lengthSq() === 0) R.group.position.copy(tmp)
+        const dist = R.group.position.distanceTo(tmp)
+        R.group.position.lerp(tmp, Math.min(1, step * 1.6))
+        const tr = rb.left ? -Math.PI / 2 : Math.PI / 2
+        R.group.rotation.y += (tr - R.group.rotation.y) * Math.min(1, step * 6)
+        const sw = dist > 0.05 ? Math.sin(t * 9) * 0.5 : 0
+        R.legL.rotation.x = sw; R.legR.rotation.x = -sw
+        R.broom.visible = rb.holding === 'broom'; R.cup.visible = rb.holding === 'cup'
+        R.arm.rotation.x = rb.holding === 'broom' ? Math.sin(t * 6) * 0.35 : rb.holding === 'cup' ? -0.9 : 0
+        R.label.visible = !!rb.label
+        if (rb.label && R.label.element.textContent !== rb.label) R.label.element.textContent = rb.label
+      }
+      // นก: ให้อาหาร = บินมารุมรอบคนให้ · คนเข้าใกล้ = บินหนี · ปกติ = จิกพื้นที่บ้าน
+      for (const b of st.birds) {
+        const spot = birdFeedSpot(b.home, b.i, feedRef.current)
+        const near = !spot && peopleRef.current.some(p => Math.abs(p.x - b.home.x) <= 1 && Math.abs(p.y - b.home.y) <= 1)
+        b.away = Math.max(0, Math.min(1, b.away + (near ? step * 2 : -step * 0.8)))
+        const gx = spot ? spot.fx : b.home.fx, gz = spot ? spot.fz : b.home.fz
+        const bg = b.rig.group
+        bg.position.x += (gx - bg.position.x) * Math.min(1, step * 1.5)
+        bg.position.z += (gz - bg.position.z) * Math.min(1, step * 1.5)
+        bg.position.y = b.away * 3
+        bg.visible = b.away < 0.95
+        bg.rotation.y = spot ? (bg.position.x > spot.cx ? Math.PI : 0) : (b.home.flip ? Math.PI : 0)
+        b.rig.head.rotation.z = b.away > 0 ? 0 : -Math.max(0, Math.sin(t * 7 + b.i * 1.7)) * 0.9
+      }
       for (const p of peopleRef.current) {
         const rig = st.avatars.get(p.email)
         if (!rig) continue
@@ -240,7 +293,7 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
   }, [])
 
   // ── สร้างฉาก (พื้น ผนัง ของ) ใหม่เมื่อผัง/ของ/โต๊ะเปลี่ยน ──
-  const sceneKey = JSON.stringify([rows, props, desks.map(d => [d.desk.x, d.desk.y, d.desk.rot, d.desk.style])])
+  const sceneKey = JSON.stringify([rows, props, desks.map(d => [d.desk.x, d.desk.y, d.desk.rot, d.desk.style]), items])
   useEffect(() => {
     const st = sceneRef.current
     if (!st) return
@@ -320,6 +373,26 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
       if (b.tick) st.ticks.push(b.tick)
     }
 
+    // ของแต่งโต๊ะ (บนโต๊ะ = ยกขึ้นไปบนหน้าโต๊ะ) — ขยับได้บางชิ้น (ลูกโลกหมุน ปลาว่าย แมวหายใจ)
+    for (const it of items) {
+      const b = buildDecor3D(it.kind)
+      b.group.position.set(it.x + 0.5, it.onDesk ? 0.77 : 0, it.y + 0.5)
+      b.group.rotation.y = -(it.rot * Math.PI) / 180
+      if (it.flip) b.group.scale.x = -1
+      world.add(b.group)
+      if (b.tick) st.ticks.push(b.tick)
+    }
+    // นก 5 ตัวบนหญ้า (ตำแหน่งตรงกับมุมมอง 2D)
+    for (const b of st.birds) st.scene.remove(b.rig.group)
+    const blocked = new Set<string>()
+    for (const p of props) {
+      const d = propDef(p.kind)
+      if (d) for (let dy = 0; dy < d.h; dy++) for (let dx = 0; dx < d.w; dx++) if ((d.mask?.[dy]?.[dx] ?? 'X') === 'X') blocked.add(`${p.x + dx},${p.y + dy}`)
+    }
+    st.birds = birdHomes(rows, blocked).map((home, i) => {
+      const rig = buildBird3D(); rig.group.position.set(home.fx, 0, home.fz); st.scene.add(rig.group)
+      return { rig, home, i, away: 0 }
+    })
     // โต๊ะส่วนตัว (3×3 · ตัวโต๊ะ 6 ช่อง + เก้าอี้)
     const deskItems: Parameters<typeof boxes>[0] = []
     for (const { desk } of desks) {

@@ -26,7 +26,7 @@ import { readersOf } from '../../utils/readState'
 import { useReadReceipts } from '../../hooks/useReadReceipts'
 import { sendWithFiles } from '../../services/chatSend'
 import { MiniOffice, type MiniPerson } from './MiniOffice'
-import type { Person3D } from './Office3D'
+import type { Person3D, Item3D, Robot3D } from './Office3D'
 // มุมมอง 3D โหลดเฉพาะตอนเปิด — คนใช้ 2D ไม่ต้องโหลด three.js
 const Office3D = lazy(() => import('./Office3D'))
 import { useDocPip, pipBlockReason, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
@@ -44,7 +44,7 @@ import { meetingSeats, deskSeats } from '../../utils/officeSeats'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
-import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, type MyDecor } from '../../utils/officeDecor'
+import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, defOf, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, joinMuted, shareGroups, HEAR_RADIUS } from '../../utils/voiceProximity'
 
@@ -695,6 +695,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     ...(pos ? [{ email: me, x: (seat ?? pos).x, y: (seat ?? pos).y, name: myAvatar.nick || 'ฉัน', avatar: myAvatar, face: seat ? seat.face : myFace, moving: meMoving && !seat, sitting: !!seat, speaking: voice.meSpeaking, statusColor: statusDot(memberBy.get(me)?.slot), me: true }] : []),
   ] : []
   const desks3d = view3d ? allDecor.filter(d => d.decor.desk).map(d => ({ email: d.email, desk: d.decor.desk! })) : []
+  const robot3d: Robot3D | null = view3d && robot ? {
+    x: robot.pos.x, y: robot.pos.y, left: robot.left, label: robotLabel(robot, nickOf),
+    holding: robot.phase === 'carry' || robot.phase === 'give' ? 'cup' : robot.phase === 'brew' || (robot.mission?.kind === 'coffee' && robot.phase === 'fetch') ? 'none' : 'broom',
+  } : null
+  const items3d: Item3D[] = view3d ? allDecor.flatMap(d => d.decor.items.map(it => ({ kind: it.kind, x: it.x, y: it.y, rot: it.rot, flip: it.flip, onDesk: defOf(it.kind)?.surface === 'desk' }))) : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
   // เห็นแชทห้องนี้อยู่ (หน้าต่างโฟกัส) = อ่านแล้ว → บันทึกขึ้น SharePoint ให้คนส่งเห็น "อ่านแล้ว" และเครื่องอื่นไม่ขึ้นว่ายังไม่อ่าน
   const lastVisibleId = visibleChat.reduce((mx, c) => Math.max(mx, c.id), 0)
@@ -771,7 +776,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         {view3d && !theaterOn && (
           <div className={`rounded-2xl border-2 ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`} style={{ height: '70vh' }}>
             <Suspense fallback={<div className="h-full flex items-center justify-center text-xs text-gray-400">กำลังโหลดมุมมอง 3D…</div>}>
-              <Office3D rows={map.rows} props={mapProps} desks={desks3d} people={people3d} onFocusChange={setFocused}
+              <Office3D rows={map.rows} props={mapProps} desks={desks3d} items={items3d} people={people3d} onFocusChange={setFocused}
+                robot={robot3d}
+                feeders={[...(feeding && pos ? [pos] : []), ...online.filter(o => o.feed).map(o => ({ x: o.x, y: o.y }))]}
                 onTileClick={(x, y) => {
                   const st3 = seatAt(seats, x, y)
                   if (st3) { sitOn(st3); return }
