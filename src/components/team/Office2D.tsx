@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
@@ -19,6 +20,8 @@ import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
 import { GardenLife } from './GardenLife'
+import { MiniOffice, type MiniPerson } from './MiniOffice'
+import { useDocPip, pipSupported } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
 import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
@@ -643,6 +646,23 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   useEffect(() => { ambient.setMix(JSON.parse(mixKey)) }, [mixKey])
   useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
+  // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
+  const pip = useDocPip()
+  const openPip = pip.open
+  // เข้าร่วมเสียงอยู่ → ให้เบราว์เซอร์เปิดหน้าต่างลอยเองตอนสลับไปแท็บ/หน้าต่างอื่น (Chrome/Edge รุ่นใหม่ที่รองรับ)
+  useEffect(() => {
+    if (!voice.micOn || !('mediaSession' in navigator)) return
+    const ms = navigator.mediaSession as MediaSession & { setActionHandler(a: string, h: (() => void) | null): void }
+    try { ms.setActionHandler('enterpictureinpicture', () => { openPip() }) } catch { return }
+    return () => { try { ms.setActionHandler('enterpictureinpicture', null) } catch { /* */ } }
+  }, [voice.micOn, openPip])
+  const miniPeople: MiniPerson[] = pip.win ? [
+    ...online.map(o => {
+      const e = o.email.toLowerCase(), st = o.seat ? seatAt(seats, o.seat.x, o.seat.y) : null
+      return { email: e, x: (st ?? o).x, y: (st ?? o).y, name: nickOf(e, o.UserName), avatar: avatarOf(e), face: st ? st.face : motion[e]?.face ?? 'down', speaking: speakingSet.has(e), muted: !!o.muted, sitting: !!st }
+    }),
+    ...(pos ? [{ email: me, x: (seat ?? pos).x, y: (seat ?? pos).y, name: myAvatar.nick || 'ฉัน', avatar: myAvatar, face: seat ? seat.face : myFace, speaking: voice.meSpeaking, muted: voice.micOn && voice.muted, me: true, sitting: !!seat }] : []),
+  ] : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }) }, [visibleChat.length, tab])
@@ -664,6 +684,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
 
   return (
     <div className="flex flex-col lg:flex-row gap-3">
+      {pip.win && createPortal(
+        <MiniOffice rows={map.rows} people={miniPeople} zoneLabel={ZONE_LABEL[myZone]} unread={unread + dmUnread}
+          micOn={voice.micOn} muted={voice.muted} onToggleMute={voice.toggleMute} onLeaveVoice={voice.stop}
+          onBack={() => { pip.close(); window.focus() }}
+          screen={shown?.screen ?? null} screenBy={shown ? nameOf(shown.email) : ''} />,
+        pip.win.document.body,
+      )}
       {dressing && <AvatarEditor initial={myAvatar} seed={me} saving={savingAvatar} onSave={saveAvatar} onClose={() => setDressing(false)} />}
       {/* ── แผนที่ ── */}
       <div className="min-w-0 flex-1">
@@ -882,6 +909,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={() => setDressing(true)} title="แต่งตัวละครของคุณ — ผม เสื้อผ้า ของประดับ · ทุกคนเห็น"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
               👤 แต่งตัวละคร
+            </button>
+          )}
+          {pipSupported() && (
+            <button onClick={() => { if (pip.win) pip.close(); else openPip().then(ok => { if (!ok) cb.current.onError('เปิดหน้าต่างลอยไม่ได้ — ใช้ Chrome หรือ Edge รุ่นล่าสุด') }) }}
+              title="หน้าต่างเล็กลอยอยู่บนสุดเสมอ — ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด และกดเปิด/ปิดไมค์ได้"
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${pip.win ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600'}`}>
+              🗗 {pip.win ? 'ปิดหน้าต่างลอย' : 'หน้าต่างลอย'}
             </button>
           )}
           {pos && !decor.decorating && (
