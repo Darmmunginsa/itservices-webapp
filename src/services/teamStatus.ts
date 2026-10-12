@@ -1,7 +1,7 @@
 import { spGet, spCreate, spUpdate, spDelete } from './sharepoint'
 import type { StatusType, TeamStatusSlot } from '../types/teamStatus'
 import { DAY_END_HOUR } from '../types/teamStatus'
-import { myOpenAutoSlots } from '../utils/teamStatusAuto'
+import { myOpenAutoSlots, type LeaveLike } from '../utils/teamStatusAuto'
 
 const LIST = 'HD_TeamStatus'
 const SELECT = 'Id,Title,UserEmail,UserName,StatusType,StartTime,EndTime,Note,Created'
@@ -69,4 +69,12 @@ export { AUTO_NOTE } from '../utils/teamStatusAuto'
 export async function endMyAutoSlots(email: string): Promise<void> {
   const open = myOpenAutoSlots(await getSlotsForDay(new Date()), email)
   await Promise.all(open.map(s => endSlotNow(s.id)))
+}
+
+/** วันลาราววันนั้น (เผื่อเขตเวลา ±1 วัน — คัดวันจริงฝั่งเครื่อง) */
+export async function getLeavesAround(day: Date): Promise<LeaveLike[]> {
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const a = new Date(day); a.setDate(a.getDate() - 1)
+  const b = new Date(day); b.setDate(b.getDate() + 1)
+  return spGet<LeaveLike>('HD_LeaveRequests', `LeaveDate ge '${ymd(a)}' and LeaveDate le '${ymd(b)}'`, 'Id,LeaveDate,LeaveType,RequestedEmail,Status', undefined, 500)
 }

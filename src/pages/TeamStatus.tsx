@@ -17,8 +17,9 @@ import { Button } from '../components/common/Button'
 import { spGet } from '../services/sharepoint'
 import { getSchedule } from '../services/graph'
 import {
-  activeSlotAt, AUTO_NOTE, createSlot, endMyAutoSlots, endOfDay, endOfWorkday, endSlotNow, getSlotsForDay, startOfDay,
+  activeSlotAt, AUTO_NOTE, createSlot, endMyAutoSlots, getLeavesAround, endOfDay, endOfWorkday, endSlotNow, getSlotsForDay, startOfDay,
 } from '../services/teamStatus'
+import { leaveSlotsForDay, type LeaveLike } from '../utils/teamStatusAuto'
 import { useAppStore } from '../store/useAppStore'
 import type { AgentProfile } from '../types/common'
 import {
@@ -92,6 +93,8 @@ export default function TeamStatus() {
   const zoneChain = useRef<Promise<unknown>>(Promise.resolve())
   const [slots, setSlots] = useState<TeamStatusSlot[]>([])
   const [calendar, setCalendar] = useState<CalendarBusySlot[]>([])
+  // วันลาของวันที่ดูอยู่ — แสดงเป็นสถานะ "ลา" ทั้งวัน กันติดต่อไปโดยไม่รู้ว่าเขาลา
+  const [leaves, setLeaves] = useState<LeaveLike[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dayOffset, setDayOffset] = useState(0)
@@ -127,6 +130,7 @@ export default function TeamStatus() {
   // setState ใน .then เท่านั้น (ไม่ await แล้ว set ตรง ๆ) — กฎ lint ของโปรเจกต์
   const loadSlots = useCallback(() => {
     getSlotsForDay(day).then(setSlots).catch(() => { /* list อาจยังไม่ถูกสร้าง */ }).finally(() => setLoading(false))
+    getLeavesAround(day).then(setLeaves).catch(() => { /* ไม่มีสิทธิ์อ่าน/ยังไม่มีลิสต์ — ไม่แสดงวันลา */ })
   }, [day])
 
   // polling 30 วิ = realtime พอสำหรับการใช้งานจริง
@@ -159,7 +163,7 @@ export default function TeamStatus() {
 
   const members = useMemo<Member[]>(() => {
     const byUser = new Map<string, TeamStatusSlot[]>()
-    for (const s of slots) {
+    for (const s of [...slots, ...leaveSlotsForDay(leaves, day)]) {
       const k = (s.UserEmail ?? '').toLowerCase(); if (!k) continue
       byUser.set(k, [...(byUser.get(k) ?? []), s])
     }
@@ -188,7 +192,7 @@ export default function TeamStatus() {
       if (ab !== bb) return ab - bb
       return a.name.localeCompare(b.name, 'th')
     })
-  }, [agents, slots, calendar, now, user?.email])
+  }, [agents, slots, leaves, day, calendar, now, user?.email])
 
   const meLc = (user?.email ?? '').toLowerCase()
   const mine = members.find(m => m.email.toLowerCase() === meLc)
@@ -230,6 +234,8 @@ export default function TeamStatus() {
   }, [user, loadSlots])
 
   async function endNow(id: number) {
+    // slot ติดลบ = วันลา (มาจาก HD_LeaveRequests ไม่ใช่สถานะที่ตั้งเอง) — จบที่นี่ไม่ได้
+    if (id < 0) { addToast('error', 'วันนี้เป็นวันลา — ถ้าไม่ได้ลาแล้ว ให้ยกเลิกวันลาที่ปฏิทินบริษัท'); return }
     try { await endSlotNow(id); addToast('success', 'กลับมาว่างแล้ว'); loadSlots() }
     catch { addToast('error', 'อัปเดตไม่สำเร็จ') }
   }

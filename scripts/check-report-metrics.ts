@@ -10,7 +10,7 @@ import { encodeRoom, decodeRoom, shareGroups } from '../src/utils/voiceProximity
 import { claimBeats } from '../src/utils/voiceProximity'
 import { avatarFromSeed, parseAvatar, serializeAvatar, facingFrom, displayName, cleanNick } from '../src/utils/officeAvatar'
 import { robotRoute, robotAt, parseCleanRequests, planMissions, robotNow, coffeeSpot, robotLabel } from '../src/utils/officeRobot'
-import { myOpenAutoSlots } from '../src/utils/teamStatusAuto'
+import { myOpenAutoSlots, leaveSlotsForDay } from '../src/utils/teamStatusAuto'
 import { formatCitation, formatBibliography } from '../src/utils/citation'
 import { youtubeId, parseMediaLinks } from '../src/utils/youtube'
 import { parseSections, parseInline, countLinks, referencedFiles } from '../src/utils/richNote'
@@ -2585,6 +2585,23 @@ eq(decodeRoom('garden:mic').feed, false, 'old positions are not feeding')
   const all = new Map([['me@x', parseRead('{"c":{"":20}}')], ['aree@x', parseRead('{"c":{"":20}}')], ['nok@x', parseRead('{"c":{"":15}}')]])
   eq(readersOf(all, '', 18, 'me@x').join(), 'aree@x', 'shows who has read my message, not counting me')
   eq(dmSeen(parseRead('{"d":{"me@x":40}}'), 'ME@x', 40) && !dmSeen(undefined, 'me@x', 1), true, 'a private message shows read once the other side has read it')
+}
+
+// -- วันลาในสถานะทีม --
+{
+  const day = new Date(2026, 9, 12, 10)
+  const L = [
+    { id: 1, LeaveDate: '2026-10-12', LeaveType: 'ลาพักร้อน', RequestedEmail: 'Aree@x', Status: 'Approved' },
+    { id: 2, LeaveDate: '2026-10-12', LeaveType: 'ลาป่วย', RequestedEmail: 'nok@x', Status: 'Pending' },
+    { id: 3, LeaveDate: '2026-10-12', LeaveType: 'ลากิจ', RequestedEmail: 'boss@x', Status: 'Rejected' },
+    { id: 4, LeaveDate: '2026-10-13', LeaveType: 'ลาพักร้อน', RequestedEmail: 'kong@x', Status: 'Approved' },
+    { id: 5, LeaveDate: '2026-10-12', LeaveType: 'ลาพักร้อน', RequestedEmail: 'aree@x', Status: 'Approved' },
+  ]
+  const S = leaveSlotsForDay(L, day)
+  eq(S.map(x => x.UserEmail).join(), 'aree@x,nok@x', 'approved and pending leave show; rejected and other days do not; duplicates once')
+  eq(S[0].StatusType === 'Off' && S[0].Title === '🏖️ ลาพักร้อน' && S[1].Title === '🏖️ ลาป่วย (รออนุมัติ)', true, 'leave shows as Off with its type, pending is marked')
+  eq(new Date(S[0].StartTime) <= new Date(2026, 9, 12, 0, 1) && new Date(S[0].EndTime) >= new Date(2026, 9, 12, 23, 0), true, 'a leave day covers the whole day')
+  eq(S.every(x => x.id < 0), true, 'leave entries cannot be confused with real status rows')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
