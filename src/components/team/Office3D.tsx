@@ -5,8 +5,9 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { floorTexture, groundTexture, skyTexture } from './textures3d'
-import { buildPlant3D, buildHedge3D, buildFlowerBed3D, buildDesk3D, waterMaterial } from './detail3d'
+import { buildPlant3D, buildFlowerBed3D, buildDesk3D, waterMaterial } from './detail3d'
 import { createEffects, fpsWatch, type Effects, type Quality } from './effects3d'
+import { buildPlantReal, buildHedgeReal, buildMeetingChair, buildCoffeeStation } from './realism3d'
 import { lightAt, skyAt, buildClouds, buildTreeRing, buildGrass } from './environment3d'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
@@ -425,18 +426,24 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
         caps.push({ x: cx, z: cz, w: 1.04, d: 1.04, h: 0.07, y: 1.3, color: '#64748b' })
         caps.push({ x: cx, z: cz, w: 1.02, d: 1.02, h: 0.1, color: '#9aa4b2' })
       }
-      else if (ch === 'T') tables.push({ x: cx, z: cz, w: 1, d: 1, h: 0.08, y: 0.68, color: '#a16207' }, { x: cx, z: cz, w: 0.12, d: 0.12, h: 0.68, color: '#713f12' })
+      else if (ch === 'T') {
+        // เก้าอี้ประชุมด้านบน/ล่างของโต๊ะ (ช่องพื้นที่ไม่ใช่โต๊ะ) — หันเข้าหาโต๊ะ
+        const floorAt = (yy: number) => { const c2 = rows[yy]?.[x]; return !!c2 && c2 !== 'T' && c2 !== '#' && FLOOR[c2] !== undefined && c2 !== 'w' }
+        if (floorAt(y - 1)) { const c1 = buildMeetingChair(); c1.position.set(cx, 0, cz - 0.95); c1.rotation.y = Math.PI; world.add(c1) }
+        if (floorAt(y + 1)) { const c1 = buildMeetingChair(); c1.position.set(cx, 0, cz + 0.95); world.add(c1) }
+      }
+      if (ch === 'T') tables.push({ x: cx, z: cz, w: 1, d: 1, h: 0.08, y: 0.68, color: '#a16207' }, { x: cx, z: cz, w: 0.12, d: 0.12, h: 0.68, color: '#713f12' })
       else if (ch === 'd') {
         tables.push({ x: cx, z: cz - 0.1, w: 0.95, d: 0.6, h: 0.06, y: 0.7, color: '#c79a63' })
         dark.push({ x: cx, z: cz - 0.3, w: 0.5, d: 0.04, h: 0.32, y: 0.8, color: '#1e293b' })
         dark.push({ x: cx, z: cz + 0.35, w: 0.4, d: 0.4, h: 0.45, color: '#334155' })   // เก้าอี้
       }
-      else if (ch === 'K') dark.push({ x: cx, z: cz, w: 0.55, d: 0.5, h: 1.0, color: '#475569' })
+      else if (ch === 'K') { const cs = buildCoffeeStation(); cs.group.position.set(cx, 0, cz); world.add(cs.group); st.ticks.push(cs.tick) }
       else if (ch === 'W') white.push({ x: cx, z: cz, w: 0.9, d: 0.06, h: 0.7, y: 0.6, color: '#f8fafc' })
-      else if (ch === 'h') { const hg = buildHedge3D(x * 31 + y); hg.position.set(cx, 0, cz); world.add(hg) }
+      else if (ch === 'h') { const hg = buildHedgeReal(x * 31 + y); hg.position.set(cx, 0, cz); hg.rotation.y = ((x + y) % 4) * Math.PI / 2; world.add(hg) }
       else if (ch === 'f') { const fb = buildFlowerBed3D(x * 13 + y); fb.position.set(cx, 0, cz); world.add(fb) }
       else if (isPlant(ch)) {
-        const pl = buildPlant3D(ch)
+        const pl = buildPlantReal(ch) ?? buildPlant3D(ch)
         if (pl) { pl.position.set(cx, 0, cz); pl.rotation.y = (x * 7 + y * 3) % 6; world.add(pl) }
         else { pots.push({ x: cx, z: cz, w: 0.36, d: 0.36, h: 0.32, color: '#b45309' }); foliage.push({ x: cx, z: cz, color: PLANT_COLORS[ch], r: 0.42 }) }
       }

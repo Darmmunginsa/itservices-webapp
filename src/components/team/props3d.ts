@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { floorTexture } from './textures3d'
 import { waterMaterial } from './detail3d'
+import { buildVendingReal, buildLogoReal, buildSwingA } from './realism3d'
 
 // ── สิ่งของชิ้นใหญ่ในมุมมอง 3D (เฟส 2) — ทรงการ์ตูน สร้างจากรูปทรงพื้นฐาน ──
 // พิกัดในชิ้น: x = 0..กว้าง (คอลัมน์), z = 0..ลึก (แถว), y = สูง · ด้านหลังของชิ้นอยู่ทาง z = 0 (ทิศเหนือ) หน้าหันมาทางกล้อง
@@ -148,16 +149,7 @@ const BUILD: Record<string, (w: number, h: number) => Built3D> = {
     }
     return { group: g }
   },
-  swing: (w, h) => {
-    const g = new THREE.Group(), k = kit(g)
-    for (const x of [0.25, w - 0.25]) { k.box(0.08, 1.7, 0.08, '#92400e', x, 0, 0.4); k.box(0.08, 1.7, 0.08, '#92400e', x, 0, h - 0.4) }
-    k.box(w - 0.3, 0.08, 0.08, '#78350f', w / 2, 1.7, h / 2).scale.z = (h - 0.7) / 0.08
-    const seat = new THREE.Group(); seat.position.set(w / 2, 1.7, h / 2); g.add(seat)
-    const ks = kit(seat)
-    for (const x of [-0.3, 0.3]) ks.box(0.02, 1.2, 0.02, '#d6d3d1', x, -1.2, 0)
-    ks.box(0.75, 0.05, 0.3, '#b45309', 0, -1.25, 0)
-    return { group: g, tick: t => { seat.rotation.x = Math.sin(t * 1.4) * 0.35 } }
-  },
+  swing: (w, h) => buildSwingA(w, h),
   gardenlamp: () => {
     const g = new THREE.Group(), k = kit(g)
     k.cyl(0.05, 0.08, 1.5, '#1f2937', 0.5, 0, 0.5)
@@ -254,13 +246,7 @@ const BUILD: Record<string, (w: number, h: number) => Built3D> = {
     for (let i = 0; i < w; i++) { k.cyl(0.16, 0.16, 0.05, '#dc2626', i + 0.5, 0.7, 0.85); k.cyl(0.03, 0.03, 0.7, '#9ca3af', i + 0.5, 0, 0.85) }
     return { group: g }
   },
-  vending: () => {
-    const g = new THREE.Group(), k = kit(g)
-    k.box(0.85, 1.8, 0.7, '#dc2626', 0.5, 0, 0.45)
-    k.box(0.55, 1.1, 0.02, M('#bae6fd', { emissive: '#0c4a6e', opacity: 0.85 }), 0.4, 0.5, 0.81)
-    for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) k.box(0.1, 0.12, 0.1, ['#f59e0b', '#22c55e', '#3b82f6', '#ec4899'][(r + c) % 4], 0.22 + c * 0.17, 0.6 + r * 0.25, 0.7)
-    return { group: g }
-  },
+  vending: () => ({ group: buildVendingReal() }),
   bigfridge: () => {
     const g = new THREE.Group(), k = kit(g)
     k.box(0.85, 1.9, 0.7, '#e5e7eb', 0.5, 0, 0.45)
@@ -311,14 +297,7 @@ const BUILD: Record<string, (w: number, h: number) => Built3D> = {
     ;['#fde68a', '#fecaca', '#bfdbfe', '#bbf7d0', '#fde68a'].forEach((c, i) => k.box(0.22, 0.28, 0.01, c, 0.4 + i * (w - 0.8) / 4, 1.0 + (i % 2) * 0.2, 0.54))
     return { group: g }
   },
-  logo: (w) => {
-    const g = new THREE.Group(), k = kit(g)
-    k.box(w - 0.2, 0.2, 0.3, '#334155', w / 2, 0, 0.5)
-    k.box(w - 0.2, 0.9, 0.12, '#0f172a', w / 2, 0.6, 0.5)
-    const glow = new THREE.MeshLambertMaterial({ color: '#60a5fa', emissive: '#2563eb' })
-    k.box(w - 0.6, 0.3, 0.02, glow, w / 2, 0.9, 0.57)
-    return { group: g, tick: t => { glow.emissive.setHSL(0.6, 0.8, 0.35 + Math.sin(t * 2) * 0.08) } }
-  },
+  logo: (w) => buildLogoReal(w),
   clock: () => {
     const g = new THREE.Group(), k = kit(g)
     k.box(0.5, 1.9, 0.4, '#78350f', 0.5, 0, 0.5)

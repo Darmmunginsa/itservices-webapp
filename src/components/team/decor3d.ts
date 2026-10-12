@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { DESK_ITEMS } from './realism3d'
 
 // ── เฟส 3: ของแต่งโต๊ะ 25 ชิ้น · หุ่นยนต์ทำความสะอาด · นกในสวน (มุมมอง 3D) ──
 // ทุกชิ้นสร้างในกรอบ 1 ช่อง จุดกำเนิด = กลางช่อง ระดับพื้น (ของบนโต๊ะ ผู้เรียกยกขึ้นไปวางบนหน้าโต๊ะเอง)
@@ -101,6 +102,8 @@ const DECOR: Record<string, () => Built> = {
 }
 
 export function buildDecor3D(kind: string): Built {
+  const real = DESK_ITEMS[kind]   // รุ่นละเอียด (ของบนโต๊ะ) มาก่อน
+  if (real) return real()
   const b = DECOR[kind]
   if (b) return b()
   const g = new THREE.Group(); kit(g).box(0.3, 0.3, 0.3, '#9ca3af', 0, 0, 0)
