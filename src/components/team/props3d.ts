@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { floorTexture } from './textures3d'
+import { waterMaterial } from './detail3d'
 
 // ── สิ่งของชิ้นใหญ่ในมุมมอง 3D (เฟส 2) — ทรงการ์ตูน สร้างจากรูปทรงพื้นฐาน ──
 // พิกัดในชิ้น: x = 0..กว้าง (คอลัมน์), z = 0..ลึก (แถว), y = สูง · ด้านหลังของชิ้นอยู่ทาง z = 0 (ทิศเหนือ) หน้าหันมาทางกล้อง
@@ -76,7 +78,8 @@ const BUILD: Record<string, (w: number, h: number) => Built3D> = {
     }
     // บ่อ: ขอบหิน + น้ำ
     for (let i = 0; i < w; i++) for (const z of [2, 3]) k.box(1, 0.06, 1, '#155e75', i + 0.5, -0.05, z + 0.5)
-    const water = k.box(w - 0.3, 0.02, 1.8, M('#38bdf8', { opacity: 0.8 }), w / 2, 0.02, 2.95)
+    const wm = waterMaterial(floorTexture('w')!)   // ผิวน้ำไหล สะท้อนแสง เหมือนบ่อในสวน
+    const water = k.box(w - 0.3, 0.02, 1.8, wm.material, w / 2, 0.02, 2.95)
     water.receiveShadow = true
     for (let i = 0; i < 18; i++) {
       const a = (i / 18) * Math.PI * 2
@@ -98,6 +101,7 @@ const BUILD: Record<string, (w: number, h: number) => Built3D> = {
       group: g,
       tick: t => {
         tex.offset.y = (t * 0.9) % 1
+        wm.tick(t)
         foam.forEach((f, i) => f.scale.setScalar(0.8 + Math.abs(Math.sin(t * 3 + i)) * 0.5))
         koi.forEach((f, i) => {
           const a = t * (0.35 + i * 0.1) + i * 2

@@ -19,6 +19,7 @@ function kit(g: THREE.Group) {
     box: (w: number, h: number, d: number, c: string | THREE.Material, x: number, y: number, z: number) => put(new THREE.BoxGeometry(w, h, d), typeof c === 'string' ? M(c) : c, x, y + h / 2, z),
     cyl: (rt: number, rb: number, h: number, c: string | THREE.Material, x: number, y: number, z: number, s = 10) => put(new THREE.CylinderGeometry(rt, rb, h, s), typeof c === 'string' ? M(c) : c, x, y + h / 2, z),
     ball: (r: number, c: string | THREE.Material, x: number, y: number, z: number, s = 8) => put(new THREE.SphereGeometry(r, s, Math.max(6, s - 2)), typeof c === 'string' ? M(c) : c, x, y, z),
+    cone: (r: number, h: number, c: string | THREE.Material, x: number, y: number, z: number, s = 8) => put(new THREE.ConeGeometry(r, h, s), typeof c === 'string' ? M(c) : c, x, y + h / 2, z),
   }
 }
 
@@ -31,10 +32,10 @@ const plant = (k: ReturnType<typeof kit>, leaf: string, tall: number, pot = '#b4
 
 const DECOR: Record<string, () => Built> = {
   // ── บนโต๊ะ (ขนาดเล็ก ราว 0.1–0.3) ──
-  mug: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.06, 0.05, 0.12, '#f8fafc', 0, 0, 0); k.cyl(0.05, 0.05, 0.01, '#78350f', 0, 0.11, 0); return { group: g } },
-  laptop: () => { const g = new THREE.Group(), k = kit(g); k.box(0.36, 0.02, 0.25, '#9ca3af', 0, 0, 0); const s = k.box(0.36, 0.24, 0.015, M('#1e3a8a', '#1d4ed8'), 0, 0.02, -0.12); s.rotation.x = -0.25; return { group: g } },
+  mug: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.06, 0.055, 0.12, '#f8fafc', 0, 0, 0); k.cyl(0.052, 0.052, 0.005, '#6b3a1e', 0, 0.112, 0); const h = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 12), M('#f8fafc')); h.position.set(0.07, 0.06, 0); g.add(h); const steam = k.cyl(0.006, 0.012, 0.08, M('#ffffff', undefined, 0.45), 0, 0.13, 0); return { group: g, tick: t => { steam.position.y = 0.17 + (t % 1.5) * 0.04; (steam.material as THREE.MeshStandardMaterial).opacity = 0.45 * (1 - (t % 1.5) / 1.5) } } },
+  laptop: () => { const g = new THREE.Group(), k = kit(g); k.box(0.36, 0.02, 0.25, '#cbd5e1', 0, 0, 0); for (let r = 0; r < 3; r++) k.box(0.3, 0.003, 0.04, '#334155', 0, 0.02, -0.05 + r * 0.05); k.box(0.1, 0.003, 0.05, '#94a3b8', 0, 0.02, 0.09); const s = k.box(0.36, 0.24, 0.012, '#94a3b8', 0, 0.02, -0.12); s.rotation.x = -0.25; const scr = k.box(0.32, 0.2, 0.004, M('#1e3a8a', '#2563eb'), 0, 0.035, -0.11); scr.rotation.x = -0.25; return { group: g } },
   dualscreen: () => { const g = new THREE.Group(), k = kit(g); for (const x of [-0.2, 0.2]) { k.box(0.36, 0.24, 0.02, M('#1e293b'), x, 0.12, -0.1); k.box(0.32, 0.2, 0.005, M('#2563eb', '#1e40af'), x, 0.14, -0.088) } k.box(0.06, 0.12, 0.06, '#334155', 0, 0, -0.1); return { group: g } },
-  lamp: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.07, 0.08, 0.02, '#334155', 0, 0, 0); k.cyl(0.01, 0.01, 0.28, '#334155', 0, 0.02, 0); k.cyl(0.04, 0.09, 0.08, M('#fde68a', '#f59e0b'), 0.04, 0.28, 0); return { group: g } },
+  lamp: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.07, 0.08, 0.02, '#1f2937', 0, 0, 0); const a1 = k.cyl(0.01, 0.01, 0.2, '#1f2937', 0.03, 0.02, 0); a1.rotation.z = -0.3; const a2 = k.cyl(0.01, 0.01, 0.16, '#1f2937', 0.08, 0.2, 0); a2.rotation.z = 0.9; const head = k.cyl(0.03, 0.07, 0.08, M('#1f2937'), 0.15, 0.24, 0); head.rotation.z = 2.4; k.ball(0.025, M('#fef3c7', '#fbbf24'), 0.17, 0.22, 0, 8); return { group: g } },
   photo: () => { const g = new THREE.Group(), k = kit(g); const f = k.box(0.16, 0.2, 0.02, '#b45309', 0, 0, 0); f.rotation.x = -0.2; k.box(0.12, 0.15, 0.005, '#7dd3fc', 0, 0.025, 0.012); return { group: g } },
   books: () => { const g = new THREE.Group(), k = kit(g); ['#dc2626', '#2563eb', '#16a34a', '#f59e0b'].forEach((c, i) => k.box(0.26 - i * 0.02, 0.04, 0.18, c, 0, i * 0.04, 0)); return { group: g } },
   cactus: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.06, 0.05, 0.07, '#c2410c', 0, 0, 0); k.cyl(0.035, 0.04, 0.16, '#16a34a', 0, 0.07, 0); k.cyl(0.02, 0.02, 0.07, '#16a34a', 0.05, 0.13, 0); return { group: g } },
@@ -54,16 +55,49 @@ const DECOR: Record<string, () => Built> = {
   fridge: () => { const g = new THREE.Group(), k = kit(g); k.box(0.55, 0.85, 0.5, '#e5e7eb', 0, 0, -0.1); k.box(0.03, 0.3, 0.03, '#6b7280', 0.2, 0.45, 0.16); k.box(0.12, 0.08, 0.005, '#f472b6', -0.1, 0.6, 0.155); return { group: g } },
   aquarium: () => {
     const g = new THREE.Group(), k = kit(g)
-    k.box(0.85, 0.5, 0.4, '#334155', 0, 0, -0.2)
-    k.box(0.85, 0.5, 0.4, M('#7dd3fc', undefined, 0.5), 0, 0.5, -0.2)
-    const fish = [0, 1, 2].map(i => k.ball(0.04, ['#f97316', '#facc15', '#ef4444'][i], 0, 0.75, -0.2, 6))
+    k.box(0.88, 0.5, 0.42, '#1f2937', 0, 0, -0.2)
+    k.box(0.85, 0.05, 0.38, '#d6c7a1', 0, 0.5, -0.2)   // กรวด
+    k.box(0.85, 0.48, 0.4, M('#7dd3fc', undefined, 0.35), 0, 0.5, -0.2)
+    k.box(0.88, 0.04, 0.42, '#1f2937', 0, 0.98, -0.2)
+    for (const x of [-0.3, 0.25]) for (let i = 0; i < 3; i++) { const w = k.box(0.02, 0.18 + i * 0.05, 0.01, '#16a34a', x + i * 0.04, 0.55, -0.25); w.rotation.z = (i - 1) * 0.2 }
+    k.ball(0.06, '#a8a29e', 0.05, 0.57, -0.15, 8)
+    const fish = [0, 1, 2].map(i => k.ball(0.035, ['#f97316', '#facc15', '#ef4444'][i], 0, 0.75, -0.2, 8))
     fish.forEach(f => f.scale.set(1.8, 1, 0.6))
-    return { group: g, tick: t => fish.forEach((f, i) => { f.position.x = Math.sin(t * (0.6 + i * 0.2) + i) * 0.32; f.position.y = 0.62 + i * 0.1 + Math.sin(t + i) * 0.03; f.rotation.y = Math.cos(t * (0.6 + i * 0.2) + i) > 0 ? 0 : Math.PI }) }
+    const bubbles = [0, 1, 2, 3].map(i => k.ball(0.012, M('#ffffff', undefined, 0.7), 0.3, 0.6, -0.15 + i * 0.01, 6))
+    return { group: g, tick: t => {
+      fish.forEach((f, i) => { f.position.x = Math.sin(t * (0.6 + i * 0.2) + i) * 0.32; f.position.y = 0.65 + i * 0.09 + Math.sin(t + i) * 0.03; f.rotation.y = Math.cos(t * (0.6 + i * 0.2) + i) > 0 ? 0 : Math.PI })
+      bubbles.forEach((b, i) => { b.position.y = 0.58 + ((t * 0.25 + i * 0.25) % 1) * 0.38 })
+    } }
   },
-  guitar: () => { const g = new THREE.Group(), k = kit(g); k.box(0.3, 0.04, 0.2, '#1f2937', 0, 0, 0); const b = k.ball(0.18, '#b45309', 0, 0.3, 0, 12); b.scale.set(1, 1.2, 0.4); k.box(0.05, 0.6, 0.03, '#78350f', 0, 0.45, 0); return { group: g } },
-  cat: () => { const g = new THREE.Group(), k = kit(g); const body = k.ball(0.2, '#f59e0b', 0, 0.12, 0, 12); body.scale.set(1.3, 0.6, 1); k.ball(0.11, '#f59e0b', 0.2, 0.14, 0.05); for (const z of [0, 0.08]) k.box(0.03, 0.06, 0.03, '#f59e0b', 0.24, 0.24, z); return { group: g, tick: t => { body.scale.y = 0.6 + Math.sin(t * 1.5) * 0.03 } } },
-  arcade: () => { const g = new THREE.Group(), k = kit(g); k.box(0.6, 1.5, 0.55, '#7c3aed', 0, 0, -0.15); const s = k.box(0.45, 0.35, 0.02, M('#22d3ee', '#0891b2'), 0, 0.95, 0.13); s.rotation.x = -0.2; k.box(0.5, 0.06, 0.25, '#111827', 0, 0.75, 0.2); k.ball(0.03, '#ef4444', -0.1, 0.83, 0.22); return { group: g } },
-  bike: () => { const g = new THREE.Group(), k = kit(g); for (const x of [-0.3, 0.3]) { const w = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.025, 6, 18), M('#111827')); w.position.set(x, 0.2, 0); g.add(w) } const f = k.box(0.6, 0.03, 0.03, '#dc2626', 0, 0.32, 0); f.rotation.z = 0.1; k.box(0.12, 0.03, 0.06, '#111827', -0.15, 0.45, 0); return { group: g } },
+  guitar: () => { const g = new THREE.Group(), k = kit(g); k.box(0.3, 0.04, 0.2, '#1f2937', 0, 0, 0); const b1 = k.ball(0.18, M('#c2410c'), 0, 0.3, 0, 14); b1.scale.set(1, 1.15, 0.35); const b2 = k.ball(0.13, M('#c2410c'), 0, 0.52, 0, 14); b2.scale.set(1, 1, 0.35); k.cyl(0.05, 0.05, 0.012, '#111827', 0, 0.42, 0.06).rotation.x = Math.PI / 2; k.box(0.05, 0.55, 0.03, '#78350f', 0, 0.6, 0); k.box(0.08, 0.13, 0.03, '#3f2a1c', 0, 1.15, 0); for (let i = 0; i < 4; i++) k.box(0.003, 0.75, 0.003, '#e5e7eb', -0.015 + i * 0.01, 0.32, 0.065); return { group: g } },
+  cat: () => { const g = new THREE.Group(), k = kit(g); const body = k.ball(0.2, '#f59e0b', 0, 0.12, 0, 14); body.scale.set(1.3, 0.6, 1); for (let i = 0; i < 3; i++) { const st = k.box(0.04, 0.005, 0.2, '#c2410c', -0.12 + i * 0.1, 0.235, 0); st.rotation.y = 0.3 } const head = k.ball(0.11, '#f59e0b', 0.22, 0.14, 0.06, 12); for (const z of [0.0, 0.11]) k.cone(0.035, 0.07, '#f59e0b', 0.24, 0.22, z, 6); k.box(0.05, 0.005, 0.02, '#111827', 0.3, 0.15, 0.03); const tail = k.cyl(0.03, 0.03, 0.3, '#f59e0b', -0.25, 0.05, 0.12, 8); tail.rotation.set(Math.PI / 2, 0, 0.5); return { group: g, tick: t => { body.scale.y = 0.6 + Math.sin(t * 1.5) * 0.03; head.position.y = 0.14 + Math.sin(t * 1.5) * 0.005; tail.rotation.z = 0.5 + Math.sin(t * 0.8) * 0.25 } } },
+  arcade: () => {
+    const g = new THREE.Group(), k = kit(g)
+    k.box(0.62, 1.55, 0.55, '#6d28d9', 0, 0, -0.15)
+    k.box(0.64, 0.25, 0.57, M('#111827', '#7c3aed'), 0, 1.3, -0.15)   // ป้ายไฟด้านบน
+    const scr = new THREE.MeshStandardMaterial({ color: '#22d3ee', emissive: '#0891b2', roughness: 0.2 })
+    const s = k.box(0.45, 0.35, 0.02, scr, 0, 0.88, 0.13); s.rotation.x = -0.2
+    k.box(0.56, 0.06, 0.28, '#111827', 0, 0.72, 0.18)
+    k.cyl(0.012, 0.012, 0.08, '#e5e7eb', -0.15, 0.78, 0.2); k.ball(0.03, '#ef4444', -0.15, 0.86, 0.2)
+    ;['#ef4444', '#facc15', '#22c55e', '#3b82f6'].forEach((c, i) => k.cyl(0.022, 0.022, 0.015, M(c, c), 0.02 + (i % 2) * 0.07, 0.78, 0.15 + Math.floor(i / 2) * 0.06))
+    return { group: g, tick: t => { scr.emissive.setHSL(((t * 0.2) % 1), 0.8, 0.35 + Math.sin(t * 6) * 0.05) } }
+  },
+  bike: () => {
+    const g = new THREE.Group(), k = kit(g)
+    const wheel = (x: number) => {
+      const w = new THREE.Group(); w.position.set(x, 0.22, 0); g.add(w)
+      const tire = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.025, 8, 24), M('#111827')); w.add(tire)
+      for (let i = 0; i < 6; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.38, 0.005), M('#d1d5db')); sp.rotation.z = (i / 6) * Math.PI; w.add(sp) }
+    }
+    wheel(-0.32); wheel(0.32)
+    const f1 = k.box(0.5, 0.03, 0.03, '#dc2626', 0, 0.38, 0); f1.rotation.z = 0.15
+    const f2 = k.box(0.03, 0.3, 0.03, '#dc2626', -0.05, 0.22, 0); f2.rotation.z = 0.3
+    const f3 = k.box(0.03, 0.32, 0.03, '#dc2626', 0.28, 0.2, 0); f3.rotation.z = -0.3
+    k.box(0.13, 0.03, 0.07, '#111827', -0.12, 0.5, 0)   // อาน
+    k.box(0.03, 0.03, 0.3, '#374151', 0.33, 0.55, 0)   // แฮนด์
+    k.cyl(0.04, 0.04, 0.02, '#374151', -0.02, 0.18, 0.05).rotation.x = Math.PI / 2
+    return { group: g }
+  },
 }
 
 export function buildDecor3D(kind: string): Built {

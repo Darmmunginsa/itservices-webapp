@@ -5,9 +5,10 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { floorTexture, groundTexture, skyTexture } from './textures3d'
+import { buildPlant3D, buildHedge3D, buildFlowerBed3D, buildDesk3D, waterMaterial } from './detail3d'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
-import { deskSurface, type Desk } from '../../utils/officeDecor'
+import type { Desk } from '../../utils/officeDecor'
 import { buildProp3D } from './props3d'
 import { buildDecor3D, buildRobot3D, buildBird3D, type RobotRig, type BirdRig } from './decor3d'
 import { birdHomes, birdFeedSpot, type BirdHome } from '../../utils/gardenBirds'
@@ -333,6 +334,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       world.add(mesh); return mesh
     }
 
+    st.ticks = []
     // พื้น (คลิกเดินได้) — แยกตามวัสดุ: ไม้ปาร์เก้ พรม กระเบื้อง หญ้า ทางหิน น้ำ ...
     const groupsByTex = new Map<string, { x: number; y: number; ch: string }[]>()
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
@@ -346,7 +348,9 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     for (const [key, list] of groupsByTex) {
       const tex = floorTexture(key)
       const water = key === 'w'
-      const mat = new THREE.MeshStandardMaterial({ map: tex ?? undefined, color: tex ? '#ffffff' : (FLOOR[key] ?? FLOOR['.']), roughness: water ? 0.08 : key === 'C' ? 0.35 : key === '.' ? 0.55 : 0.95, metalness: 0, transparent: water, opacity: water ? 0.92 : 1 })
+      let mat: THREE.MeshStandardMaterial
+      if (water && tex) { const wm = waterMaterial(tex); mat = wm.material; st.ticks.push(wm.tick) }
+      else mat = new THREE.MeshStandardMaterial({ map: tex ?? undefined, color: tex ? '#ffffff' : (FLOOR[key] ?? FLOOR['.']), roughness: key === 'C' ? 0.35 : key === '.' ? 0.55 : 0.95, metalness: 0 })
       const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, list.length)
       list.forEach((t, i) => {
         const h = water ? 0.04 : 0.1, y0 = water ? -0.06 : -0.1
@@ -376,11 +380,12 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       }
       else if (ch === 'K') dark.push({ x: cx, z: cz, w: 0.55, d: 0.5, h: 1.0, color: '#475569' })
       else if (ch === 'W') white.push({ x: cx, z: cz, w: 0.9, d: 0.06, h: 0.7, y: 0.6, color: '#f8fafc' })
-      else if (ch === 'h') hedges.push({ x: cx, z: cz, w: 1, d: 1, h: 0.7, color: '#2f7a3a' })
-      else if (ch === 'f') foliage.push({ x: cx, z: cz, color: ['#f472b6', '#facc15', '#a78bfa'][(x + y) % 3], r: 0.18 })
+      else if (ch === 'h') { const hg = buildHedge3D(x * 31 + y); hg.position.set(cx, 0, cz); world.add(hg) }
+      else if (ch === 'f') { const fb = buildFlowerBed3D(x * 13 + y); fb.position.set(cx, 0, cz); world.add(fb) }
       else if (isPlant(ch)) {
-        pots.push({ x: cx, z: cz, w: 0.36, d: 0.36, h: 0.32, color: '#b45309' })
-        foliage.push({ x: cx, z: cz, color: PLANT_COLORS[ch], r: ch === 'G' || ch === 'U' ? 0.55 : 0.42 })
+        const pl = buildPlant3D(ch)
+        if (pl) { pl.position.set(cx, 0, cz); pl.rotation.y = (x * 7 + y * 3) % 6; world.add(pl) }
+        else { pots.push({ x: cx, z: cz, w: 0.36, d: 0.36, h: 0.32, color: '#b45309' }); foliage.push({ x: cx, z: cz, color: PLANT_COLORS[ch], r: 0.42 }) }
       }
     }))
     boxes(walls, true, false, 0.9); boxes(caps, true, false, 0.6); boxes(tables, true, true, 0.45); boxes(dark, true, true, 0.5); boxes(pots, true, true, 0.8); boxes(hedges, true, true, 0.95); boxes(white, true, false, 0.3)
@@ -396,7 +401,6 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     }
 
     // สิ่งของชิ้นใหญ่ (เฟส 2) — โมเดลการ์ตูนต่อชนิด · ชิ้นที่ขยับได้ลงทะเบียน tick
-    st.ticks = []
     for (const p of props) {
       const def = propDef(p.kind)
       if (!def) continue
@@ -426,16 +430,14 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       const rig = buildBird3D(); rig.group.position.set(home.fx, 0, home.fz); st.scene.add(rig.group)
       return { rig, home, i, away: 0 }
     })
-    // โต๊ะส่วนตัว (3×3 · ตัวโต๊ะ 6 ช่อง + เก้าอี้)
-    const deskItems: Parameters<typeof boxes>[0] = []
+    // โต๊ะส่วนตัว 9 แบบ (ตามที่แต่ละคนเลือก) — หมุนตามทิศโต๊ะ
     for (const { desk } of desks) {
-      // หน้าโต๊ะชิ้นเดียว (ไม่ต่อ 6 ชิ้นจนเห็นรอยต่อ)
-      const sf = deskSurface(desk)
-      const x0 = Math.min(...sf.map(t => t.x)), x1 = Math.max(...sf.map(t => t.x)) + 1, z0 = Math.min(...sf.map(t => t.y)), z1 = Math.max(...sf.map(t => t.y)) + 1
-      deskItems.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0 - 0.06, d: z1 - z0 - 0.06, h: 0.07, y: 0.7, color: '#b8875a' })
-      for (const [lx, lz] of [[x0 + 0.15, z0 + 0.15], [x1 - 0.15, z0 + 0.15], [x0 + 0.15, z1 - 0.15], [x1 - 0.15, z1 - 0.15]]) deskItems.push({ x: lx, z: lz, w: 0.08, d: 0.08, h: 0.7, color: '#6b4f33' })
+      const d3 = buildDesk3D(desk.style)
+      d3.group.position.set(desk.x + 0.5, 0, desk.y + 0.5)
+      d3.group.rotation.y = -(desk.rot * Math.PI) / 180
+      world.add(d3.group)
+      if (d3.tick) st.ticks.push(d3.tick)
     }
-    boxes(deskItems, true, true, 0.45)
 
     // ตั้งกล้องให้เห็นทั้งออฟฟิศครั้งแรก (ถ้ายังไม่มีตัวเรา)
     if (!st.controls.target.lengthSq()) { st.controls.target.set(W / 2, 0, H / 2); st.camera.position.set(W / 2, Math.max(W, H) * 0.7, H + 8) }
