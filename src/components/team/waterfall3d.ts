@@ -63,21 +63,120 @@ const softDot = () => canvasTex(64, 64, x => {
   const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.4, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)')
   x.fillStyle = g; x.fillRect(0, 0, 64, 64)
 }, false)
-/** ลายปลาคาร์ฟ (แต่ละตัวไม่ซ้ำ) — ห่อรอบลำตัว */
-function koiTex(seed: number, scheme: 'kohaku' | 'sanke' | 'ogon' | 'showa' | 'chagoi') {
+type KoiScheme = 'kohaku' | 'sanke' | 'ogon' | 'showa' | 'chagoi'
+/** ลายปลาคาร์ฟมองจากด้านบน: u = หัว→หาง (ซ้าย=หาง ขวา=หัว) · v = ข้างซ้าย→ข้างขวา · ลายแดง/ดำเกาะกลางหลัง ท้องขาว */
+function koiTex(seed: number, scheme: KoiScheme) {
   return canvasTex(256, 128, x => {
-    const base = { kohaku: '#fafaf7', sanke: '#fafaf7', ogon: '#f2b33d', showa: '#1c1c1c', chagoi: '#b7864e' }[scheme]
+    const base = { kohaku: '#fbfaf5', sanke: '#fbfaf5', ogon: '#f0b13a', showa: '#202020', chagoi: '#b98a52' }[scheme]
     x.fillStyle = base; x.fillRect(0, 0, 256, 128)
     const R = rnd(seed)
-    const blobs = (color: string, n: number, size: number) => { x.fillStyle = color; for (let i = 0; i < n; i++) { x.beginPath(); x.ellipse(30 + R() * 200, 20 + R() * 88, size * (0.6 + R()), size * (0.4 + R() * 0.6), R() * 3, 0, Math.PI * 2); x.fill() } }
-    if (scheme === 'kohaku') blobs('#e2451c', 5, 26)
-    if (scheme === 'sanke') { blobs('#e2451c', 4, 22); blobs('#151515', 6, 9) }
-    if (scheme === 'showa') { blobs('#e2451c', 4, 24); blobs('#fafaf7', 4, 16) }
-    if (scheme === 'ogon') { const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(255,240,180,.6)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 256, 128) }
-    // เกล็ด
-    x.strokeStyle = 'rgba(0,0,0,.12)'; x.lineWidth = 0.7
-    for (let yy = 4; yy < 128; yy += 7) for (let xx = (yy % 14 ? 0 : 4); xx < 256; xx += 8) { x.beginPath(); x.arc(xx, yy, 4, 0.2, Math.PI - 0.2); x.stroke() }
+    // ลายเป็นปื้นใหญ่ตามแนวหลัง (ไม่ลามถึงท้อง)
+    const patch = (color: string, n: number, size: number, from = 40, to = 230) => {
+      x.fillStyle = color
+      for (let i = 0; i < n; i++) {
+        const cx = from + R() * (to - from), cy = 64 + (R() - 0.5) * 40
+        x.beginPath(); x.ellipse(cx, cy, size * (0.8 + R() * 0.7), size * (0.55 + R() * 0.35), (R() - 0.5) * 0.8, 0, Math.PI * 2); x.fill()
+      }
+    }
+    if (scheme === 'kohaku') { patch('#d8361a', 3, 30, 60, 220); x.fillStyle = '#d8361a'; x.beginPath(); x.ellipse(232, 64, 16, 20, 0, 0, Math.PI * 2); x.fill() }
+    if (scheme === 'sanke') { patch('#d8361a', 3, 26, 60, 230); patch('#151515', 5, 9, 50, 200) }
+    if (scheme === 'showa') { patch('#d8361a', 3, 26, 70, 235); patch('#fbfaf5', 3, 18, 60, 200) }
+    if (scheme === 'ogon') { const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(180,110,20,.6)'); g.addColorStop(0.5, 'rgba(255,245,200,.7)'); g.addColorStop(1, 'rgba(180,110,20,.6)'); x.fillStyle = g; x.fillRect(0, 0, 256, 128) }
+    if (scheme === 'chagoi') { x.fillStyle = 'rgba(90,60,30,.35)'; x.fillRect(0, 50, 256, 28) }
+    // เกล็ดตาข่าย (เห็นชัดบนหลัง)
+    x.strokeStyle = scheme === 'showa' ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.16)'; x.lineWidth = 0.8
+    for (let yy = 6; yy < 122; yy += 7) for (let xx = (yy % 14 ? 0 : 4); xx < 225; xx += 8) { x.beginPath(); x.arc(xx, yy, 4.2, -Math.PI / 2 - 1.2, -Math.PI / 2 + 1.2, true); x.stroke() }
+    // หัวไม่มีเกล็ด · ขอบตัวเข้มเล็กน้อย (มีมิติ)
+    const sh = x.createLinearGradient(0, 0, 0, 128); sh.addColorStop(0, 'rgba(0,0,0,.18)'); sh.addColorStop(0.25, 'rgba(0,0,0,0)'); sh.addColorStop(0.75, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.18)')
+    x.fillStyle = sh; x.fillRect(0, 0, 256, 128)
   }, false)
+}
+
+/** ครีบโปร่งแสงมีก้านครีบ */
+const finTex = (tint: string) => canvasTex(128, 128, x => {
+  x.clearRect(0, 0, 128, 128)
+  const g = x.createRadialGradient(0, 64, 0, 0, 64, 128); g.addColorStop(0, tint); g.addColorStop(1, 'rgba(255,255,255,.35)')
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128)
+  x.strokeStyle = 'rgba(255,255,255,.55)'; x.lineWidth = 1.2
+  for (let a = -1.4; a <= 1.4; a += 0.14) { x.beginPath(); x.moveTo(0, 64); x.lineTo(Math.cos(a) * 140, 64 + Math.sin(a) * 140); x.stroke() }
+}, false)
+
+/** ปลาคาร์ฟ: ลำตัวป้อมเรียวสู่โคนหาง (มองจากบนเห็นทรงปลาชัด) · หางแฉกบาน · ครีบอกกาง · ครีบหลัง · หนวด
+ *  ว่ายแบบปลาจริง: ลำตัวบิดเป็นคลื่นตัว S (คำนวณจุดยอดทุกเฟรม) · หาง/ครีบสะบัดตาม */
+export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
+  const g = new THREE.Group()
+  const L = 0.34 * size                    // ความยาวลำตัว (ไม่รวมหาง)
+  // ทรงลำตัว: ทรงกลมแล้วดัดตามแนว x (−1 = โคนหาง · +1 = จมูก)
+  const geo = new THREE.SphereGeometry(1, 40, 20); geo.rotateZ(-Math.PI / 2)   // แกนยาวตาม x
+  const pos = geo.attributes.position as THREE.BufferAttribute, uv = geo.attributes.uv as THREE.BufferAttribute
+  const prof = (s: number) => {            // s ∈ [−1,1] → รัศมี (หัวมน กว้างสุดช่วงไหล่ เรียวสู่โคนหาง)
+    if (s > 0.3) return Math.pow(Math.max(0, 1 - ((s - 0.3) / 0.7) ** 2), 0.32)   // หัวมนรี
+    return 0.13 + 0.87 * Math.pow((s + 1) / 1.3, 1.4)                                   // เรียวสู่โคนหาง
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const sx = pos.getX(i), sy = pos.getY(i), sz = pos.getZ(i)
+    const r = Math.hypot(sy, sz) || 1e-6, k = prof(sx) / Math.max(r, 1e-6) * Math.min(1, r / 1)
+    const ny = sy * k, nz = sz * k
+    pos.setXYZ(i, sx * L / 2, (ny * 0.38 + (ny < 0 ? ny * -0.08 : 0)) * L / 2, nz * 0.5 * L / 2)   // แบนข้างเล็กน้อย ท้องแบน
+    uv.setXY(i, (sx + 1) / 2, 0.5 + nz * 0.5 * (ny >= 0 ? 1 : 1.25))   // แปะลายจากด้านบน
+  }
+  geo.computeVertexNormals()
+  const base = Float32Array.from(pos.array as Float32Array)
+  const body = new THREE.Mesh(geo, std({ map: koiTex(seed, scheme), roughness: scheme === 'ogon' ? 0.28 : 0.42, metalness: scheme === 'ogon' ? 0.45 : 0.04 }))
+  body.castShadow = true; g.add(body)
+
+  const tint = { kohaku: 'rgba(255,235,225,.75)', sanke: 'rgba(255,235,225,.75)', ogon: 'rgba(250,200,90,.8)', showa: 'rgba(60,60,60,.75)', chagoi: 'rgba(200,150,95,.8)' }[scheme]
+  const fin = new THREE.MeshStandardMaterial({ map: finTex(tint), transparent: true, side: THREE.DoubleSide, roughness: 0.4, depthWrite: false })
+
+  // หางแฉกบาน (แนวตั้งเอียงนิด ให้มองจากบนเห็นเป็นพัด)
+  const tailShape = new THREE.Shape()
+  tailShape.moveTo(0, 0)
+  tailShape.bezierCurveTo(0.25, 0.18, 0.55, 0.42, 0.62, 0.5)
+  tailShape.quadraticCurveTo(0.42, 0.12, 0.46, 0)
+  tailShape.quadraticCurveTo(0.42, -0.12, 0.62, -0.5)
+  tailShape.bezierCurveTo(0.55, -0.42, 0.25, -0.18, 0, 0)
+  const tailGeo = new THREE.ShapeGeometry(tailShape, 16)
+  { const u = tailGeo.attributes.uv as THREE.BufferAttribute, p = tailGeo.attributes.position as THREE.BufferAttribute; for (let i = 0; i < u.count; i++) u.setXY(i, p.getX(i) / 0.62, 0.5 + p.getY(i)) }
+  const tailPivot = new THREE.Group(); tailPivot.position.x = -L / 2; g.add(tailPivot)
+  const tail = new THREE.Mesh(tailGeo, fin); tail.scale.setScalar(L * 0.75); tail.rotation.set(Math.PI / 2 - 0.25, Math.PI, 0); tailPivot.add(tail)
+  // ครีบอก (กางสองข้าง แบนราบ) · ครีบท้องเล็ก
+  const finShape = new THREE.Shape(); finShape.moveTo(0, 0); finShape.quadraticCurveTo(0.35, 0.05, 0.5, 0.32); finShape.quadraticCurveTo(0.2, 0.36, 0, 0.08); finShape.lineTo(0, 0)
+  const finGeo = new THREE.ShapeGeometry(finShape, 10)
+  { const u = finGeo.attributes.uv as THREE.BufferAttribute, p = finGeo.attributes.position as THREE.BufferAttribute; for (let i = 0; i < u.count; i++) u.setXY(i, Math.hypot(p.getX(i), p.getY(i)) * 1.8, 0.5 + p.getY(i)) }
+  const pecs: THREE.Mesh[] = []
+  for (const [d, xx, sc] of [[1, 0.22, 0.5], [-1, 0.22, 0.5], [1, -0.18, 0.3], [-1, -0.18, 0.3]] as const) {
+    // วางราบ ชี้ไปด้านหลัง-ออกข้าง (กลับด้านด้วย scale แทนการหมุนหลายแกน)
+    const m = new THREE.Mesh(finGeo, fin); m.scale.set(-L * sc, d > 0 ? -L * sc : L * sc, L * sc)
+    m.position.set(xx * L, -0.04 * L, d * 0.12 * L); m.rotation.x = -Math.PI / 2
+    m.userData.d = d; g.add(m); pecs.push(m)
+  }
+  // ครีบหลัง (ยาวตามแนวสันหลัง)
+  const dShape = new THREE.Shape(); dShape.moveTo(0, 0); dShape.lineTo(0.7, 0); dShape.quadraticCurveTo(0.62, 0.22, 0.48, 0.24); dShape.quadraticCurveTo(0.2, 0.12, 0, 0)
+  const dorsal = new THREE.Mesh(new THREE.ShapeGeometry(dShape, 8), fin); dorsal.scale.setScalar(L * 0.55); dorsal.position.set(-0.3 * L, 0.17 * L, 0); g.add(dorsal)
+  // ตา + หนวดสองคู่
+  for (const d of [-1, 1]) {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.024 * L, 10, 8), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.37 * L, 0.05 * L, d * 0.15 * L); g.add(e)
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.006 * L, 0.003 * L, 0.12 * L, 4), std({ color: '#d9c9a8' })); bar.rotation.set(d * 0.9, 0, -1.2); bar.position.set(0.5 * L, -0.03 * L, d * 0.06 * L); g.add(bar)
+  }
+
+  /** ว่าย: คลื่นตัว S วิ่งจากหัวไปหาง — ยิ่งใกล้หางยิ่งแกว่งมาก · turn = เลี้ยว (โค้งทั้งตัว) */
+  const swim = (t: number, speed: number, turn: number) => {
+    const freq = 5 + speed * 40
+    const arr = pos.array as Float32Array
+    for (let i = 0; i < pos.count; i++) {
+      const x = base[i * 3], s = 0.5 - x / L        // 0 = จมูก … 1 = โคนหาง
+      const amp = 0.09 * L * s * s
+      arr[i * 3 + 2] = base[i * 3 + 2] + Math.sin(t * freq - s * 4.2) * amp + turn * s * s * 0.25 * L
+    }
+    pos.needsUpdate = true; geo.computeVertexNormals()
+    const tailDz = Math.sin(t * freq - 4.2) * 0.09 * L + turn * 0.25 * L
+    const tailSlope = Math.cos(t * freq - 4.2) * 0.09 * 4.2 + turn * 0.5
+    tailPivot.position.z = tailDz
+    tailPivot.rotation.y = -tailSlope * 0.9
+    dorsal.position.z = Math.sin(t * freq - 2.6) * 0.03 * L
+    pecs.forEach((p, k) => { p.rotation.x = -Math.PI / 2 + Math.sin(t * 2.2 + k) * 0.3 * (p.userData.d as number) })
+  }
+  return { group: g, swim }
 }
 
 const std = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial(o)
@@ -110,24 +209,6 @@ function fallsSheet(width: number, y0: number, z0: number, y1: number, z1: numbe
   geo.computeVertexNormals()
   const m = new THREE.Mesh(geo, mat)
   return m
-}
-
-/** ปลาคาร์ฟหนึ่งตัว: ลำตัว Lathe + ครีบหลัง ครีบอก หางสะบัด */
-function buildKoi(seed: number, scheme: 'kohaku' | 'sanke' | 'ogon' | 'showa' | 'chagoi', size: number) {
-  const g = new THREE.Group()
-  const prof = [[0, 0], [0.03, 0.02], [0.06, 0.07], [0.07, 0.14], [0.065, 0.22], [0.05, 0.3], [0.028, 0.37], [0.012, 0.41], [0, 0.42]].map(([r, y]) => new THREE.Vector2(r, y))
-  const body = new THREE.Mesh(new THREE.LatheGeometry(prof, 20), std({ map: koiTex(seed, scheme), roughness: scheme === 'ogon' ? 0.25 : 0.45, metalness: scheme === 'ogon' ? 0.4 : 0.05 }))
-  body.rotation.z = -Math.PI / 2; body.scale.set(1, 1, 0.78); body.position.x = -0.21
-  body.castShadow = true
-  g.add(body)
-  const fin = std({ color: scheme === 'showa' ? '#2b2b2b' : '#f7d9c4', transparent: true, opacity: 0.75, side: THREE.DoubleSide, roughness: 0.4 })
-  const dorsal = new THREE.Mesh(new THREE.CircleGeometry(0.06, 10, 0, Math.PI), fin); dorsal.position.set(-0.02, 0.055, 0); dorsal.scale.set(1.6, 0.8, 1); g.add(dorsal)
-  for (const d of [-1, 1]) { const pf = new THREE.Mesh(new THREE.CircleGeometry(0.035, 8, 0, Math.PI), fin); pf.position.set(0.07, -0.025, d * 0.05); pf.rotation.set(Math.PI / 2, d * 0.5, 0); g.add(pf) }
-  const tail = new THREE.Group(); tail.position.x = -0.21; g.add(tail)
-  const tfin = new THREE.Mesh(new THREE.CircleGeometry(0.085, 12, Math.PI * 0.62, Math.PI * 0.76), fin); tfin.rotation.y = Math.PI / 2; tfin.position.x = 0.02; tail.add(tfin)
-  for (const d of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 6), std({ color: '#111827', roughness: 0.2 })); e.position.set(0.17, 0.02, d * 0.04); g.add(e) }
-  g.scale.setScalar(size)
-  return { group: g, tail }
 }
 
 function buildDuck(seed: number) {
@@ -224,13 +305,13 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
   // แสงระยิบใต้น้ำ (บวกแสง ซ้อนสองชั้นเลื่อนสวนกัน)
   const cTex1 = causticTex(), cTex2 = causticTex(); cTex1.repeat.set(3, 1.2); cTex2.repeat.set(2.4, 1)
   for (const [tx, sp, y] of [[cTex1, 0.05, -0.31], [cTex2, -0.035, -0.305]] as const) {
-    const c = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false }))
+    const c = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ map: tx, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }))
     c.rotation.x = -Math.PI / 2; c.scale.set(rx, rz, 1); c.position.set(cx, y, cz); g.add(c)
     ticks.push(t => { tx.offset.set(t * sp, Math.sin(t * 0.3) * 0.05) })
   }
   // ผิวน้ำ: ใส เห็นปลา สะท้อนแสง ระลอกเคลื่อน
   const surfMap = surfaceTex(); surfMap.repeat.set(3, 1.1)
-  const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 48), std({ map: surfMap, color: '#9fd3ea', roughness: 0.04, metalness: 0.15, transparent: true, opacity: 0.22, depthWrite: false, envMapIntensity: 1 }))
+  const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 48), std({ map: surfMap, color: '#9fd3ea', roughness: 0.04, metalness: 0.15, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1 }))
   surface.rotation.x = -Math.PI / 2; surface.scale.set(rx, rz, 1); surface.position.set(cx, 0.02, cz); surface.renderOrder = 2; g.add(surface)
   ticks.push(t => { surfMap.offset.set(Math.sin(t * 0.12) * 0.1, t * 0.03) })
   // ขอบบ่อหินก้อนกลม
@@ -279,21 +360,25 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
   // ── ปลาคาร์ฟ 7 ตัว ว่ายตามเส้นทางของตัวเอง ใต้ผิวน้ำ ──
   const schemes = ['kohaku', 'sanke', 'ogon', 'showa', 'kohaku', 'chagoi', 'sanke'] as const
   schemes.forEach((sc, i) => {
-    const f = buildKoi(1000 + i * 77, sc, 1.7 + (i % 3) * 0.3)
+    const f = buildKoi(1000 + i * 77, sc, 1.5 + (i % 3) * 0.25)
     g.add(f.group)
     const pts: THREE.Vector3[] = []
     const Rk = rnd(500 + i * 31)
-    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Rk() * 0.6; pts.push(new THREE.Vector3(cx + Math.cos(a) * rx * (0.35 + Rk() * 0.5), -0.05 - Rk() * 0.06, cz + Math.sin(a) * rz * (0.3 + Rk() * 0.5))) }
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Rk() * 0.6; pts.push(new THREE.Vector3(cx + Math.cos(a) * rx * (0.35 + Rk() * 0.5), -0.035 - Rk() * 0.03, cz + Math.sin(a) * rz * (0.3 + Rk() * 0.5))) }
     const path = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5)
     const speed = 0.018 + (i % 4) * 0.006, off = i * 0.13
-    const look = new THREE.Vector3()
+    const look = new THREE.Vector3(), ahead = new THREE.Vector3()
     ticks.push(t => {
       const u = (t * speed + off) % 1
       path.getPointAt(u, f.group.position)
       path.getPointAt((u + 0.01) % 1, look)
       // หันหัวตามทิศว่าย (พิกัดในชิ้น — lookAt ใช้พิกัดโลก จึงคำนวณมุมเอง)
       f.group.rotation.set(0, Math.atan2(-(look.z - f.group.position.z), look.x - f.group.position.x), Math.sin(t * 2 + i) * 0.05)
-      f.tail.rotation.y = Math.sin(t * 7 + i) * 0.5
+      // เลี้ยว = มุมเปลี่ยนระหว่างช่วงหน้า → ลำตัวโค้งเข้าโค้ง
+      path.getPointAt((u + 0.02) % 1, ahead)
+      const h1 = Math.atan2(look.z - f.group.position.z, look.x - f.group.position.x), h2 = Math.atan2(ahead.z - look.z, ahead.x - look.x)
+      let turn = h2 - h1; if (turn > Math.PI) turn -= Math.PI * 2; if (turn < -Math.PI) turn += Math.PI * 2
+      f.swim(t + i, speed, Math.max(-0.6, Math.min(0.6, -turn * 3)))
     })
   })
 
