@@ -117,7 +117,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
     const sx = pos.getX(i), sy = pos.getY(i), sz = pos.getZ(i)
     const r = Math.hypot(sy, sz) || 1e-6, k = prof(sx) / Math.max(r, 1e-6) * Math.min(1, r / 1)
     const ny = sy * k, nz = sz * k
-    pos.setXYZ(i, sx * L / 2, (ny * 0.38 + (ny < 0 ? ny * -0.08 : 0)) * L / 2, nz * 0.5 * L / 2)   // แบนข้างเล็กน้อย ท้องแบน
+    pos.setXYZ(i, sx * L / 2, (ny * 0.38 + (ny < 0 ? ny * -0.08 : 0)) * L / 2, nz * 0.35 * L / 2)   // แบนข้างเล็กน้อย ท้องแบน
     uv.setXY(i, (sx + 1) / 2, 0.5 + nz * 0.5 * (ny >= 0 ? 1 : 1.25))   // แปะลายจากด้านบน
   }
   geo.computeVertexNormals()
@@ -147,7 +147,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   for (const [d, xx, sc] of [[1, 0.22, 0.5], [-1, 0.22, 0.5], [1, -0.18, 0.3], [-1, -0.18, 0.3]] as const) {
     // วางราบ ชี้ไปด้านหลัง-ออกข้าง (กลับด้านด้วย scale แทนการหมุนหลายแกน)
     const m = new THREE.Mesh(finGeo, fin); m.scale.set(-L * sc, d > 0 ? -L * sc : L * sc, L * sc)
-    m.position.set(xx * L, -0.04 * L, d * 0.12 * L); m.rotation.x = -Math.PI / 2
+    m.position.set(xx * L, -0.04 * L, d * 0.085 * L); m.rotation.x = -Math.PI / 2
     m.userData.d = d; g.add(m); pecs.push(m)
   }
   // ครีบหลัง (ยาวตามแนวสันหลัง)
@@ -155,7 +155,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   const dorsal = new THREE.Mesh(new THREE.ShapeGeometry(dShape, 8), fin); dorsal.scale.setScalar(L * 0.55); dorsal.position.set(-0.3 * L, 0.17 * L, 0); g.add(dorsal)
   // ตา + หนวดสองคู่
   for (const d of [-1, 1]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.024 * L, 10, 8), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.37 * L, 0.05 * L, d * 0.15 * L); g.add(e)
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.024 * L, 10, 8), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.37 * L, 0.05 * L, d * 0.105 * L); g.add(e)
     const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.006 * L, 0.003 * L, 0.12 * L, 4), std({ color: '#d9c9a8' })); bar.rotation.set(d * 0.9, 0, -1.2); bar.position.set(0.5 * L, -0.03 * L, d * 0.06 * L); g.add(bar)
   }
 
