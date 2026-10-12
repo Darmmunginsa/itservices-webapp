@@ -13,6 +13,7 @@ import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
 import type { Desk } from '../../utils/officeDecor'
 import { buildProp3D } from './props3d'
+import { buildKoi } from './waterfall3d'
 import { buildDecor3D, buildRobot3D, buildBird3D, type RobotRig, type BirdRig } from './decor3d'
 import { birdHomes, birdFeedSpot, type BirdHome } from '../../utils/gardenBirds'
 
@@ -418,6 +419,48 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       mesh.receiveShadow = true
       world.add(mesh)
       st.floors.push({ mesh, tiles: list.map(t => ({ x: t.x, y: t.y })) })
+    }
+
+    // ปลาคาร์ฟในลำธาร/บ่อเล็ก (ช่อง 'w') — ว่ายจากช่องน้ำไปช่องน้ำข้าง ๆ ไม่ขึ้นบก
+    {
+      const wet = (x: number, y: number) => rows[y]?.[x] === 'w' && !pondHole.has(`${x},${y}`)
+      const tiles: { x: number; y: number }[] = []
+      rows.forEach((row, y) => [...row].forEach((_c, x) => { if (wet(x, y)) tiles.push({ x, y }) }))
+      const schemes = ['kohaku', 'sanke', 'ogon', 'showa', 'chagoi'] as const
+      const n = Math.min(14, Math.ceil(tiles.length / 5))
+      for (let i = 0; i < n; i++) {
+        const start = tiles[(i * 7919) % tiles.length]
+        const k = buildKoi(4000 + i * 53, schemes[i % 5], 0.85 + (i % 3) * 0.12)
+        world.add(k.group)
+        let cur = { ...start }, prev = { ...start }, next = { ...start }
+        const pos = new THREE.Vector3(start.x + 0.5, -0.01, start.y + 0.5), tgt = new THREE.Vector3()
+        let heading = 0, jx = 0, jz = 0
+        const speed = 0.35 + (i % 4) * 0.08
+        const pick = () => {
+          const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: cur.x + dx, y: cur.y + dy })).filter(t => wet(t.x, t.y))
+          const fwd = nb.filter(t => t.x !== prev.x || t.y !== prev.y)
+          const opts = fwd.length ? fwd : nb
+          next = opts.length ? opts[Math.floor(Math.random() * opts.length)] : cur
+          jx = (Math.random() - 0.5) * 0.5; jz = (Math.random() - 0.5) * 0.5
+        }
+        pick()
+        let last = 0
+        st.ticks.push(t => {
+          const dt = Math.min(0.1, Math.max(0, t - last)); last = t
+          tgt.set(next.x + 0.5 + jx, -0.01, next.y + 0.5 + jz)
+          const dx = tgt.x - pos.x, dz = tgt.z - pos.z, d = Math.hypot(dx, dz)
+          if (d < 0.08) { prev = cur; cur = next; pick() }
+          else {
+            const want = Math.atan2(-dz, dx)
+            let turn = want - heading; while (turn > Math.PI) turn -= Math.PI * 2; while (turn < -Math.PI) turn += Math.PI * 2
+            heading += turn * Math.min(1, dt * 3)
+            const step = Math.min(d, speed * dt * (1 - Math.min(0.7, Math.abs(turn))))
+            pos.x += Math.cos(heading) * step; pos.z -= Math.sin(heading) * step
+            k.group.position.copy(pos); k.group.rotation.y = heading
+            k.swim(t + i, speed * 0.06, Math.max(-0.6, Math.min(0.6, turn)))
+          }
+        })
+      }
     }
 
     const walls: Parameters<typeof boxes>[0] = [], caps: Parameters<typeof boxes>[0] = [], tables: Parameters<typeof boxes>[0] = [], dark: Parameters<typeof boxes>[0] = []
