@@ -211,16 +211,16 @@ function fallsSheet(width: number, y0: number, z0: number, y1: number, z1: numbe
   return m
 }
 
-/** ขนเป็ด: ตัวผู้ = เทาลายละเอียด · ตัวเมีย = น้ำตาลลายเกล็ดขน */
+/** ขนเป็ด: ตัวขาว (ปักกิ่ง) = ขาวลายจาง · ตัวเมีย = น้ำตาลลายเกล็ดขน */
 const featherTex = (drake: boolean) => canvasTex(128, 128, x => {
-  x.fillStyle = drake ? '#a8a9a4' : '#8a6a46'; x.fillRect(0, 0, 128, 128)
+  x.fillStyle = drake ? '#f7f6f1' : '#8a6a46'; x.fillRect(0, 0, 128, 128)
   const R = rnd(drake ? 901 : 907)
-  if (drake) { x.strokeStyle = 'rgba(60,60,60,.35)'; x.lineWidth = 0.6; for (let y = 0; y < 128; y += 2.2) { x.beginPath(); x.moveTo(0, y); for (let xx = 0; xx <= 128; xx += 8) x.lineTo(xx, y + Math.sin(xx * 0.4 + y) * 0.8); x.stroke() } }
+  if (drake) { x.strokeStyle = 'rgba(150,150,140,.18)'; x.lineWidth = 0.6; for (let y = 0; y < 128; y += 2.2) { x.beginPath(); x.moveTo(0, y); for (let xx = 0; xx <= 128; xx += 8) x.lineTo(xx, y + Math.sin(xx * 0.4 + y) * 0.8); x.stroke() } }
   else for (let i = 0; i < 260; i++) { const px = R() * 128, py = R() * 128; x.fillStyle = `rgba(${50 + R() * 30},${32 + R() * 20},${18},.75)`; x.beginPath(); x.ellipse(px, py, 4 + R() * 3, 2.2 + R() * 1.5, 0.2, 0, Math.PI * 2); x.fill(); x.fillStyle = 'rgba(225,195,150,.6)'; x.beginPath(); x.ellipse(px + 1, py + 2.5, 4, 1, 0.2, 0, Math.PI); x.fill() }
 })
 
 export interface DuckRig { group: THREE.Group; body: THREE.Group; head: THREE.Group; feet: THREE.Group[] }
-/** เป็ดมัลลาร์ด — body = ส่วนที่เอียง (มุดหัว/ดำน้ำ) · หมุนรอบกลางตัวบนผิวน้ำ */
+/** เป็ดคู่: ขาวทั้งตัว (seed คี่) + มัลลาร์ดตัวเมีย — body = ส่วนที่เอียง (มุดหัว/ดำน้ำ) · หมุนรอบกลางตัวบนผิวน้ำ */
 export function buildDuck(seed: number): DuckRig {
   const drake = seed % 2 === 1
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body)
@@ -232,26 +232,23 @@ export function buildDuck(seed: number): DuckRig {
       p.setXYZ(i, x * 1.55, y * 0.78 + back * back * 0.07 + (y < 0 ? y * 0.15 : 0), z * (0.92 - back * 0.25)) }
     torso.geometry.computeVertexNormals() }
   torso.position.y = 0.07; body.add(torso)
-  if (drake) { const breast = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 14), std({ color: '#6b3a26', roughness: 0.6 })); breast.scale.set(0.9, 1, 1.15); breast.position.set(0.13, 0.08, 0); body.add(breast) }
   // ปีกพับข้างตัว + แถบน้ำเงินเหลือบ (speculum)
   for (const d of [-1, 1]) {
-    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), drake ? std({ color: '#8f8a80', roughness: 0.7 }) : plum)
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), plum)
     wing.scale.set(1.55, 0.42, 0.42); wing.position.set(-0.04, 0.12, d * 0.095); wing.rotation.z = 0.12; body.add(wing)
     const spec = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.005), std({ color: '#2b3fbf', roughness: 0.2, metalness: 0.5, emissive: '#1d2a8a', emissiveIntensity: 0.2 }))
-    spec.position.set(-0.1, 0.125, d * 0.142); spec.rotation.y = d * 0.12; body.add(spec)
+    spec.position.set(-0.1, 0.125, d * 0.142); spec.rotation.y = d * 0.12; if (!drake) body.add(spec)
   }
   // หาง: ขนดำงอนขึ้น (ตัวผู้มีขนม้วน)
-  const tailM = std({ color: drake ? '#1d1d1d' : '#6d5134', roughness: 0.6 })
+  const tailM = std({ color: drake ? '#f2f1ec' : '#6d5134', roughness: 0.6 })
   const tail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.13, 10), tailM); tail.rotation.z = Math.PI / 2 + 0.75; tail.position.set(-0.23, 0.14, 0); tail.scale.z = 0.55; body.add(tail)
-  if (drake) { const curl = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.005, 6, 12, Math.PI * 1.4), tailM); curl.position.set(-0.24, 0.19, 0); body.add(curl) }
   // คอ + หัว (ตัวผู้: เขียวเหลือบ + วงคอขาว)
   const head = new THREE.Group(); head.position.set(0.17, 0.15, 0); body.add(head)
-  const headM = drake ? std({ color: '#0f5a2c', roughness: 0.25, metalness: 0.35, emissive: '#06301a', emissiveIntensity: 0.3 }) : plum
+  const headM = plum
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.06, 0.12, 14), headM); neck.position.set(0.0, 0.05, 0); neck.rotation.z = -0.25; head.add(neck)
-  if (drake) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.008, 6, 20), std({ color: '#f5f5f0' })); ring.rotation.set(Math.PI / 2, 0.25, 0); ring.position.set(0.0, 0.015, 0); head.add(ring) }
   const skull = new THREE.Mesh(new THREE.SphereGeometry(0.062, 20, 14), headM); skull.scale.set(1.25, 0.95, 0.88); skull.position.set(0.035, 0.13, 0); head.add(skull)
   // จะงอยปากแบน
-  const bill = new THREE.Mesh(new THREE.SphereGeometry(0.04, 14, 8), std({ color: drake ? '#e7c22e' : '#c76b1c', roughness: 0.45 }))
+  const bill = new THREE.Mesh(new THREE.SphereGeometry(0.04, 14, 8), std({ color: drake ? '#f59e0b' : '#c76b1c', roughness: 0.45 }))
   bill.scale.set(1.55, 0.32, 0.72); bill.position.set(0.112, 0.112, 0); bill.rotation.z = -0.18; head.add(bill)
   const nail = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), std({ color: '#222' })); nail.position.set(0.172, 0.103, 0); head.add(nail)
   if (!drake) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.008, 0.11), std({ color: '#3b2a1a' })); stripe.position.set(0.05, 0.135, 0); head.add(stripe) }
