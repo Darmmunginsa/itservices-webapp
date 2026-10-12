@@ -733,62 +733,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           </>)}
           <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
         </div>
-        {/* จอที่แชร์ — ของคนอื่น (เลือกดูได้) + ตัวอย่างของเราเองว่ากำลังส่งอะไรอยู่ */}
-        {(shown || voice.myScreen) && (
-          <div ref={stageRef}
-            className={`mb-2 rounded-xl overflow-hidden border border-gray-800 bg-black relative ${theaterOn ? 'flex items-center justify-center' : ''}`}
-            style={theaterOn ? { height: 'calc(100vh - 12rem)', minHeight: 420 } : undefined}>
-            {shown?.screen ? (
-              <div onDoubleClick={fullscreen} title="ดับเบิลคลิก = เต็มจอ" className={theaterOn ? 'w-full h-full' : ''}>
-                <ScreenVideo stream={shown.screen} className={theaterOn ? 'w-full h-full object-contain' : 'w-full max-h-[45vh] object-contain'} />
-              </div>
-            ) : (
-              <div className="py-8 pr-44 pl-4 text-xs text-gray-300">
-                {connected.length > 0
-                  ? <>กำลังแชร์หน้าจอให้ <b>{connected.map(p => nameOf(p.email).split(/\s+/)[0]).join(', ')}</b></>
-                  : <>ยังไม่มีใครเห็นจอคุณ — เดินเข้าห้องเดียวกับคนที่เปิดไมค์ หรือขอคุยเสียงในแชทส่วนตัว แล้วเขาจะเห็นเอง</>}
-              </div>
-            )}
-            <div className="absolute top-2 left-2 flex flex-wrap gap-1">
-              {screens.map(p => (
-                <button key={p.email} onClick={() => setWatching(p.email)}
-                  className={`text-[11px] px-2 py-0.5 rounded-full ${shown?.email === p.email ? 'bg-primary-600 text-white' : 'bg-black/60 text-white hover:bg-black/80'}`}>
-                  🖥️ {nameOf(p.email)}
-                </button>
-              ))}
-            </div>
-            <div className="absolute top-2 right-2 flex gap-1">
-              {shown?.screen && (theaterOn ? (
-                <button onClick={() => setTheaterOffFor(shown.screen)} title="ย่อจอ — กลับไปเห็นแผนที่ออฟฟิศ"
-                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><MapIcon size={12} /> แผนที่</button>
-              ) : (
-                <button onClick={() => setTheaterOffFor(null)} title="ขยายจอที่แชร์เต็มพื้นที่"
-                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><Expand size={12} /> ขยาย</button>
-              ))}
-              {shown?.screen && (
-                <button onClick={fullscreen} title="เต็มจอ (หรือดับเบิลคลิกที่ภาพ) — Esc เพื่อออก"
-                  className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"><Maximize2 size={13} /></button>
-              )}
-            </div>
-            {voice.myScreen && (
-              <div className="absolute bottom-2 right-2 w-40 rounded-lg overflow-hidden ring-2 ring-red-500 shadow-lg bg-black">
-                <ScreenVideo stream={voice.myScreen} className="w-full" />
-                <span className="absolute top-1 left-1 text-[10px] px-1.5 rounded bg-red-600 text-white">● กำลังแชร์</span>
-              </div>
-            )}
-          </div>
-        )}
-        {myZone === 'focus' && <FocusMusicCard s={music} onChange={changeMusic} ducked={inCall} />}
-        {myZone === 'garden' && <GardenSoundCard s={garden} onChange={changeGarden} water={water} ducked={inCall} />}
-        {myZone === 'garden' && (
-          <div className="mb-2 flex items-center gap-2 text-xs">
-            <button onClick={() => setFeed(!feeding)}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${feeding ? 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-700'}`}>
-              🌾 {feeding ? 'กำลังให้อาหารนก… (กดอีกครั้งเพื่อหยุด)' : 'ให้อาหารนก'}
-            </button>
-            {feeding && <span className="text-gray-500">นกบินมารุมกินแล้ว — เดินออกไปเมื่อไรนกจะแยกย้ายกลับที่เดิม</span>}
-          </div>
-        )}
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
@@ -805,25 +749,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <span className="flex-1 min-w-0">กำลังคุยส่วนตัวกับ <b>{nameOf(dm.callWith)}</b> — คนรอบตัวไม่ได้ยิน
               {voice.peers.find(p => p.email === dm.callWith)?.state !== 'connected' && <span className="text-gray-400"> · กำลังต่อสาย…</span>}</span>
             <button onClick={() => dm.send(dm.callWith!, 'voice-end')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><PhoneOff size={11} /> วางสาย</button>
-          </div>
-        )}
-        {voice.micOn && voice.muted && (
-          <p className="mb-1 text-[11px] text-red-600">🔇 ปิดไมค์อยู่ — คนอื่นไม่ได้ยินคุณ · กดค้าง <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">Space</kbd> เพื่อพูดชั่วคราว หรือกด <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">M</kbd> เปิดไมค์</p>
-        )}
-        {voice.micOn && !dm.callWith && (
-          <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
-            {voice.peers.length === 0
-              ? <span className="text-gray-400">🎧 ยังไม่มีใครใกล้ ๆ ที่เปิดไมค์ — เดินเข้าห้องเดียวกัน หรือไปยืนข้างโต๊ะเพื่อน</span>
-              : voice.peers.map(p => (
-                <span key={p.email} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${p.state === 'connected' ? (p.speaking ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300') : 'border-dashed border-gray-300 text-gray-400'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${p.state === 'connected' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`} />
-                  {nameOf(p.email)}
-                  {p.screen && <span title="กำลังแชร์หน้าจอ">🖥️</span>}
-                  {online.find(o => o.email.toLowerCase() === p.email)?.muted && <span title="ปิดไมค์อยู่">🔇</span>}
-                  {p.state === 'connected' ? (p.volume < 1 ? <span className="text-gray-400">· {Math.round(p.volume * 100)}%</span> : null) : <span>· กำลังต่อ…</span>}
-                </span>
-              ))}
-            {connected.length > 0 && <span className="text-gray-400 ml-1">เดินออกห่าง = เสียงเบาลง / วางสายเอง</span>}
           </div>
         )}
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
@@ -998,6 +923,84 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               )
             })()}
           </div>
+        </div>
+        {/* ใต้แผนที่: จอที่แชร์ · สถานะเสียง · การ์ดของห้อง (เพลง/เสียงสวน/ให้อาหารนก) */}
+        <div className="mt-2">
+        {/* จอที่แชร์ — ของคนอื่น (เลือกดูได้) + ตัวอย่างของเราเองว่ากำลังส่งอะไรอยู่ */}
+        {(shown || voice.myScreen) && (
+          <div ref={stageRef}
+            className={`mb-2 rounded-xl overflow-hidden border border-gray-800 bg-black relative ${theaterOn ? 'flex items-center justify-center' : ''}`}
+            style={theaterOn ? { height: 'calc(100vh - 12rem)', minHeight: 420 } : undefined}>
+            {shown?.screen ? (
+              <div onDoubleClick={fullscreen} title="ดับเบิลคลิก = เต็มจอ" className={theaterOn ? 'w-full h-full' : ''}>
+                <ScreenVideo stream={shown.screen} className={theaterOn ? 'w-full h-full object-contain' : 'w-full max-h-[45vh] object-contain'} />
+              </div>
+            ) : (
+              <div className="py-8 pr-44 pl-4 text-xs text-gray-300">
+                {connected.length > 0
+                  ? <>กำลังแชร์หน้าจอให้ <b>{connected.map(p => nameOf(p.email).split(/\s+/)[0]).join(', ')}</b></>
+                  : <>ยังไม่มีใครเห็นจอคุณ — เดินเข้าห้องเดียวกับคนที่เปิดไมค์ หรือขอคุยเสียงในแชทส่วนตัว แล้วเขาจะเห็นเอง</>}
+              </div>
+            )}
+            <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+              {screens.map(p => (
+                <button key={p.email} onClick={() => setWatching(p.email)}
+                  className={`text-[11px] px-2 py-0.5 rounded-full ${shown?.email === p.email ? 'bg-primary-600 text-white' : 'bg-black/60 text-white hover:bg-black/80'}`}>
+                  🖥️ {nameOf(p.email)}
+                </button>
+              ))}
+            </div>
+            <div className="absolute top-2 right-2 flex gap-1">
+              {shown?.screen && (theaterOn ? (
+                <button onClick={() => setTheaterOffFor(shown.screen)} title="ย่อจอ — กลับไปเห็นแผนที่ออฟฟิศ"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><MapIcon size={12} /> แผนที่</button>
+              ) : (
+                <button onClick={() => setTheaterOffFor(null)} title="ขยายจอที่แชร์เต็มพื้นที่"
+                  className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-black/60 text-white hover:bg-black/80"><Expand size={12} /> ขยาย</button>
+              ))}
+              {shown?.screen && (
+                <button onClick={fullscreen} title="เต็มจอ (หรือดับเบิลคลิกที่ภาพ) — Esc เพื่อออก"
+                  className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80"><Maximize2 size={13} /></button>
+              )}
+            </div>
+            {voice.myScreen && (
+              <div className="absolute bottom-2 right-2 w-40 rounded-lg overflow-hidden ring-2 ring-red-500 shadow-lg bg-black">
+                <ScreenVideo stream={voice.myScreen} className="w-full" />
+                <span className="absolute top-1 left-1 text-[10px] px-1.5 rounded bg-red-600 text-white">● กำลังแชร์</span>
+              </div>
+            )}
+          </div>
+        )}
+        {myZone === 'focus' && <FocusMusicCard s={music} onChange={changeMusic} ducked={inCall} />}
+        {myZone === 'garden' && <GardenSoundCard s={garden} onChange={changeGarden} water={water} ducked={inCall} />}
+        {myZone === 'garden' && (
+          <div className="mb-2 flex items-center gap-2 text-xs">
+            <button onClick={() => setFeed(!feeding)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${feeding ? 'bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' : 'border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-700'}`}>
+              🌾 {feeding ? 'กำลังให้อาหารนก… (กดอีกครั้งเพื่อหยุด)' : 'ให้อาหารนก'}
+            </button>
+            {feeding && <span className="text-gray-500">นกบินมารุมกินแล้ว — เดินออกไปเมื่อไรนกจะแยกย้ายกลับที่เดิม</span>}
+          </div>
+        )}
+        {voice.micOn && voice.muted && (
+          <p className="mb-1 text-[11px] text-red-600">🔇 ปิดไมค์อยู่ — คนอื่นไม่ได้ยินคุณ · กดค้าง <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">Space</kbd> เพื่อพูดชั่วคราว หรือกด <kbd className="px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600">M</kbd> เปิดไมค์</p>
+        )}
+        {voice.micOn && !dm.callWith && (
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
+            {voice.peers.length === 0
+              ? <span className="text-gray-400">🎧 ยังไม่มีใครใกล้ ๆ ที่เปิดไมค์ — เดินเข้าห้องเดียวกัน หรือไปยืนข้างโต๊ะเพื่อน</span>
+              : voice.peers.map(p => (
+                <span key={p.email} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${p.state === 'connected' ? (p.speaking ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300') : 'border-dashed border-gray-300 text-gray-400'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${p.state === 'connected' ? 'bg-green-500' : 'bg-amber-400 animate-pulse'}`} />
+                  {nameOf(p.email)}
+                  {p.screen && <span title="กำลังแชร์หน้าจอ">🖥️</span>}
+                  {online.find(o => o.email.toLowerCase() === p.email)?.muted && <span title="ปิดไมค์อยู่">🔇</span>}
+                  {p.state === 'connected' ? (p.volume < 1 ? <span className="text-gray-400">· {Math.round(p.volume * 100)}%</span> : null) : <span>· กำลังต่อ…</span>}
+                </span>
+              ))}
+            {connected.length > 0 && <span className="text-gray-400 ml-1">เดินออกห่าง = เสียงเบาลง / วางสายเอง</span>}
+          </div>
+        )}
         </div>
       </div>
 
