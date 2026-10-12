@@ -211,18 +211,62 @@ function fallsSheet(width: number, y0: number, z0: number, y1: number, z1: numbe
   return m
 }
 
-function buildDuck(seed: number) {
-  const g = new THREE.Group()
-  const white = std({ color: seed % 2 ? '#fafafa' : '#e7d8b8', roughness: 0.6 })
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 14), white); body.scale.set(1.35, 0.75, 0.95); body.position.y = 0.06; g.add(body)
-  for (const d of [-1, 1]) { const w = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), white); w.scale.set(1.3, 0.45, 0.5); w.position.set(-0.03, 0.11, d * 0.11); w.rotation.z = 0.25; g.add(w) }
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 8), white); tail.rotation.z = Math.PI / 2 + 0.6; tail.position.set(-0.22, 0.13, 0); g.add(tail)
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 0.12, 12), white); neck.position.set(0.14, 0.17, 0); g.add(neck)
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), seed % 2 ? white : std({ color: '#166534', roughness: 0.35, metalness: 0.2 })); head.position.set(0.17, 0.27, 0); g.add(head)
-  const beak = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), std({ color: '#f59e0b', roughness: 0.4 })); beak.scale.set(1.6, 0.45, 1); beak.position.set(0.26, 0.25, 0); g.add(beak)
-  for (const d of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), std({ color: '#111827' })); e.position.set(0.22, 0.3, d * 0.055); g.add(e) }
-  g.traverse(o => { (o as THREE.Mesh).castShadow = true })
-  return g
+/** ขนเป็ด: ตัวผู้ = เทาลายละเอียด · ตัวเมีย = น้ำตาลลายเกล็ดขน */
+const featherTex = (drake: boolean) => canvasTex(128, 128, x => {
+  x.fillStyle = drake ? '#a8a9a4' : '#8a6a46'; x.fillRect(0, 0, 128, 128)
+  const R = rnd(drake ? 901 : 907)
+  if (drake) { x.strokeStyle = 'rgba(60,60,60,.35)'; x.lineWidth = 0.6; for (let y = 0; y < 128; y += 2.2) { x.beginPath(); x.moveTo(0, y); for (let xx = 0; xx <= 128; xx += 8) x.lineTo(xx, y + Math.sin(xx * 0.4 + y) * 0.8); x.stroke() } }
+  else for (let i = 0; i < 260; i++) { const px = R() * 128, py = R() * 128; x.fillStyle = `rgba(${50 + R() * 30},${32 + R() * 20},${18},.75)`; x.beginPath(); x.ellipse(px, py, 4 + R() * 3, 2.2 + R() * 1.5, 0.2, 0, Math.PI * 2); x.fill(); x.fillStyle = 'rgba(225,195,150,.6)'; x.beginPath(); x.ellipse(px + 1, py + 2.5, 4, 1, 0.2, 0, Math.PI); x.fill() }
+})
+
+export interface DuckRig { group: THREE.Group; body: THREE.Group; head: THREE.Group; feet: THREE.Group[] }
+/** เป็ดมัลลาร์ด — body = ส่วนที่เอียง (มุดหัว/ดำน้ำ) · หมุนรอบกลางตัวบนผิวน้ำ */
+export function buildDuck(seed: number): DuckRig {
+  const drake = seed % 2 === 1
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body)
+  const plum = std({ map: featherTex(drake), roughness: 0.75 })
+  // ลำตัวทรงเรือ: อกกลมหน้า ท้ายเรียวงอนขึ้น
+  const torso = new THREE.Mesh(new THREE.SphereGeometry(0.15, 28, 20), plum)
+  { const p = torso.geometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), back = Math.max(0, -x / 0.15)
+      p.setXYZ(i, x * 1.55, y * 0.78 + back * back * 0.07 + (y < 0 ? y * 0.15 : 0), z * (0.92 - back * 0.25)) }
+    torso.geometry.computeVertexNormals() }
+  torso.position.y = 0.07; body.add(torso)
+  if (drake) { const breast = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 14), std({ color: '#6b3a26', roughness: 0.6 })); breast.scale.set(0.9, 1, 1.15); breast.position.set(0.13, 0.08, 0); body.add(breast) }
+  // ปีกพับข้างตัว + แถบน้ำเงินเหลือบ (speculum)
+  for (const d of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), drake ? std({ color: '#8f8a80', roughness: 0.7 }) : plum)
+    wing.scale.set(1.55, 0.42, 0.42); wing.position.set(-0.04, 0.12, d * 0.095); wing.rotation.z = 0.12; body.add(wing)
+    const spec = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.02, 0.005), std({ color: '#2b3fbf', roughness: 0.2, metalness: 0.5, emissive: '#1d2a8a', emissiveIntensity: 0.2 }))
+    spec.position.set(-0.1, 0.125, d * 0.142); spec.rotation.y = d * 0.12; body.add(spec)
+  }
+  // หาง: ขนดำงอนขึ้น (ตัวผู้มีขนม้วน)
+  const tailM = std({ color: drake ? '#1d1d1d' : '#6d5134', roughness: 0.6 })
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.13, 10), tailM); tail.rotation.z = Math.PI / 2 + 0.75; tail.position.set(-0.23, 0.14, 0); tail.scale.z = 0.55; body.add(tail)
+  if (drake) { const curl = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.005, 6, 12, Math.PI * 1.4), tailM); curl.position.set(-0.24, 0.19, 0); body.add(curl) }
+  // คอ + หัว (ตัวผู้: เขียวเหลือบ + วงคอขาว)
+  const head = new THREE.Group(); head.position.set(0.17, 0.15, 0); body.add(head)
+  const headM = drake ? std({ color: '#0f5a2c', roughness: 0.25, metalness: 0.35, emissive: '#06301a', emissiveIntensity: 0.3 }) : plum
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.06, 0.12, 14), headM); neck.position.set(0.0, 0.05, 0); neck.rotation.z = -0.25; head.add(neck)
+  if (drake) { const ring = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.008, 6, 20), std({ color: '#f5f5f0' })); ring.rotation.set(Math.PI / 2, 0.25, 0); ring.position.set(0.0, 0.015, 0); head.add(ring) }
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.062, 20, 14), headM); skull.scale.set(1.25, 0.95, 0.88); skull.position.set(0.035, 0.13, 0); head.add(skull)
+  // จะงอยปากแบน
+  const bill = new THREE.Mesh(new THREE.SphereGeometry(0.04, 14, 8), std({ color: drake ? '#e7c22e' : '#c76b1c', roughness: 0.45 }))
+  bill.scale.set(1.55, 0.32, 0.72); bill.position.set(0.112, 0.112, 0); bill.rotation.z = -0.18; head.add(bill)
+  const nail = new THREE.Mesh(new THREE.SphereGeometry(0.01, 6, 4), std({ color: '#222' })); nail.position.set(0.172, 0.103, 0); head.add(nail)
+  if (!drake) { const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.008, 0.11), std({ color: '#3b2a1a' })); stripe.position.set(0.05, 0.135, 0); head.add(stripe) }
+  for (const d of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.009, 8, 6), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.07, 0.145, d * 0.05); head.add(e) }
+  // ตีนพังผืดสีส้ม (เห็นตอนกระดกก้น)
+  const footM = std({ color: '#f08a24', roughness: 0.5, side: THREE.DoubleSide })
+  const feet: THREE.Group[] = []
+  for (const d of [-1, 1]) {
+    const f = new THREE.Group(); f.position.set(-0.04, 0.0, d * 0.05); body.add(f)
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.07, 6), footM); leg.position.y = -0.035; f.add(leg)
+    const web = new THREE.Mesh(new THREE.CircleGeometry(0.04, 3, -0.9, 1.8), footM); web.rotation.x = -Math.PI / 2; web.position.set(0.0, -0.07, 0); f.add(web)
+    feet.push(f)
+  }
+  g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.castShadow = true })
+  return { group: g, body, head, feet }
 }
 
 export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: number) => void } {
@@ -404,13 +448,72 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
     }
   }
 
-  // ── เป็ด 2 ตัว พายน้ำวนช้า ๆ ──
-  const ducks = [buildDuck(1), buildDuck(2)]
-  ducks.forEach(d => g.add(d))
-  ticks.push(t => ducks.forEach((d, i) => {
-    const a = t * (0.09 + i * 0.03) + i * 2.5
-    d.position.set(cx + Math.cos(a) * rx * 0.62, 0.02 + Math.sin(t * 2 + i) * 0.012, cz + Math.sin(a) * rz * 0.55)
-    d.rotation.y = -a + (i ? Math.PI : 0) - Math.PI / 2
+  // ── เป็ดมัลลาร์ดคู่: ว่ายเล่น · มุดหัวหากิน (ก้นกระดก ตีนพาย) · ดำผุดดำโผล่ ──
+  const inPond = (x: number, z: number) => ((x - cx) / (rx * 0.78)) ** 2 + ((z - cz) / (rz * 0.72)) ** 2 < 1 && z > 2.45
+  const splashMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false })
+  const ducks = [buildDuck(1), buildDuck(2)].map((rig, i) => {
+    g.add(rig.group)
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32), splashMat.clone()); ring.rotation.x = -Math.PI / 2; g.add(ring)
+    const drops: THREE.Mesh[] = []
+    for (let k = 0; k < 8; k++) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), splashMat.clone()); g.add(d); drops.push(d) }
+    const R = rnd(77 + i * 13)
+    return {
+      rig, ring, drops, R,
+      x: cx + (i ? 1.6 : -1.6), z: 3.1, heading: i ? Math.PI : 0, tx: cx, tz: 3.1,
+      mode: 'swim' as 'swim' | 'dabble' | 'dive', since: 0, next: 6 + i * 5, splashAt: -9, sx: 0, sz: 0,
+    }
+  })
+  const newTarget = (d: (typeof ducks)[number]) => { for (let k = 0; k < 20; k++) { const x = cx + (d.R() - 0.5) * rx * 1.6, z = cz + (d.R() - 0.5) * rz * 1.5; if (inPond(x, z)) { d.tx = x; d.tz = z; return } } }
+  const splash = (d: (typeof ducks)[number], t: number) => { d.splashAt = t; d.sx = d.x; d.sz = d.z }
+  ducks.forEach(newTarget)
+  ticks.push((t, dt) => ducks.forEach((d, i) => {
+    const { rig } = d, el = t - d.since
+    // วงน้ำ + หยดน้ำกระเซ็น
+    const sp = t - d.splashAt
+    ;(d.ring.material as THREE.MeshBasicMaterial).opacity = sp < 1.2 ? 0.55 * (1 - sp / 1.2) : 0
+    d.ring.position.set(d.sx, 0.04, d.sz); d.ring.scale.setScalar(0.06 + sp * 0.35)
+    d.drops.forEach((p, k) => { const a = (k / 8) * Math.PI * 2, r = sp * 0.35, h = sp * 1.1 - sp * sp * 2.6; (p.material as THREE.MeshBasicMaterial).opacity = sp < 0.45 && h > 0 ? 0.9 : 0; p.position.set(d.sx + Math.cos(a) * r, 0.03 + Math.max(0, h), d.sz + Math.sin(a) * r) })
+
+    if (d.mode === 'swim') {
+      const dx = d.tx - d.x, dz = d.tz - d.z, dist = Math.hypot(dx, dz)
+      if (dist < 0.15) newTarget(d)
+      const want = Math.atan2(-dz, dx); let turn = want - d.heading; while (turn > Math.PI) turn -= Math.PI * 2; while (turn < -Math.PI) turn += Math.PI * 2
+      d.heading += turn * Math.min(1, dt * 1.5)
+      const v = 0.12 * (1 - Math.min(0.8, Math.abs(turn)))
+      d.x += Math.cos(d.heading) * v * dt; d.z -= Math.sin(d.heading) * v * dt
+      rig.body.rotation.z += (Math.sin(t * 2 + i) * 0.03 - rig.body.rotation.z) * Math.min(1, dt * 4)
+      rig.group.position.y = 0.02 + Math.sin(t * 2.2 + i) * 0.008
+      rig.head.rotation.z = Math.sin(t * 0.7 + i * 2) * 0.12                          // พยักหน้า/มองรอบ
+      rig.head.rotation.y = Math.sin(t * 0.45 + i) * 0.35
+      rig.feet.forEach((f, k) => { f.rotation.z = Math.sin(t * 6 + k * Math.PI) * 0.6 })
+      if (t > d.next) { d.mode = d.R() < 0.5 ? 'dive' : 'dabble'; d.since = t; if (d.mode === 'dabble') splash(d, t) }
+    } else if (d.mode === 'dabble') {
+      // มุดหัวหากิน ~3 วิ: ก้นกระดกชี้ฟ้า ตีนตีน้ำ
+      const k = el < 0.4 ? el / 0.4 : el > 2.8 ? Math.max(0, 1 - (el - 2.8) / 0.4) : 1
+      rig.body.rotation.z = -1.75 * k + Math.sin(t * 9) * 0.05 * k
+      rig.group.position.y = 0.02 - 0.06 * k
+      rig.feet.forEach((f, j) => { f.rotation.z = Math.sin(t * 14 + j * Math.PI) * 0.9 })
+      if (el > 3.2) { d.mode = 'swim'; d.next = t + 7 + d.R() * 8; splash(d, t) }
+    } else {
+      // ดำน้ำ: พุ่งหัวลง → หายใต้น้ำ (ว่ายไปอีกจุด) → โผล่พรวดขึ้นมา
+      if (el < 0.45) {
+        const k = el / 0.45
+        rig.body.rotation.z = -1.4 * k; rig.group.position.y = 0.02 - k * 0.32; rig.group.visible = true
+        if (el < dt * 1.5) splash(d, t)
+      } else if (el < 2.6) {
+        rig.group.visible = false
+        if (el - dt < 0.45) newTarget(d)
+        const dx = d.tx - d.x, dz = d.tz - d.z, dist = Math.hypot(dx, dz)
+        if (dist > 0.02) { d.x += (dx / dist) * Math.min(dist, 0.5 * dt); d.z += (dz / dist) * Math.min(dist, 0.5 * dt); d.heading = Math.atan2(-dz, dx) }
+      } else if (el < 3.4) {
+        if (!rig.group.visible) { rig.group.visible = true; splash(d, t) }
+        const k = (el - 2.6) / 0.8
+        rig.body.rotation.z = 0.5 * (1 - k)                                            // โผล่หัวขึ้นก่อน
+        rig.group.position.y = -0.2 + Math.min(1, k * 1.6) * 0.25 - Math.max(0, k * 1.6 - 1) * 0.05
+        rig.head.rotation.y = Math.sin(t * 12) * 0.25 * (1 - k)                       // สะบัดน้ำ
+      } else { d.mode = 'swim'; d.next = t + 8 + d.R() * 9; rig.group.position.y = 0.02 }
+    }
+    rig.group.position.x = d.x; rig.group.position.z = d.z; rig.group.rotation.y = d.heading
   }))
 
   let last = 0
