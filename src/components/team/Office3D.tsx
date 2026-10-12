@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
@@ -6,6 +6,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { floorTexture, groundTexture, skyTexture } from './textures3d'
 import { buildPlant3D, buildHedge3D, buildFlowerBed3D, buildDesk3D, waterMaterial } from './detail3d'
+import { createEffects, fpsWatch, type Effects, type Quality } from './effects3d'
+import { lightAt, skyAt, buildClouds, buildTreeRing, buildGrass } from './environment3d'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
 import type { Desk } from '../../utils/officeDecor'
@@ -50,11 +52,12 @@ const isPlant = (ch: string) => ch in PLANT_COLORS
 
 
 // ── ตัวละคร (ทรงการ์ตูนหัวโต) ──
-interface AvatarRig { group: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; body: THREE.Object3D; ring: THREE.Mesh; label: CSS2DObject; key: string }
+interface AvatarRig { group: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; body: THREE.Object3D; eyes: THREE.Object3D[]; ring: THREE.Mesh; label: CSS2DObject; key: string }
 
 const lambert = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0 })
 
 function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
+  const eyes: THREE.Object3D[] = []
   const g = new THREE.Group()
   const body = new THREE.Group(); g.add(body)
   const skin = lambert(a.skin), top = lambert(a.top === 'lab' ? '#f8fafc' : a.topColor)
@@ -82,8 +85,18 @@ function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
   const armL = arm(-0.21), armR = arm(0.21)
   // หัวโต
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 28, 22), skin); head.position.y = 1.07; head.castShadow = true; body.add(head)
-  const eyeM = lambert('#1f2937')
-  for (const x of [-0.08, 0.08]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), eyeM); e.position.set(x, 1.09, 0.235); body.add(e) }
+  // ตา: ตาขาว + ตาดำ + ประกาย (กะพริบได้)
+  const white = lambert('#ffffff'), pupil = lambert('#1f2937'), shine = new THREE.MeshBasicMaterial({ color: '#ffffff' })
+  for (const x of [-0.085, 0.085]) {
+    const e = new THREE.Group(); e.position.set(x, 1.09, 0.225)
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 10), white); w.scale.set(1, 1.15, 0.5); e.add(w)
+    const pp = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), pupil); pp.position.set(0, -0.005, 0.02); pp.scale.set(1, 1.15, 0.5); e.add(pp)
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 5), shine); hl.position.set(0.012, 0.014, 0.035); e.add(hl)
+    body.add(e); eyes.push(e)
+  }
+  // คิ้ว + ปาก
+  for (const x of [-0.085, 0.085]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 0.01), lambert(a.hairColor)); b.position.set(x, 1.165, 0.235); body.add(b) }
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.007, 6, 12, Math.PI), lambert('#9a3412')); mouth.position.set(0, 1.0, 0.245); mouth.rotation.z = Math.PI; body.add(mouth)
   const blush = lambert('#fb7185')
   for (const x of [-0.14, 0.14]) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), blush); b.scale.set(1, 0.5, 0.3); b.position.set(x, 1.02, 0.22); body.add(b) }
   // ผม
@@ -115,7 +128,7 @@ function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
     const m = lambert(a.acc === 'sunglasses' ? '#111827' : '#334155')
     for (const x of [-0.08, 0.08]) { const r = add(new THREE.TorusGeometry(0.045, 0.01, 6, 14), x, 1.09, 0.25, m); if (a.acc === 'sunglasses') r.scale.set(1, 1, 1) }
   }
-  return { group: g, legL, legR, armL, armR, body }
+  return { group: g, legL, legR, armL, armR, body, eyes }
 }
 
 const FACE_ROT: Record<Facing, number> = { down: 0, up: Math.PI, left: -Math.PI / 2, right: Math.PI / 2 }
@@ -128,8 +141,16 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     /** สิ่งของที่ขยับได้ (น้ำตก ชิงช้า ...) */
     ticks: ((t: number) => void)[]
     robot: RobotRig & { label: CSS2DObject }
+    fx: Effects; sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight; nightFill: THREE.AmbientLight
+    nightLights: THREE.PointLight[]; lightKey: string
     birds: { rig: BirdRig; home: BirdHome; i: number; away: number }[]
   } | null>(null)
+  // คุณภาพภาพ: สูงสุด (AO + ความละเอียดเต็ม) / สมดุล — จำไว้ในเครื่อง · เครื่องกระตุกลดให้เอง
+  const [quality, setQuality] = useState<Quality>(() => { try { return localStorage.getItem('hd-office-3d-q') === 'balanced' ? 'balanced' : 'ultra' } catch { return 'ultra' } })
+  const [notice, setNotice] = useState('')
+  const pickQuality = (q: Quality) => { setQuality(q); try { localStorage.setItem('hd-office-3d-q', q) } catch { /* แค่ไม่จำ */ } }
+  const qualityRef = useRef(quality)
+  useEffect(() => { qualityRef.current = quality; sceneRef.current?.fx.setQuality(quality) }, [quality])
   const peopleRef = useRef(people)
   useEffect(() => { peopleRef.current = people }, [people])
   const robotRef = useRef(robot)
@@ -175,7 +196,8 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     controls.maxPolarAngle = 1.25
     controls.screenSpacePanning = false
 
-    scene.add(new THREE.HemisphereLight('#eaf4ff', '#b8a68a', 0.9))
+    const hemi = new THREE.HemisphereLight('#eaf4ff', '#b8a68a', 0.9); scene.add(hemi)
+    const nightFill = new THREE.AmbientLight('#ffd9a8', 0); scene.add(nightFill)
     const sun = new THREE.DirectionalLight('#fff1dc', 2.4)
     sun.position.set(-12, 22, 10); sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
@@ -190,11 +212,12 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     rel.style.cssText = 'font: 600 9px system-ui, sans-serif; padding: 1px 6px; border-radius: 999px; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; white-space: nowrap'
     const rlabel = new CSS2DObject(rel); rlabel.position.set(0, 1.3, 0); rr.group.add(rlabel)
     rr.group.visible = false; scene.add(rr.group)
-    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floors: [], ticks: [], robot: { ...rr, label: rlabel }, birds: [] }
+    const fx = createEffects(renderer, scene, camera, qualityRef.current)
+    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floors: [], ticks: [], robot: { ...rr, label: rlabel }, birds: [], fx, sun, hemi, nightFill, nightLights: [], lightKey: '' }
 
     const resize = () => {
       const w = host.clientWidth, h = host.clientHeight
-      renderer.setSize(w, h); labels.setSize(w, h)
+      renderer.setSize(w, h); labels.setSize(w, h); sceneRef.current?.fx.setSize(w, h)
       camera.aspect = w / Math.max(1, h); camera.updateProjectionMatrix()
     }
     resize()
@@ -222,6 +245,29 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     // ลูปวาด 30 เฟรม/วิ · หยุดเมื่อหน้าต่างถูกซ่อน
     const clock = new THREE.Clock()
     let acc = 0, firstFocus = true
+    const watch = fpsWatch(() => {
+      if (qualityRef.current !== 'ultra') return
+      qualityRef.current = 'balanced'; setQuality('balanced')
+      setNotice('เครื่องนี้เริ่มกระตุก — ลดเป็นคุณภาพ "สมดุล" ให้แล้ว (กดสลับกลับได้)')
+    })
+    /** แสงตามเวลาจริง (อัปเดตทีละนาที) */
+    const applyLight = (st: NonNullable<typeof sceneRef.current>) => {
+      const now = new Date()
+      const key = `${now.getHours()}:${now.getMinutes()}`
+      if (st.lightKey === key) return
+      st.lightKey = key
+      const L = lightAt(now)
+      const c = st.controls.target
+      st.sun.position.set(c.x + L.sunDir.x, L.sunDir.y, c.z + L.sunDir.z); st.sun.target.position.copy(c)
+      st.sun.color.copy(L.sunColor); st.sun.intensity = L.sunIntensity
+      st.hemi.color.copy(L.hemiSky); st.hemi.groundColor.copy(L.hemiGround); st.hemi.intensity = L.hemiIntensity
+      st.nightFill.intensity = L.night * 0.35
+      st.nightLights.forEach(l => { l.intensity = L.night * 3.2 + L.dusk * 0.8 })
+      renderer.toneMappingExposure = L.exposure
+      st.scene.background = skyAt(L.night, L.dusk)
+      st.scene.fog = new THREE.Fog(L.night > 0.5 ? '#1d2440' : '#e6eef7', 45, 110)
+      st.fx.setNight(L.night)
+    }
     const tmp = new THREE.Vector3()
     renderer.setAnimationLoop(() => {
       const dt = clock.getDelta()
@@ -231,6 +277,8 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       const step = acc; acc = 0
       const t = clock.elapsedTime
       const st = sceneRef.current!
+      watch()
+      applyLight(st)
       for (const tk of st.ticks) tk(t)
       // หุ่นยนต์: เลื่อนไปช่องถัดไปแบบนุ่ม · เดินแกว่งขา · ไม้กวาดปัด / ถือแก้ว
       const rb = robotRef.current, R = st.robot
@@ -277,6 +325,10 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
         rig.armL.rotation.x = -walk * 0.8; rig.armR.rotation.x = walk * 0.8
         rig.body.position.y = p.sitting ? 0.0 : (p.moving ? Math.abs(Math.sin(t * 12)) * 0.04 : 0)
         rig.ring.visible = p.speaking
+        // กะพริบตา (ทุก ~4 วิ ไม่พร้อมกัน) · ยืนนิ่ง = หายใจเบา ๆ
+        const blink = ((t + p.email.length * 0.37) % 4) < 0.12
+        rig.eyes.forEach(e => { e.scale.y = blink ? 0.12 : 1 })
+        if (!p.moving && !p.sitting) rig.body.scale.y = 1 + Math.sin(t * 2.2 + p.email.length) * 0.012
         if (p.speaking) rig.ring.scale.setScalar(1 + Math.sin(t * 8) * 0.12)
         // กล้องตามตัวเรา (เป้าหมุนรอบตัวเรา)
         if (p.me) {
@@ -286,7 +338,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
         }
       }
       controls.update()
-      renderer.render(scene, camera)
+      st.fx.render()
       labels.render(scene, camera)
     })
 
@@ -296,6 +348,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       renderer.domElement.removeEventListener('pointerdown', onDown)
       renderer.domElement.removeEventListener('pointerup', onUp)
       controls.dispose()
+      sceneRef.current?.fx.dispose()
       scene.traverse(o => {
         const m = o as THREE.Mesh
         if (m.geometry) m.geometry.dispose()
@@ -368,7 +421,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
       const cx = x + 0.5, cz = y + 0.5
       if (ch === '#') {
-        walls.push({ x: cx, z: cz, w: 1, d: 1, h: 1.3, color: '#eef1f5' })
+        walls.push({ x: cx, z: cz, w: 1, d: 1, h: 1.3, color: '#e3e7ed' })
         caps.push({ x: cx, z: cz, w: 1.04, d: 1.04, h: 0.07, y: 1.3, color: '#64748b' })
         caps.push({ x: cx, z: cz, w: 1.02, d: 1.02, h: 0.1, color: '#9aa4b2' })
       }
@@ -430,6 +483,24 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       const rig = buildBird3D(); rig.group.position.set(home.fx, 0, home.fz); st.scene.add(rig.group)
       return { rig, home, i, away: 0 }
     })
+    // ไฟกลางคืน: โคมไฟสวน + โคมไฟตั้งพื้น/ตั้งโต๊ะ (ไม่เกิน 8 ดวง)
+    st.nightLights = []
+    st.lightKey = ''
+    const lampSpots: { x: number; y: number; z: number; color: string }[] = []
+    for (const p of props) if (p.kind === 'gardenlamp') lampSpots.push({ x: p.x + 0.5, y: 1.6, z: p.y + 0.5, color: '#ffd38a' })
+    for (const it of items) if (it.kind === 'floorlamp' || it.kind === 'lamp') lampSpots.push({ x: it.x + 0.5, y: it.kind === 'lamp' ? 1.1 : 1.45, z: it.y + 0.5, color: '#ffe0a8' })
+    for (const sp of lampSpots.slice(0, 8)) {
+      const l = new THREE.PointLight(sp.color, 0, 5.5, 1.6); l.position.set(sp.x, sp.y, sp.z); world.add(l); st.nightLights.push(l)
+    }
+    // หญ้าพลิ้วลม (ช่องหญ้าที่ไม่มีของวางทับ)
+    const grassTiles: { x: number; y: number }[] = []
+    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'g' && !blocked.has(`${x},${y}`)) grassTiles.push({ x, y }) }))
+    const grass = buildGrass(grassTiles)
+    if (grass) { world.add(grass.mesh); st.ticks.push(grass.tick) }
+    // ต้นไม้ล้อมตึก + เมฆลอย
+    world.add(buildTreeRing(W, H))
+    const clouds = buildClouds(W / 2, H / 2)
+    world.add(clouds.group); st.ticks.push(clouds.tick)
     // โต๊ะส่วนตัว 9 แบบ (ตามที่แต่ละคนเลือก) — หมุนตามทิศโต๊ะ
     for (const { desk } of desks) {
       const d3 = buildDesk3D(desk.style)
@@ -471,7 +542,17 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
   }, [peopleKey])
 
   return (
-    <div ref={hostRef} tabIndex={0} onFocus={() => onFocusChange(true)} onBlur={() => onFocusChange(false)}
-      className="relative w-full h-full outline-none rounded-2xl overflow-hidden" />
+    <div className="relative w-full h-full">
+      <div ref={hostRef} tabIndex={0} onFocus={() => onFocusChange(true)} onBlur={() => onFocusChange(false)}
+        className="relative w-full h-full outline-none rounded-2xl overflow-hidden" />
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-1 text-[11px]">
+        <button onClick={() => pickQuality(quality === 'ultra' ? 'balanced' : 'ultra')}
+          title="คุณภาพภาพ — สูงสุด: เงาตามซอกมุม ความละเอียดเต็ม · สมดุล: เบากว่า สำหรับเครื่องทั่วไป"
+          className="px-2 py-1 rounded-lg bg-white/90 dark:bg-gray-900/90 shadow border border-gray-200 dark:border-gray-700">
+          {quality === 'ultra' ? '✨ คุณภาพสูงสุด' : '⚖️ สมดุล'}
+        </button>
+        {notice && <span className="px-2 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 shadow">{notice}</span>}
+      </div>
+    </div>
   )
 }
