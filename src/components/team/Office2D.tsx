@@ -21,7 +21,7 @@ import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
 import { GardenLife } from './GardenLife'
 import { MiniOffice, type MiniPerson } from './MiniOffice'
-import { useDocPip, pipBlockReason } from '../../hooks/useDocPip'
+import { useDocPip, pipBlockReason, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
 import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
@@ -649,6 +649,12 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
   const pip = useDocPip()
   const openPip = pip.open
+  // เปิดหน้าต่างลอย → หดหน้าต่างออฟฟิศเป็นแถบเล็กมุมซ้ายล่าง · หน้าต่างลอยปิด (ด้วยวิธีใดก็ตาม) → คืนขนาดเดิม
+  const savedBox = useRef<WinBox | null>(null)
+  useEffect(() => {
+    if (pip.win) { if (!savedBox.current) savedBox.current = shrinkWindow() }
+    else if (savedBox.current) { restoreWindow(savedBox.current); savedBox.current = null }
+  }, [pip.win])
   // เข้าร่วมเสียงอยู่ → ให้เบราว์เซอร์เปิดหน้าต่างลอยเองตอนสลับไปแท็บ/หน้าต่างอื่น (Chrome/Edge รุ่นใหม่ที่รองรับ)
   useEffect(() => {
     if (!voice.micOn || !('mediaSession' in navigator)) return
