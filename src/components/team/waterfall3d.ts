@@ -454,8 +454,12 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
     const drops: THREE.Mesh[] = []
     for (let k = 0; k < 8; k++) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), splashMat.clone()); g.add(d); drops.push(d) }
     const R = rnd(77 + i * 13)
+    // ริ้วน้ำ: วงกระเพื่อมปล่อยเป็นระยะตามทางว่าย + คลื่นรูปตัว V ท้ายตัว
+    const wakes = Array.from({ length: 6 }, () => { const m = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 40), splashMat.clone()); m.rotation.x = -Math.PI / 2; g.add(m); return { m, born: -9, x: 0, z: 0 } })
+    const vee = new THREE.Group(); g.add(vee)
+    const veeArms = [-1, 1].map(s2 => { const a = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.035), splashMat.clone()); a.rotation.x = -Math.PI / 2; a.position.set(-0.3, 0, s2 * 0.1); a.rotation.z = s2 * 0.35; vee.add(a); return a })
     return {
-      rig, ring, drops, R,
+      rig, ring, drops, R, wakes, vee, veeArms, lastWake: 0,
       x: cx + (i ? 1.6 : -1.6), z: 3.1, heading: i ? Math.PI : 0, tx: cx, tz: 3.1,
       mode: 'swim' as 'swim' | 'dabble' | 'dive', since: 0, next: 6 + i * 5, splashAt: -9, sx: 0, sz: 0,
     }
@@ -471,6 +475,11 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
     d.ring.position.set(d.sx, 0.04, d.sz); d.ring.scale.setScalar(0.06 + sp * 0.35)
     d.drops.forEach((p, k) => { const a = (k / 8) * Math.PI * 2, r = sp * 0.35, h = sp * 1.1 - sp * sp * 2.6; (p.material as THREE.MeshBasicMaterial).opacity = sp < 0.45 && h > 0 ? 0.9 : 0; p.position.set(d.sx + Math.cos(a) * r, 0.03 + Math.max(0, h), d.sz + Math.sin(a) * r) })
 
+    const moving = d.mode === 'swim' || (d.mode === 'dabble')
+    if (moving && rig.group.visible && t - d.lastWake > 0.55) { const w0 = d.wakes.shift()!; w0.born = t; w0.x = d.x; w0.z = d.z; d.wakes.push(w0); d.lastWake = t }
+    d.wakes.forEach(w0 => { const a = t - w0.born; (w0.m.material as THREE.MeshBasicMaterial).opacity = a < 2.4 ? 0.6 * (1 - a / 2.4) : 0; w0.m.position.set(w0.x, 0.035, w0.z); w0.m.scale.setScalar(0.12 + a * 0.22) })
+    d.vee.position.set(d.x, 0.036, d.z); d.vee.rotation.y = d.heading
+    d.veeArms.forEach((a, k) => { (a.material as THREE.MeshBasicMaterial).opacity = d.mode === 'swim' && rig.group.visible ? 0.5 + Math.sin(t * 5 + k) * 0.1 : 0 })
     if (d.mode === 'swim') {
       const dx = d.tx - d.x, dz = d.tz - d.z, dist = Math.hypot(dx, dz)
       if (dist < 0.15) newTarget(d)
