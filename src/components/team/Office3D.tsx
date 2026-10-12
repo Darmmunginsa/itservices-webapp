@@ -3,8 +3,9 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
-import { propDef, propBlocked, type Prop } from '../../utils/officeProps'
+import { propDef, type Prop } from '../../utils/officeProps'
 import { deskSurface, type Desk } from '../../utils/officeDecor'
+import { buildProp3D } from './props3d'
 
 // ── ออฟฟิศ 3D (เฟส 1): ห้อง ผนัง พื้น เฟอร์นิเจอร์ สวนแบบเรียบ + ตัวละครเดินได้ ──
 // สไตล์การ์ตูน ทรงเรียบ สร้างจากรูปทรงพื้นฐานทั้งหมด (ไม่มีไฟล์โมเดล ไม่มีลิขสิทธิ์) · 1 ช่อง = 1 หน่วย · แกน x = คอลัมน์, z = แถว
@@ -33,18 +34,6 @@ const FLOOR: Record<string, string> = {
 const PLANT_COLORS: Record<string, string> = { P: '#3f9d4b', G: '#2f8a5b', Y: '#6fb04a', L: '#4f9e3d', R: '#d9467a', U: '#2e7d5b', Z: '#8bbf4a', N: '#3b8c6e', J: '#5aa65a' }
 const isPlant = (ch: string) => ch in PLANT_COLORS
 
-/** สีของสิ่งของชิ้นใหญ่ (เฟส 1 = กล่องตามรูปร่าง · เฟส 2 จะวาดละเอียด) */
-const PROP_LOOK: Record<string, { color: string; h: number }> = {
-  bench: { color: '#b07a3a', h: 0.45 }, sofa: { color: '#6366f1', h: 0.55 }, picnic: { color: '#b07a3a', h: 0.7 },
-  fountain: { color: '#a8a29e', h: 0.6 }, gazebo: { color: '#b45309', h: 2.0 }, arch: { color: '#f472b6', h: 1.8 },
-  swing: { color: '#92400e', h: 1.6 }, gardenlamp: { color: '#1f2937', h: 1.7 }, birdbath: { color: '#a8a29e', h: 0.8 },
-  stones: { color: '#78716c', h: 0.3 }, duck: { color: '#fafafa', h: 0.2 }, pingpong: { color: '#15803d', h: 0.75 },
-  pool: { color: '#166534', h: 0.8 }, foosball: { color: '#1f2937', h: 0.85 }, hammock: { color: '#f97316', h: 0.6 },
-  tvwall: { color: '#111827', h: 1.6 }, bar: { color: '#7c2d12', h: 1.05 }, vending: { color: '#dc2626', h: 1.8 },
-  bigfridge: { color: '#e5e7eb', h: 1.9 }, microwave: { color: '#9ca3af', h: 1.0 }, fruits: { color: '#f59e0b', h: 0.8 },
-  printer: { color: '#d1d5db', h: 0.9 }, cabinet: { color: '#94a3b8', h: 1.3 }, cooler: { color: '#7dd3fc', h: 1.2 },
-  notice: { color: '#b45309', h: 1.6 }, logo: { color: '#2563eb', h: 1.6 }, clock: { color: '#78350f', h: 1.9 },
-}
 
 // ── ตัวละคร (ทรงการ์ตูนหัวโต) ──
 interface AvatarRig { group: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; body: THREE.Object3D; ring: THREE.Mesh; label: CSS2DObject; key: string }
@@ -122,6 +111,8 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
   const sceneRef = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls
     world: THREE.Group; avatars: Map<string, AvatarRig>; floor: THREE.InstancedMesh | null; tiles: { x: number; y: number }[]
+    /** สิ่งของที่ขยับได้ (น้ำตก ชิงช้า ...) */
+    ticks: ((t: number) => void)[]
   } | null>(null)
   const peopleRef = useRef(people)
   useEffect(() => { peopleRef.current = people }, [people])
@@ -161,7 +152,7 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
     sun.shadow.bias = -0.0005
     scene.add(sun, sun.target)
     const world = new THREE.Group(); scene.add(world)
-    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floor: null, tiles: [] }
+    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floor: null, tiles: [], ticks: [] }
 
     const resize = () => {
       const w = host.clientWidth, h = host.clientHeight
@@ -201,6 +192,7 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
       const step = acc; acc = 0
       const t = clock.elapsedTime
       const st = sceneRef.current!
+      for (const tk of st.ticks) tk(t)
       for (const p of peopleRef.current) {
         const rig = st.avatars.get(p.email)
         if (!rig) continue
@@ -317,27 +309,16 @@ export default function Office3D({ rows, props, desks, people, onTileClick, onFo
       mesh.castShadow = true; world.add(mesh)
     }
 
-    // สิ่งของชิ้นใหญ่ — เฟส 1 เป็นกล่องตามช่องที่ขวางทาง (น้ำตก = หน้าผาหิน + บ่อน้ำ)
-    const propBoxes: Parameters<typeof boxes>[0] = []
+    // สิ่งของชิ้นใหญ่ (เฟส 2) — โมเดลการ์ตูนต่อชนิด · ชิ้นที่ขยับได้ลงทะเบียน tick
+    st.ticks = []
     for (const p of props) {
       const def = propDef(p.kind)
       if (!def) continue
-      if (p.kind === 'waterfall') {
-        for (let dx = 0; dx < def.w; dx++) {
-          propBoxes.push({ x: p.x + dx + 0.5, z: p.y + 0.5, w: 1, d: 1, h: 1.8, color: '#78716c' })
-          propBoxes.push({ x: p.x + dx + 0.5, z: p.y + 1.5, w: 1, d: 1, h: 0.9, color: '#a8a29e' })
-          for (const dy of [2, 3]) propBoxes.push({ x: p.x + dx + 0.5, z: p.y + dy + 0.5, w: 1, d: 1, h: 0.04, color: '#38bdf8' })
-        }
-        for (const dx of [3, 4]) propBoxes.push({ x: p.x + dx + 0.5, z: p.y + 1.05, w: 0.95, d: 0.12, h: 1.75, color: '#e0f2fe' })   // ม่านน้ำตก
-        continue
-      }
-      const look = PROP_LOOK[p.kind] ?? { color: '#9ca3af', h: 0.8 }
-      for (const k of propBlocked([p])) {
-        const [x, y] = k.split(',').map(Number)
-        propBoxes.push({ x: x + 0.5, z: y + 0.5, w: 0.92, d: 0.92, h: look.h, color: look.color })
-      }
+      const b = buildProp3D(p.kind, def.w, def.h)
+      b.group.position.set(p.x, 0, p.y)
+      world.add(b.group)
+      if (b.tick) st.ticks.push(b.tick)
     }
-    boxes(propBoxes)
 
     // โต๊ะส่วนตัว (3×3 · ตัวโต๊ะ 6 ช่อง + เก้าอี้)
     const deskItems: Parameters<typeof boxes>[0] = []
