@@ -15,7 +15,8 @@ import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
 import { appLink, escapeHtml } from '../utils/emailTemplate'
 import type { EmailTemplate } from '../services/emailService'
-import { createCalendarEvent, deleteCalendarEvent } from '../services/graph'
+import { deleteCalendarEvent } from '../services/graph'
+import { sendHolidayInvite, withinLead, INVITE_LEAD_DAYS } from '../utils/holidayInvites'
 import { useAppStore } from '../store/useAppStore'
 import type { Holiday, Announcement, AgentProfile, LeaveQuota } from '../types/common'
 import { formatDate } from '../utils/dateUtils'
@@ -174,34 +175,17 @@ export default function Admin() {
         HolidayType: form.holidayType,
       })
 
-      // สร้าง Calendar event + invite ทีมทั้งหมด
-      try {
-        const agents = await spGet<AgentProfile>('HD_AgentProfiles', undefined, 'Id,Title,EmailText')
-        const attendees = agents.map(a => a.EmailText).filter(Boolean)
-
-        // all-day event: end = วันถัดไป
-        const startDate = new Date(form.holidayDate)
-        const endDate = new Date(form.holidayDate)
-        endDate.setDate(endDate.getDate() + 1)
-        const toISO = (d: Date) => d.toISOString().split('T')[0] + 'T00:00:00'
-
-        const calEvent = await createCalendarEvent({
-          subject: `🏖 ${form.holidayType === 'ราชการ' ? '[วันหยุดราชการ]' : '[วันหยุดบริษัท]'} ${form.title}`,
-          start: toISO(startDate),
-          end: toISO(endDate),
-          attendees,
-          isAllDay: true,
-          body: `วันหยุด${form.holidayType}: ${form.title}\nวันที่: ${form.holidayDate}`,
-        })
-        // บันทึก CalendarEventId กลับ SP เพื่อใช้ตอนลบ
-        if (calEvent?.id) {
-          const latest = await spGet<Holiday>('HD_Holidays',
-            `Title eq '${form.title}' and HolidayDate eq '${form.holidayDate}'`)
-          if (latest[0]) await spUpdate('HD_Holidays', latest[0].id, { CalendarEventId: calEvent.id })
+      // Calendar invite ให้ทุกคน: ถึงช่วง 1 เดือนก่อนวันหยุดแล้ว → ส่งเลย · ยังไกล → ระบบส่งเองเมื่อเหลือ 1 เดือน
+      if (withinLead({ HolidayDate: form.holidayDate })) {
+        try {
+          const [created] = await spGet<Holiday>('HD_Holidays', `Title eq '${form.title.replace(/'/g, "''")}' and HolidayDate eq '${form.holidayDate}'`)
+          const n = created ? await sendHolidayInvite(created) : 0
+          addToast('success', `เพิ่มวันหยุดและส่ง Calendar invite ให้ทีม ${n} คนแล้ว`)
+        } catch {
+          addToast('success', 'เพิ่มวันหยุดสำเร็จ (Calendar invite ไม่สำเร็จ — ระบบจะลองส่งใหม่เอง)')
         }
-        addToast('success', `เพิ่มวันหยุดและส่ง Calendar invite ให้ทีม ${attendees.length} คนแล้ว`)
-      } catch {
-        addToast('success', 'เพิ่มวันหยุดสำเร็จ (Calendar invite ไม่สำเร็จ)')
+      } else {
+        addToast('success', `เพิ่มวันหยุดแล้ว — จะส่ง Calendar invite ให้ทุกคนอัตโนมัติล่วงหน้า ${INVITE_LEAD_DAYS} วัน`)
       }
 
       setForm({ ...EMPTY_FORM })
@@ -214,7 +198,7 @@ export default function Admin() {
     if (!window.confirm(`ลบ "${title}"?\nจะยกเลิก Calendar event ของทีมด้วย`)) return
     try {
       // ลบ Calendar event (ส่ง cancellation ให้ attendees อัตโนมัติ)
-      if (calEventId) {
+      if (calEventId && !calEventId.startsWith('pending:')) {
         try { await deleteCalendarEvent(calEventId) } catch { /* non-critical */ }
       }
       await spDelete('HD_Holidays', id)

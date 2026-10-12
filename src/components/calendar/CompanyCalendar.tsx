@@ -5,6 +5,7 @@ import { th } from 'date-fns/locale'
 import { spGet, spCreate } from '../../services/sharepoint'
 import { sendTemplateEmail } from '../../services/emailService'
 import { appLink, mailFailText } from '../../utils/emailTemplate'
+import { sendDueHolidayInvites, withinLead, INVITE_LEAD_DAYS } from '../../utils/holidayInvites'
 import type { Holiday, LeaveRequest, AgentProfile, LeaveQuota } from '../../types/common'
 import { cn } from '../../utils/colorUtils'
 import { useAppStore } from '../../store/useAppStore'
@@ -244,7 +245,11 @@ export function CompanyCalendar() {
         HolidayDate: format(selectedDay, 'yyyy-MM-dd'),
         HolidayType: holidayForm.holidayType,
       })
-      addToast('success', `เพิ่มวันหยุด ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว`)
+      // ถึงช่วง 1 เดือนก่อนวันหยุด → ส่ง Calendar invite ให้ทุกคนเลย · ยังไกล → ระบบส่งเองเมื่อเหลือ 1 เดือน
+      const soon = withinLead({ HolidayDate: format(selectedDay, 'yyyy-MM-dd') })
+      const sent = soon ? await sendDueHolidayInvites(user?.email ?? '', true).catch(() => 0) : 0
+      addToast('success', `เพิ่มวันหยุด ${format(selectedDay, 'd MMM yyyy', { locale: th })} แล้ว` +
+        (sent ? ' · ส่ง Calendar invite ให้ทุกคนแล้ว' : soon ? '' : ` · จะส่ง Calendar invite ให้ทุกคนล่วงหน้า ${INVITE_LEAD_DAYS} วัน`))
       closeModal()
       loadData()
     } catch { addToast('error', 'เกิดข้อผิดพลาด กรุณาลองใหม่') }

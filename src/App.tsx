@@ -1,3 +1,4 @@
+import { sendDueHolidayInvites } from './utils/holidayInvites'
 import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Calendar } from 'lucide-react'
@@ -217,6 +218,15 @@ function AppContent() {
       .then(r => setPermissions(r.pages, r.source, r.edit))
       .catch(() => setPermissions(new Set(ALWAYS_KEYS), 'none'))
   }, [user?.email, user?.role, setPermissions])
+
+  // วันหยุดที่เหลือไม่ถึง 1 เดือน → ส่ง Calendar invite ให้ทุกคน (Admin/Boss คนที่เปิดเว็บเป็นผู้ส่ง · เช็กทุก 3 ชม.)
+  useEffect(() => {
+    if (!user?.email || !['Admin', 'Boss'].includes(user.role ?? '')) return
+    const run = () => { sendDueHolidayInvites(user.email).catch(() => { /* ไม่มีสิทธิ์/ลิสต์ — ข้าม */ }) }
+    const first = setTimeout(run, 15_000)          // หลังหน้าโหลดเสร็จ ไม่แย่งงานตอนเปิด
+    const every = setInterval(run, 60 * 60_000)
+    return () => { clearTimeout(first); clearInterval(every) }
+  }, [user?.email, user?.role])
 
   // หน้าต่างที่ "ดึงออกไปอีกจอ" (#/...?popout=1) — ไม่มีเมนูข้าง/ticker/ปุ่มลอย เหลือแต่เนื้อหา
   const popout = isPopout(location.search)

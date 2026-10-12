@@ -164,6 +164,8 @@ export async function createCalendarEvent(event: {
   bodyHtml?: string
   isOnlineMeeting?: boolean
   isAllDay?: boolean
+  /** แสดงสถานะในปฏิทิน — วันหยุดใช้ 'oof' (ไม่อยู่) */
+  showAs?: 'free' | 'busy' | 'oof' | 'tentative'
 }): Promise<OutlookEvent> {
   const headers = await graphHeaders()
   const payload = {
@@ -171,7 +173,7 @@ export async function createCalendarEvent(event: {
     isAllDay: event.isAllDay ?? false,
     start: { dateTime: event.start, timeZone: 'Asia/Bangkok' },
     end: { dateTime: event.end, timeZone: 'Asia/Bangkok' },
-    showAs: event.isAllDay ? 'free' : undefined,
+    showAs: event.showAs ?? (event.isAllDay ? 'free' : undefined),
     location: event.location ? { displayName: event.location } : undefined,
     attendees: event.attendees?.filter(Boolean).map(email => ({
       emailAddress: { address: email },

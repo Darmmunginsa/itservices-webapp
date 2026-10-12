@@ -21,7 +21,8 @@ import {
 } from '../services/teamStatus'
 import { leaveSlotsForDay, type LeaveLike } from '../utils/teamStatusAuto'
 import { useAppStore } from '../store/useAppStore'
-import type { AgentProfile } from '../types/common'
+import type { AgentProfile, Holiday } from '../types/common'
+import { holidayDay } from '../utils/holidayInvites'
 import {
   DAY_END_HOUR, DAY_START_HOUR, DURATION_PRESETS, REASON_PRESETS, STATUS_META, STATUS_ORDER,
   type CalendarBusySlot, type StatusType, type TeamStatusSlot,
@@ -95,6 +96,8 @@ export default function TeamStatus() {
   const [calendar, setCalendar] = useState<CalendarBusySlot[]>([])
   // วันลาของวันที่ดูอยู่ — แสดงเป็นสถานะ "ลา" ทั้งวัน กันติดต่อไปโดยไม่รู้ว่าเขาลา
   const [leaves, setLeaves] = useState<LeaveLike[]>([])
+  // วันหยุดบริษัท/ราชการที่กำหนดไว้ (ปฏิทินบริษัท) — แสดงแถบบนไทม์ไลน์ของวันนั้น
+  const [holidays, setHolidays] = useState<Holiday[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [dayOffset, setDayOffset] = useState(0)
@@ -133,6 +136,11 @@ export default function TeamStatus() {
           })
       })
   }, [])
+
+  useEffect(() => {
+    spGet<Holiday>('HD_Holidays', undefined, 'Id,Title,HolidayDate,HolidayType').then(setHolidays).catch(() => { /* ไม่มีลิสต์/สิทธิ์ — ไม่แสดง */ })
+  }, [])
+  const holiday = useMemo(() => holidays.find(h => holidayDay(h).getTime() === startOfDay(day).getTime()), [holidays, day])
 
   // setState ใน .then เท่านั้น (ไม่ await แล้ว set ตรง ๆ) — กฎ lint ของโปรเจกต์
   const loadSlots = useCallback(() => {
@@ -387,6 +395,14 @@ export default function TeamStatus() {
       {/* Timeline */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
         <p className="text-xs font-semibold text-gray-400 uppercase mb-3">ไทม์ไลน์ {dayLabel}</p>
+        {holiday && (
+          <div className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${holiday.HolidayType === 'ราชการ'
+            ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+            : 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800'}`}>
+            <span>🏖</span>
+            <span>{holiday.HolidayType === 'ราชการ' ? 'วันหยุดราชการ' : 'วันหยุดบริษัท'}: {holiday.Title}</span>
+          </div>
+        )}
         <div className="flex">
           <div className="shrink-0" style={{ width: 110 }}>
             <div style={{ height: 22 }} />
