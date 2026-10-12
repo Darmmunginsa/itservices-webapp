@@ -67,7 +67,7 @@ type KoiScheme = 'kohaku' | 'sanke' | 'ogon' | 'showa' | 'chagoi'
 /** ลายปลาคาร์ฟมองจากด้านบน: u = หัว→หาง (ซ้าย=หาง ขวา=หัว) · v = ข้างซ้าย→ข้างขวา · ลายแดง/ดำเกาะกลางหลัง ท้องขาว */
 function koiTex(seed: number, scheme: KoiScheme) {
   return canvasTex(256, 128, x => {
-    const base = { kohaku: '#fbfaf5', sanke: '#fbfaf5', ogon: '#f0b13a', showa: '#202020', chagoi: '#b98a52' }[scheme]
+    const base = { kohaku: '#fbfaf5', sanke: '#fbfaf5', ogon: '#fbfaf5', showa: '#202020', chagoi: '#b98a52' }[scheme]
     x.fillStyle = base; x.fillRect(0, 0, 256, 128)
     const R = rnd(seed)
     // ลายเป็นปื้นใหญ่ตามแนวหลัง (ไม่ลามถึงท้อง)
@@ -81,7 +81,7 @@ function koiTex(seed: number, scheme: KoiScheme) {
     if (scheme === 'kohaku') { patch('#d8361a', 3, 30, 60, 220); x.fillStyle = '#d8361a'; x.beginPath(); x.ellipse(232, 64, 16, 20, 0, 0, Math.PI * 2); x.fill() }
     if (scheme === 'sanke') { patch('#d8361a', 3, 26, 60, 230); patch('#151515', 5, 9, 50, 200) }
     if (scheme === 'showa') { patch('#d8361a', 3, 26, 70, 235); patch('#fbfaf5', 3, 18, 60, 200) }
-    if (scheme === 'ogon') { const g = x.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, 'rgba(180,110,20,.6)'); g.addColorStop(0.5, 'rgba(255,245,200,.7)'); g.addColorStop(1, 'rgba(180,110,20,.6)'); x.fillStyle = g; x.fillRect(0, 0, 256, 128) }
+    if (scheme === 'ogon') { patch('#d8361a', 3, 24, 60, 230); patch('#f5c518', 3, 18, 50, 220) }   // ขาว แดง เหลือง
     if (scheme === 'chagoi') { x.fillStyle = 'rgba(90,60,30,.35)'; x.fillRect(0, 50, 256, 28) }
     // เกล็ดตาข่าย (เห็นชัดบนหลัง)
     x.strokeStyle = scheme === 'showa' ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.16)'; x.lineWidth = 0.8
@@ -122,10 +122,10 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   }
   geo.computeVertexNormals()
   const base = Float32Array.from(pos.array as Float32Array)
-  const body = new THREE.Mesh(geo, std({ map: koiTex(seed, scheme), roughness: scheme === 'ogon' ? 0.28 : 0.42, metalness: scheme === 'ogon' ? 0.45 : 0.04 }))
+  const body = new THREE.Mesh(geo, std({ map: koiTex(seed, scheme), roughness: 0.42, metalness: 0.04 }))
   body.castShadow = true; g.add(body)
 
-  const tint = { kohaku: 'rgba(255,235,225,.75)', sanke: 'rgba(255,235,225,.75)', ogon: 'rgba(250,200,90,.8)', showa: 'rgba(60,60,60,.75)', chagoi: 'rgba(200,150,95,.8)' }[scheme]
+  const tint = { kohaku: 'rgba(255,235,225,.75)', sanke: 'rgba(255,235,225,.75)', ogon: 'rgba(255,235,200,.75)', showa: 'rgba(60,60,60,.75)', chagoi: 'rgba(200,150,95,.8)' }[scheme]
   const fin = new THREE.MeshStandardMaterial({ map: finTex(tint), transparent: true, side: THREE.DoubleSide, roughness: 0.4, depthWrite: false })
 
   // หางแฉกบาน (แนวตั้งเอียงนิด ให้มองจากบนเห็นเป็นพัด)
