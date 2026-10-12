@@ -667,72 +667,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
       {dressing && <AvatarEditor initial={myAvatar} seed={me} saving={savingAvatar} onSave={saveAvatar} onClose={() => setDressing(false)} />}
       {/* ── แผนที่ ── */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
-          <span className="inline-flex items-center gap-1"><Keyboard size={12} /> ลูกศร / WASD เดิน · คลิกช่องว่างเพื่อเดินไป</span>
-          <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
-          {/* ย่อ/ขยายแผนที่ */}
-          <span className="inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <button onClick={() => stepZoom(-0.1)} title="ย่อแผนที่" className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800">−</button>
-            <button onClick={() => pickZoom(zoomPref === 'fit' ? 1 : 'fit')} title={zoomPref === 'fit' ? 'กลับขนาดจริง' : 'ย่อให้เห็นทั้งออฟฟิศ'}
-              className={`px-2 py-1 border-x border-gray-200 dark:border-gray-700 tabular-nums ${zoomPref === 'fit' ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
-              {zoomPref === 'fit' ? 'พอดีจอ' : `${Math.round(zoom * 100)}%`}
-            </button>
-            <button onClick={() => stepZoom(0.1)} title="ขยายแผนที่" className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800">+</button>
-          </span>
-          {!decor.decorating && (
-            <button onClick={decor.begin} title="วางโต๊ะของคุณตรงไหนก็ได้ เลือกแบบโต๊ะ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
-              🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'วางโต๊ะของฉัน'}
-            </button>
-          )}
-          {!decor.decorating && (
-            <button onClick={() => setDressing(true)} title="แต่งตัวละครของคุณ — ผม เสื้อผ้า ของประดับ · ทุกคนเห็น"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
-              👤 แต่งตัวละคร
-            </button>
-          )}
-          {pos && !decor.decorating && (
-            <>
-              <button onClick={() => requestRobot('clean')} disabled={requesting || myPending}
-                title="เรียกหุ่นยนต์มากวาดตรงที่คุณยืนอยู่ — ทุกคนเห็นหุ่นเดินมา"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-600 disabled:opacity-50">
-                🧹 {myPending ? 'หุ่นกำลังมา…' : 'Request Cleaning'}
-              </button>
-              {hasCoffee && (
-                <button onClick={() => requestRobot('coffee')} disabled={requesting || myPending}
-                  title="ให้หุ่นยนต์ไปกดกาแฟที่มุมกาแฟ แล้วถือมาส่งตรงที่คุณยืนอยู่"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-700 hover:text-amber-800 disabled:opacity-50">
-                  ☕ Request Coffee
-                </button>
-              )}
-            </>
-          )}
-          {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
-          {!voice.micOn ? (
-            <button onClick={joinVoice} title={`เข้าร่วมเสียง — คุยกับคนในห้องเดียวกัน หรือโต๊ะในระยะ ${HEAR_RADIUS} ช่อง (เฉพาะคนที่เข้าร่วมเสียง) · ห้องคนเยอะจะเข้าแบบปิดไมค์ไว้ก่อน`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700">
-              <Headphones size={12} /> เข้าร่วมเสียง
-            </button>
-          ) : (<>
-            {/* ปุ่มบอก "สิ่งที่จะเกิดเมื่อกด" ไม่ใช่สถานะ — เดิมป้าย "ไมค์เปิด" ดูเหมือนแค่ป้ายบอก คนเลยหาปุ่มปิดไมค์ไม่เจอ */}
-            <button onClick={voice.toggleMute} title={voice.muted ? 'เปิดไมค์ (กด M) · หรือกดค้าง Space เพื่อพูดชั่วคราว' : 'ปิดไมค์ (กด M) — ยังได้ยินคนอื่นตามปกติ'}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-medium shadow-sm ${voice.muted
-                ? (voice.talking ? 'bg-green-600 text-white' : 'bg-red-600 text-white hover:bg-red-700')
-                : `border ${voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:border-red-400 hover:text-red-600'}`}`}>
-              {voice.muted && !voice.talking ? <MicOff size={13} /> : <Mic size={13} />}
-              {voice.muted ? (voice.talking ? 'กำลังพูด…' : 'เปิดไมค์') : 'ปิดไมค์'}
-              <kbd className={`text-[9px] px-1 rounded ${voice.muted ? 'bg-white/25' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>M</kbd>
-            </button>
-            {voice.canShare && (voice.sharing ? (
-              <button onClick={voice.stopShare} title="หยุดแชร์หน้าจอ" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><MonitorX size={12} /> หยุดแชร์</button>
-            ) : (
-              <button onClick={voice.startShare} title="แชร์หน้าจอให้คนที่กำลังคุยด้วย (ห้องเดียวกัน / สายส่วนตัว)"
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600"><MonitorUp size={12} /> แชร์จอ</button>
-            ))}
-            <button onClick={voice.stop} title="ออกจากเสียง — วางทุกสาย คืนไมค์" className="p-1.5 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><PhoneOff size={13} /></button>
-          </>)}
-          <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
-        </div>
         {/* มีคนขอคุยเสียง — เด้งเหนือแผนที่ ไม่ต้องเปิดแชทก่อนถึงจะเห็น */}
         {dm.asks.slice(0, 1).map(a => (
           <div key={a.askId} className="mb-2 p-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 text-xs flex items-center gap-2 flex-wrap shadow-sm">
@@ -924,8 +858,74 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             })()}
           </div>
         </div>
-        {/* ใต้แผนที่: จอที่แชร์ · สถานะเสียง · การ์ดของห้อง (เพลง/เสียงสวน/ให้อาหารนก) */}
+        {/* ใต้แผนที่: แถบเครื่องมือ · จอที่แชร์ · สถานะเสียง · การ์ดของห้อง (เพลง/เสียงสวน/ให้อาหารนก) */}
         <div className="mt-2">
+        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
+          <span className="inline-flex items-center gap-1"><Keyboard size={12} /> ลูกศร / WASD เดิน · คลิกช่องว่างเพื่อเดินไป</span>
+          <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
+          {/* ย่อ/ขยายแผนที่ */}
+          <span className="inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button onClick={() => stepZoom(-0.1)} title="ย่อแผนที่" className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800">−</button>
+            <button onClick={() => pickZoom(zoomPref === 'fit' ? 1 : 'fit')} title={zoomPref === 'fit' ? 'กลับขนาดจริง' : 'ย่อให้เห็นทั้งออฟฟิศ'}
+              className={`px-2 py-1 border-x border-gray-200 dark:border-gray-700 tabular-nums ${zoomPref === 'fit' ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}>
+              {zoomPref === 'fit' ? 'พอดีจอ' : `${Math.round(zoom * 100)}%`}
+            </button>
+            <button onClick={() => stepZoom(0.1)} title="ขยายแผนที่" className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800">+</button>
+          </span>
+          {!decor.decorating && (
+            <button onClick={decor.begin} title="วางโต๊ะของคุณตรงไหนก็ได้ เลือกแบบโต๊ะ แล้วแต่งด้วยของที่ชอบ — ทุกคนเห็น"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
+              🎨 {decor.saved.desk ? 'ตกแต่งโต๊ะ' : 'วางโต๊ะของฉัน'}
+            </button>
+          )}
+          {!decor.decorating && (
+            <button onClick={() => setDressing(true)} title="แต่งตัวละครของคุณ — ผม เสื้อผ้า ของประดับ · ทุกคนเห็น"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
+              👤 แต่งตัวละคร
+            </button>
+          )}
+          {pos && !decor.decorating && (
+            <>
+              <button onClick={() => requestRobot('clean')} disabled={requesting || myPending}
+                title="เรียกหุ่นยนต์มากวาดตรงที่คุณยืนอยู่ — ทุกคนเห็นหุ่นเดินมา"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:text-amber-600 disabled:opacity-50">
+                🧹 {myPending ? 'หุ่นกำลังมา…' : 'Request Cleaning'}
+              </button>
+              {hasCoffee && (
+                <button onClick={() => requestRobot('coffee')} disabled={requesting || myPending}
+                  title="ให้หุ่นยนต์ไปกดกาแฟที่มุมกาแฟ แล้วถือมาส่งตรงที่คุณยืนอยู่"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-amber-700 hover:text-amber-800 disabled:opacity-50">
+                  ☕ Request Coffee
+                </button>
+              )}
+            </>
+          )}
+          {/* เสียง — เปิดไมค์แล้วได้ยินคนเปิดไมค์ที่อยู่ห้องเดียวกัน / โต๊ะใกล้กัน */}
+          {!voice.micOn ? (
+            <button onClick={joinVoice} title={`เข้าร่วมเสียง — คุยกับคนในห้องเดียวกัน หรือโต๊ะในระยะ ${HEAR_RADIUS} ช่อง (เฉพาะคนที่เข้าร่วมเสียง) · ห้องคนเยอะจะเข้าแบบปิดไมค์ไว้ก่อน`}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700">
+              <Headphones size={12} /> เข้าร่วมเสียง
+            </button>
+          ) : (<>
+            {/* ปุ่มบอก "สิ่งที่จะเกิดเมื่อกด" ไม่ใช่สถานะ — เดิมป้าย "ไมค์เปิด" ดูเหมือนแค่ป้ายบอก คนเลยหาปุ่มปิดไมค์ไม่เจอ */}
+            <button onClick={voice.toggleMute} title={voice.muted ? 'เปิดไมค์ (กด M) · หรือกดค้าง Space เพื่อพูดชั่วคราว' : 'ปิดไมค์ (กด M) — ยังได้ยินคนอื่นตามปกติ'}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-medium shadow-sm ${voice.muted
+                ? (voice.talking ? 'bg-green-600 text-white' : 'bg-red-600 text-white hover:bg-red-700')
+                : `border ${voice.meSpeaking ? 'border-green-400 text-green-700 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 hover:border-red-400 hover:text-red-600'}`}`}>
+              {voice.muted && !voice.talking ? <MicOff size={13} /> : <Mic size={13} />}
+              {voice.muted ? (voice.talking ? 'กำลังพูด…' : 'เปิดไมค์') : 'ปิดไมค์'}
+              <kbd className={`text-[9px] px-1 rounded ${voice.muted ? 'bg-white/25' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>M</kbd>
+            </button>
+            {voice.canShare && (voice.sharing ? (
+              <button onClick={voice.stopShare} title="หยุดแชร์หน้าจอ" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><MonitorX size={12} /> หยุดแชร์</button>
+            ) : (
+              <button onClick={voice.startShare} title="แชร์หน้าจอให้คนที่กำลังคุยด้วย (ห้องเดียวกัน / สายส่วนตัว)"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600"><MonitorUp size={12} /> แชร์จอ</button>
+            ))}
+            <button onClick={voice.stop} title="ออกจากเสียง — วางทุกสาย คืนไมค์" className="p-1.5 rounded-full text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"><PhoneOff size={13} /></button>
+          </>)}
+          <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">คุณอยู่: {ZONE_LABEL[myZone]}</span>
+        </div>
         {/* จอที่แชร์ — ของคนอื่น (เลือกดูได้) + ตัวอย่างของเราเองว่ากำลังส่งอะไรอยู่ */}
         {(shown || voice.myScreen) && (
           <div ref={stageRef}
