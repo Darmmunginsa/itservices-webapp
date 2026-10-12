@@ -1,6 +1,7 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { visibleAdminTools } from '../src/utils/adminTools'
 import { seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom } from '../src/utils/officeProps'
 import { meetingSeats, deskSeats } from '../src/utils/officeSeats'
 import { encodeRoom, decodeRoom, shareGroups } from '../src/utils/voiceProximity'
@@ -2551,6 +2552,18 @@ eq(decodeRoom('garden:mic').feed, false, 'old positions are not feeding')
   eq(G.length === 1 && G[0].sharer.email === 'aree@x' && G[0].viewers.map(v => v.email).join() === 'nok@x', true, 'the group is the sharer plus people in the room who joined voice')
   eq(G[0].meInside, false, 'someone elsewhere is outside the group, so gets the alert and thumbnail')
   eq(shareGroups(OM, P.map(p => p.email === 'me@x' ? { ...p, x: 20, y: 4 } : p), 'me@x')[0].meInside, true, 'once I walk in with voice on, I am inside and the alert stops')
+}
+
+// -- สิทธิ์รายเครื่องมือในหน้า Admin --
+{
+  const keys = (xs: { key: string }[]) => xs.map(x => x.key).join(',')
+  eq(visibleAdminTools(true, new Set()).length, 9, 'role Admin sees every tool')
+  eq(keys(visibleAdminTools(false, new Set())), '', 'Admin page access alone shows no tools')
+  eq(keys(visibleAdminTools(false, new Set(['team-status']))), 'team-status,office-map', 'edit on Team Status unlocks the Team Status and Office Map tools')
+  eq(keys(visibleAdminTools(false, new Set(['admin.holidays', 'admin.video']))), 'holidays,video', 'each tool can be granted on its own')
+  eq(visibleAdminTools(false, new Set(['admin.permissions', 'permissions'])).some(t => t.key === 'permissions'), false, 'the permissions tool is never granted to non-Admins')
+  const G = parseGrants(serializeGrants({ view: new Set(['admin', 'admin.holidays']), edit: new Set(['admin.holidays']) }))
+  eq(G.edit.has('admin.holidays') && G.view.has('admin'), true, 'tool grants are stored in the existing AllowedPages column and read back')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

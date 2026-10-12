@@ -8,6 +8,7 @@ import { PAGES } from '../../config/pages'
 import { useAppStore } from '../../store/useAppStore'
 import { useT } from '../../i18n/useT'
 import { parseGrants, emptyGrants, dirtyEmails, GROUP_LABEL, groupPages, type Grants } from '../../utils/pagePerms'
+import { ADMIN_TOOLS } from '../../utils/adminTools'
 import type { AgentProfile } from '../../types/common'
 
 // ── Admin: กำหนดสิทธิ์เข้าถึงหน้า "รายคน" (HD_PagePermissions) ──
@@ -90,7 +91,11 @@ export function PagePermissionsPanel() {
   // เลิกดู = เลิกแก้ด้วย (แก้โดยไม่เห็นหน้า ไม่มีความหมาย)
   function toggleView(key: string) {
     const g = clone(curG)
-    if (g.view.has(key)) { g.view.delete(key); g.edit.delete(key) } else g.view.add(key)
+    if (g.view.has(key)) {
+      g.view.delete(key); g.edit.delete(key)
+      // เลิกให้เข้าหน้า Admin = เลิกสิทธิ์เครื่องมือในหน้านั้นด้วย (ไม่ค้างไว้เงียบ ๆ)
+      if (key === 'admin') for (const k of [...g.view, ...g.edit]) if (k.startsWith('admin.')) { g.view.delete(k); g.edit.delete(k) }
+    } else g.view.add(key)
     setGrants(selected, g)
   }
   // ติ๊กแก้ = ติ๊กดูให้ด้วย
@@ -216,8 +221,8 @@ export function PagePermissionsPanel() {
                         : !perms.has(em)
                           ? <span className="text-amber-600 dark:text-amber-400">ยังไม่กำหนด</span>
                           : <span className="text-gray-400">
-                              เข้าได้ {g.view.size}/{MANAGED.length} หน้า
-                              {g.edit.size > 0 && <span className="text-amber-600 dark:text-amber-400"> · แก้ได้ {g.edit.size}</span>}
+                              เข้าได้ {[...g.view].filter(k => !k.startsWith('admin.')).length}/{MANAGED.length} หน้า
+                              {g.edit.size > 0 && <span className="text-amber-600 dark:text-amber-400"> · แก้ได้ {[...g.edit].filter(k => !k.startsWith('admin.')).length}{[...g.edit].some(k => k.startsWith('admin.')) ? ` · เครื่องมือ Admin ${[...g.edit].filter(k => k.startsWith('admin.')).length}` : ''}</span>}
                             </span>}
                     </p>
                   </button>
@@ -336,6 +341,27 @@ export function PagePermissionsPanel() {
                     </div>
                   )
                 })
+              )}
+              {/* เครื่องมือในหน้า Admin — เข้าหน้า Admin ได้ ≠ ใช้ได้ทุกเครื่องมือ · ติ๊กให้เป็นรายเครื่องมือ */}
+              {!curIsAdmin && curG.view.has('admin') && (
+                <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-900/10 p-3">
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-0.5">🛠️ เครื่องมือในหน้า Admin</p>
+                  <p className="text-[11px] text-gray-500 mb-2">เข้าหน้า Admin ได้ ไม่ได้แปลว่าใช้ได้ทุกเครื่องมือ — ติ๊กเฉพาะที่ให้ใช้ (ดู + แก้ไขได้)</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {ADMIN_TOOLS.map(t => {
+                      const on = !!t.grant && curG.edit.has(t.grant)
+                      return (
+                        <label key={t.key} title={t.grant === null ? 'เฉพาะ role Admin — ใครแก้สิทธิ์ได้ ก็ให้สิทธิ์ตัวเองได้ทุกอย่าง' : t.linkedPage ? `ผูกกับ ✏️ แก้ไขได้ ของหน้า "${t.linkedPage}" (ติ๊กที่นี่ = ติ๊กที่นั่นด้วย)` : `ใช้เครื่องมือ "${t.label}" ได้`}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border text-xs ${t.grant === null ? 'opacity-50 cursor-not-allowed border-gray-200 dark:border-gray-800' : on ? 'cursor-pointer border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800' : 'cursor-pointer border-gray-200 dark:border-gray-800 hover:border-amber-300'}`}>
+                          <input type="checkbox" disabled={t.grant === null} checked={on} onChange={() => t.grant && toggleEdit(t.grant)} className="w-3.5 h-3.5 accent-amber-600" />
+                          <span className="truncate">{t.icon} {t.label}</span>
+                          {t.linkedPage && <span className="ml-auto text-[10px] text-amber-700 dark:text-amber-300 whitespace-nowrap">↔ ✏️ {t.linkedPage}</span>}
+                          {t.grant === null && <span className="ml-auto text-[10px] text-violet-600 whitespace-nowrap">Admin เท่านั้น</span>}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           )}

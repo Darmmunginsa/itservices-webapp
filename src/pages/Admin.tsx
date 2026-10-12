@@ -10,6 +10,7 @@ import { SkeletonRow } from '../components/common/Skeleton'
 import { PagePermissionsPanel } from '../components/admin/PagePermissionsPanel'
 import { OfficeMapEditor } from '../components/admin/OfficeMapEditor'
 import { TeamStatusVisibility } from '../components/team/TeamStatusVisibility'
+import { visibleAdminTools, type AdminTool } from '../utils/adminTools'
 import { spGet, spCreate, spDelete, spUpdate } from '../services/sharepoint'
 import { clearEmailTemplateCache } from '../services/emailService'
 import { appLink, escapeHtml } from '../utils/emailTemplate'
@@ -25,21 +26,12 @@ const EMPTY_FORM = { title: '', holidayDate: '', holidayType: 'บริษั�
 
 const EMPTY_ANN = { title: '', message: '', isActive: true, sortOrder: 0 }
 
-type AdminTab = 'permissions' | 'announcements' | 'holidays' | 'approvers' | 'quotas' | 'video' | 'templates' | 'team-status' | 'office-map'
-const ADMIN_TABS: { key: AdminTab; label: string; icon: string }[] = [
-  { key: 'announcements', label: 'ข้อความวิ่ง',     icon: '📢' },
-  { key: 'holidays',      label: 'วันหยุด',         icon: '📅' },
-  { key: 'approvers',     label: 'ผู้อนุมัติการลา',  icon: '✅' },
-  { key: 'team-status',   label: 'สถานะทีม',        icon: '👥' },
-  { key: 'office-map',    label: 'ผังออฟฟิศ',       icon: '🗺️' },
-  { key: 'quotas',        label: 'โควต้าวันลา',      icon: '🧮' },
-  { key: 'templates',     label: 'Template อีเมล',  icon: '✉️' },
-  { key: 'video',         label: 'วิดีโอหน้าหลัก',   icon: '▶️' },
-  { key: 'permissions',   label: 'สิทธิ์เข้าหน้า',   icon: '🔐' },
-]
+type AdminTab = AdminTool
 
 export default function Admin() {
-  const { addToast } = useAppStore()
+  const { addToast, user, editPages } = useAppStore()
+  // เข้าหน้า Admin ได้ ≠ ใช้ได้ทุกเครื่องมือ — role Admin เห็นหมด · คนอื่นเห็นเฉพาะที่ได้รับสิทธิ์
+  const ADMIN_TABS = visibleAdminTools(user?.role === 'Admin', editPages)
   const tr = useT()
 
   // Holidays state
@@ -546,7 +538,7 @@ export default function Admin() {
   // หมวดที่เปิดอยู่ — อ่านจาก URL เพื่อให้ลิงก์ตรงหมวดได้ (เช่นจาก Diagnostic ไป templates)
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab') ?? ''
-  const tab: AdminTab = ADMIN_TABS.some(t => t.key === tabParam) ? (tabParam as AdminTab) : 'announcements'
+  const tab: AdminTab | null = ADMIN_TABS.some(t => t.key === tabParam) ? (tabParam as AdminTab) : (ADMIN_TABS[0]?.key ?? null)
   const setTab = (k: AdminTab) => setSearchParams({ tab: k }, { replace: true })
 
   const inputClass = 'w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500'
@@ -568,6 +560,12 @@ export default function Admin() {
           ))}
         </nav>
 
+
+        {!tab && (
+          <Card>
+            <p className="text-sm text-gray-500">ยังไม่ได้รับสิทธิ์ใช้เครื่องมือใดในหน้านี้ — ขอให้ Admin ติ๊กเครื่องมือที่ต้องใช้ให้ที่ "สิทธิ์เข้าหน้า" → Admin</p>
+          </Card>
+        )}
 
         {/* สิทธิ์การเข้าถึงหน้า รายคน (Admin เท่านั้น) */}
         {tab === 'permissions' && <PagePermissionsPanel />}
