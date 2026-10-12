@@ -392,8 +392,8 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     // พื้น (คลิกเดินได้) — แยกตามวัสดุ: ไม้ปาร์เก้ พรม กระเบื้อง หญ้า ทางหิน น้ำ ...
     const groupsByTex = new Map<string, { x: number; y: number; ch: string }[]>()
     // บ่อน้ำตกลึกลงใต้พื้น — เว้นพื้นตรงแถวบ่อ (ชิ้นน้ำตกวาดขอบหญ้าเจาะรูเอง)
-    const pondHole = new Set<string>()
-    for (const p of props) if (p.kind === 'waterfall') { const d = propDef(p.kind); if (d) for (let yy = 2; yy < d.h; yy++) for (let xx = 0; xx < d.w; xx++) pondHole.add(`${p.x + xx},${p.y + yy}`) }
+    const pondHole = new Set<string>(), falls = new Set<string>()   // falls = ทั้งชิ้นน้ำตก (ห้ามมีพุ่มไม้/ดอกไม้จากช่องแผนที่ทับ)
+    for (const p of props) if (p.kind === 'waterfall') { const d = propDef(p.kind); if (d) for (let yy = 0; yy < d.h; yy++) for (let xx = 0; xx < d.w; xx++) { falls.add(`${p.x + xx},${p.y + yy}`); if (yy >= 2) pondHole.add(`${p.x + xx},${p.y + yy}`) } }
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
       if (pondHole.has(`${x},${y}`)) return
       // ช่องต้นไม้/ของ ใช้พื้นของช่องข้าง ๆ (สวน = หญ้า · ในอาคาร = ไม้)
@@ -425,6 +425,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     const foliage: { x: number; z: number; color: string; r: number }[] = []
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
       const cx = x + 0.5, cz = y + 0.5
+      if (ch !== '#' && falls.has(`${x},${y}`)) return
       if (ch === '#') {
         walls.push({ x: cx, z: cz, w: 1, d: 1, h: 1.3, color: '#e3e7ed' })
         caps.push({ x: cx, z: cz, w: 1.04, d: 1.04, h: 0.07, y: 1.3, color: '#64748b' })
@@ -505,7 +506,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     }
     // หญ้าพลิ้วลม (ช่องหญ้าที่ไม่มีของวางทับ)
     const grassTiles: { x: number; y: number }[] = []
-    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'g' && !blocked.has(`${x},${y}`)) grassTiles.push({ x, y }) }))
+    rows.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === 'g' && !blocked.has(`${x},${y}`) && !falls.has(`${x},${y}`)) grassTiles.push({ x, y }) }))
     const grass = buildGrass(grassTiles)
     if (grass) { world.add(grass.mesh); st.ticks.push(grass.tick) }
     // ต้นไม้ล้อมตึก + เมฆลอย
