@@ -171,7 +171,7 @@ const MIME_EXT: Record<string, string> = {
 }
 
 // ทำชื่อไฟล์แนบให้ปลอดภัยกับ SharePoint: ตัดอักขระต้องห้าม + กันชื่อซ้ำ + เติมนามสกุลถ้าไม่มี
-function safeAttachmentName(name: string, mime?: string): string {
+export function safeAttachmentName(name: string, mime?: string): string {
   const dot = name.lastIndexOf('.')
   let ext = dot > 0 ? name.slice(dot).replace(/[^.\w]/g, '') : ''
   if (!ext && mime && MIME_EXT[mime]) ext = MIME_EXT[mime]   // เดานามสกุลจาก MIME
@@ -204,9 +204,10 @@ export async function spWaitForItem(listName: string, id: number, tries = 5): Pr
  * (สำคัญ: ชื่อถูก sanitize + เติมสุ่มกันซ้ำ จึงไม่เท่ากับ file.name เดิม
  *  ผู้เรียกที่ต้องอ้างอิงไฟล์ทีหลังต้องใช้ค่าที่คืนกลับนี้เท่านั้น)
  */
-export async function spUploadAttachment(listName: string, itemId: number, file: File): Promise<string> {
+export async function spUploadAttachment(listName: string, itemId: number, file: File, fileName?: string): Promise<string> {
   if (!_getToken) throw new Error('Token getter not initialized')
-  const safeName = safeAttachmentName(file.name, file.type)
+  // fileName: ชื่อที่ตั้งไว้ก่อนแล้ว (เช่นอ้างถึงในข้อความแชท) — ต้องผ่าน safeAttachmentName มาแล้ว
+  const safeName = fileName ?? safeAttachmentName(file.name, file.type)
   const url = `${SHAREPOINT_API}('${listName}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`
   const buffer = await file.arrayBuffer()
   // retry: item ที่เพิ่งสร้างอาจยัง sync ไม่เสร็จ (404/CORS ชั่วคราว) / throttle 429/5xx → ลองซ้ำ

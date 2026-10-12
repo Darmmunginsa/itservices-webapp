@@ -1,6 +1,8 @@
 // ตรวจเลขของหน้ารายงาน — ตัวเลขพวกนี้เอาไปใช้ตัดสินใจเรื่องคน จึงต้องพิสูจน์ได้ว่าคิดถูก
 // โปรเจกต์นี้ยังไม่มี test runner จึงรันด้วย esbuild ตรง ๆ:
 //   npm run check:report
+import { encodeMsg, decodeMsg, previewText, displayFileName, snippet } from '../src/utils/chatMeta'
+import { parseRead, mergeRead, readersOf, dmSeen } from '../src/utils/readState'
 import { visibleAdminTools } from '../src/utils/adminTools'
 import { seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom } from '../src/utils/officeProps'
 import { meetingSeats, deskSeats } from '../src/utils/officeSeats'
@@ -2564,6 +2566,25 @@ eq(decodeRoom('garden:mic').feed, false, 'old positions are not feeding')
   eq(visibleAdminTools(false, new Set(['admin.permissions', 'permissions'])).some(t => t.key === 'permissions'), false, 'the permissions tool is never granted to non-Admins')
   const G = parseGrants(serializeGrants({ view: new Set(['admin', 'admin.holidays']), edit: new Set(['admin.holidays']) }))
   eq(G.edit.has('admin.holidays') && G.view.has('admin'), true, 'tool grants are stored in the existing AllowedPages column and read back')
+}
+
+// -- แชท: ตอบกลับ · ไฟล์แนบ · อ่านแล้ว --
+{
+  const raw = encodeMsg('รับทราบ', { reply: { id: 12, who: 'ก้อง', text: 'ช่วยดู Ticket 287 หน่อย' }, files: ['รูป_ab12c.png'] })
+  const d = decodeMsg(raw)
+  eq(d.text, 'รับทราบ', 'the message text survives with reply and files attached')
+  eq(JSON.stringify(d.meta), JSON.stringify({ reply: { id: 12, who: 'ก้อง', text: 'ช่วยดู Ticket 287 หน่อย' }, files: ['รูป_ab12c.png'] }), 'reply and file names are read back')
+  eq(JSON.stringify(decodeMsg('ข้อความเก่า')), JSON.stringify({ text: 'ข้อความเก่า', meta: {} }), 'old messages read as before')
+  eq(decodeMsg('⟦not json⟧hi').text, '⟦not json⟧hi', 'a broken header is shown as plain text, never lost')
+  eq(encodeMsg('สวัสดี'), 'สวัสดี', 'plain messages stay plain')
+  eq(previewText(encodeMsg('', { files: ['a_x1y2z.pdf', 'b_q1w2e.png'] })), '📎 2 ไฟล์', 'a files-only message previews as a file count')
+  eq(displayFileName('report_ab12c.pdf'), 'report.pdf', 'the random suffix SharePoint needs is hidden from people')
+  eq(snippet('x'.repeat(200)).length, 80, 'quoted text is shortened')
+  const A = parseRead(JSON.stringify({ c: { '': 10 }, d: { 'Bo@x': 5 } })), B = parseRead(JSON.stringify({ c: { '': 7, meeting: 3 }, d: { 'bo@x': 9 } }))
+  eq(JSON.stringify(mergeRead(A, B)), JSON.stringify({ c: { '': 10, meeting: 3 }, d: { 'bo@x': 9 } }), 'read markers from two devices merge to the furthest point, never back to unread')
+  const all = new Map([['me@x', parseRead('{"c":{"":20}}')], ['aree@x', parseRead('{"c":{"":20}}')], ['nok@x', parseRead('{"c":{"":15}}')]])
+  eq(readersOf(all, '', 18, 'me@x').join(), 'aree@x', 'shows who has read my message, not counting me')
+  eq(dmSeen(parseRead('{"d":{"me@x":40}}'), 'ME@x', 40) && !dmSeen(undefined, 'me@x', 1), true, 'a private message shows read once the other side has read it')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

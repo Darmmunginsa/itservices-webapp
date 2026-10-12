@@ -8,6 +8,8 @@
 //   voice-end   วางสายส่วนตัว
 // สถานะของสายคำนวณจาก "แถว voice-* ล่าสุด" ของคู่นั้น — สองฝั่งเห็นแถวชุดเดียวกัน จึงตรงกันเองโดยไม่ต้องส่งอะไรเพิ่ม
 
+import { previewText } from './chatMeta'
+
 export type DMKind = 'text' | 'voice-ask' | 'voice-yes' | 'voice-no' | 'voice-end'
 
 export interface DMRow {
@@ -111,7 +113,7 @@ export function conversations(rows: DMRow[], me: string, readUpTo: Record<string
     if (low(r.FromEmail) !== low(me) && r.FromName) c.name = r.FromName
     c.lastId = r.id; c.lastAt = r.Created
     const k = kindOf(r)
-    c.lastText = k === 'text' ? textOf(r) : k === 'voice-ask' ? '📞 ขอคุยด้วยเสียง' : k === 'voice-yes' ? '🎧 คุยเสียงกัน' : k === 'voice-no' ? `🙏 ไม่สะดวก${textOf(r) ? ` — ${textOf(r)}` : ''}` : '📴 วางสาย'
+    c.lastText = k === 'text' ? previewText(textOf(r)) : k === 'voice-ask' ? '📞 ขอคุยด้วยเสียง' : k === 'voice-yes' ? '🎧 คุยเสียงกัน' : k === 'voice-no' ? `🙏 ไม่สะดวก${textOf(r) ? ` — ${textOf(r)}` : ''}` : '📴 วางสาย'
     if (low(r.FromEmail) !== low(me) && r.id > (readUpTo[partner] ?? 0)) c.unread++
     by.set(partner, c)
   }

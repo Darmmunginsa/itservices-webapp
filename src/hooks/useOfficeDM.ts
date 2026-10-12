@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getMyDMs, sendDM } from '../services/officeDM'
 import { conversations, incomingAsks, activeCallPartner, kindOf, textOf, type DMKind, type DMRow } from '../utils/officeDM'
+import { previewText } from '../utils/chatMeta'
 
 // ── แชทส่วนตัว + ขอคุยเสียง — poll ทุก 3 วิ เหมือนแชทออฟฟิศ ──
 
@@ -17,9 +18,13 @@ interface Args {
   onError: (msg: string) => void
   /** มีของใหม่จากอีกฝั่ง (ข้อความ / ขอคุยเสียง) — ให้ฝั่งออฟฟิศเด้งแจ้งเตือน */
   onIncoming: (row: DMRow) => void
+  /** อ่านถึงไหนแล้ว จาก SharePoint (ตามไปทุกเครื่อง) — รวมกับของในเครื่อง เอาที่ไกลกว่า */
+  serverRead?: Record<string, number>
+  /** เพิ่งอ่านห้องนี้ถึง id นี้ — ให้บันทึกขึ้น SharePoint */
+  onMarked?: (partner: string, id: number) => void
 }
 
-export function useOfficeDM({ meEmail, meName, onError, onIncoming }: Args) {
+export function useOfficeDM({ meEmail, meName, onError, onIncoming, serverRead, onMarked }: Args) {
   const me = meEmail.toLowerCase()
   const [rows, setRows] = useState<DMRow[]>([])
   const [readUpTo, setReadUpTo] = useState<Record<string, number>>(() => loadRead(me))
@@ -59,15 +64,18 @@ export function useOfficeDM({ meEmail, meName, onError, onIncoming }: Args) {
       setRows(prev => [{ id: res.id, FromEmail: me, ToEmail: to.toLowerCase(), FromName: meName, Kind: kind, Title: (text ?? '').slice(0, 255) || kind, Message: (text ?? '').length > 255 ? text : undefined, Created: new Date().toISOString() }, ...prev])
       setNow(Date.now())
       if (seenMax.current != null) seenMax.current = Math.max(seenMax.current, res.id)
-      return true
+      return res.id
     } catch {
       cb.current.onError('ส่งไม่สำเร็จ — ตรวจว่ามี list HD_OfficeDM')
-      return false
+      return 0
     }
   }, [me, meName])
 
+  const markedCb = useRef(onMarked)
+  useEffect(() => { markedCb.current = onMarked }, [onMarked])
   const markRead = useCallback((partner: string) => {
     const max = rows.filter(r => r.FromEmail.toLowerCase() === partner).reduce((m, r) => Math.max(m, r.id), 0)
+    if (max) markedCb.current?.(partner, max)
     setReadUpTo(prev => {
       if ((prev[partner] ?? 0) >= max) return prev
       const next = { ...prev, [partner]: max }
@@ -76,7 +84,13 @@ export function useOfficeDM({ meEmail, meName, onError, onIncoming }: Args) {
     })
   }, [rows, me])
 
-  const convs = useMemo(() => conversations(rows, me, readUpTo), [rows, me, readUpTo])
+  // อ่านถึงไหน = ไกลสุดระหว่างในเครื่องกับบน SharePoint (เปิดเครื่องใหม่ไม่ขึ้นว่ายังไม่อ่าน)
+  const mergedRead = useMemo(() => {
+    const m = { ...readUpTo }
+    for (const [k, v] of Object.entries(serverRead ?? {})) if (v > (m[k] ?? 0)) m[k] = v
+    return m
+  }, [readUpTo, serverRead])
+  const convs = useMemo(() => conversations(rows, me, mergedRead), [rows, me, mergedRead])
   const asks = useMemo(() => incomingAsks(rows, me, now), [rows, me, now])
   const callWith = useMemo(() => activeCallPartner(rows, me, now), [rows, me, now])
 
@@ -90,5 +104,5 @@ export function dmNotice(r: DMRow): string {
   if (k === 'voice-yes') return 'รับสายแล้ว 🎧'
   if (k === 'voice-no') return `ยังไม่สะดวก${textOf(r) ? ` — ${textOf(r)}` : ''}`
   if (k === 'voice-end') return 'วางสายแล้ว'
-  return textOf(r)
+  return previewText(textOf(r))
 }

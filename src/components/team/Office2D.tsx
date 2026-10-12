@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand, PictureInPicture2 } from 'lucide-react'
+import { CornerUpLeft, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand, PictureInPicture2 } from 'lucide-react'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
 } from '../../utils/officeMap'
-import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, type PresenceRow, type ChatRow } from '../../services/office'
+import { ensureMyPresence, getPresence, savePresence, heartbeat, getChat, sendChat, CHAT_LIST, type PresenceRow, type ChatRow } from '../../services/office'
 import { STATUS_META, type StatusType, type TeamStatusSlot } from '../../types/teamStatus'
 import { unreadTitle } from '../../utils/popout'
 import { OfficeTile, OfficeDefs } from './OfficeTile'
@@ -20,6 +20,11 @@ import { GardenSoundCard } from './GardenSoundCard'
 import { useMotionPause } from '../../hooks/useMotionPause'
 import { RobotSprite, RobotDock } from './RobotSprite'
 import { GardenLife } from './GardenLife'
+import { ChatAttachment, ChatComposer, ReplyQuote } from './ChatParts'
+import { decodeMsg, previewText, snippet, type ChatReply } from '../../utils/chatMeta'
+import { readersOf } from '../../utils/readState'
+import { useReadReceipts } from '../../hooks/useReadReceipts'
+import { sendWithFiles } from '../../services/chatSend'
 import { MiniOffice, type MiniPerson } from './MiniOffice'
 import { useDocPip, pipBlockReason, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
@@ -116,7 +121,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [chat, setChat] = useState<ChatRow[]>([])
   const [tab, setTab] = useState<'all' | Zone | 'dm'>('all')
   const [dmWith, setDmWith] = useState<string | null>(null)
-  const [text, setText] = useState('')
+  const [reply, setReply] = useState<ChatReply | null>(null)
   const [sending, setSending] = useState(false)
   const [focused, setFocused] = useState(false)
   const [now, setNow] = useState(() => new Date())
@@ -259,7 +264,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             if (fresh.length && (document.hidden || !document.hasFocus())) {
               setUnread(u => u + fresh.length)
               const last = fresh[fresh.length - 1]
-              notifyNew(`${last.UserName} · ${last.Room ? 'ห้อง' : 'ทั้งออฟฟิศ'}`, last.Message || last.Title, 'hd-office-chat')
+              notifyNew(`${last.UserName} · ${last.Room ? 'ห้อง' : 'ทั้งออฟฟิศ'}`, previewText(last.Message || last.Title), 'hd-office-chat')
             }
           }
         }
@@ -361,16 +366,17 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   }, [map, enterZone, stopWalk, markMoved, sitDown, setPos, setFeed])
   useEffect(() => stopWalk, [stopWalk])
 
-  async function submit() {
-    const t = text.trim()
-    if (!t || !meEmail) return
+  async function submit(t: string, files: File[]): Promise<boolean> {
+    if ((!t.trim() && !files.length) || !meEmail) return false
     setSending(true)
     try {
       const room = tab === 'all' || tab === 'dm' ? '' : tab
-      const res = await sendChat({ email: meEmail, name: meName, text: t, room })
-      setChat(prev => [...prev, { id: res.id, Title: t.slice(0, 255), Message: t.length > 255 ? t : undefined, UserEmail: meEmail, UserName: meName, Room: room, Created: new Date().toISOString() }])
-      setText('')
-    } catch { cb.current.onError('ส่งข้อความไม่สำเร็จ — ตรวจว่ามี list HD_OfficeChat') }
+      const r = await sendWithFiles(CHAT_LIST, raw => sendChat({ email: meEmail, name: meName, text: raw, room }), t, files, reply)
+      setChat(prev => [...prev, { id: r.id, Title: r.raw.slice(0, 255), Message: r.raw.length > 255 ? r.raw : undefined, UserEmail: meEmail, UserName: meName, Room: room, Created: new Date().toISOString() }])
+      if (r.failed.length) cb.current.onError(`แนบไฟล์ไม่สำเร็จ: ${r.failed.join(', ')}`)
+      setReply(null)
+      return true
+    } catch { cb.current.onError('ส่งข้อความไม่สำเร็จ — ตรวจว่ามี list HD_OfficeChat'); return false }
     finally { setSending(false) }
   }
 
@@ -419,7 +425,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     if (!looking) setUnread(u => u + 1)
     if (!looking) notifyNew(`💬 ${r.FromName || r.FromEmail.split('@')[0]}`, dmNotice(r), `hd-dm-${r.FromEmail}`)
   }, [setUnread])
-  const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming })
+  // อ่านแล้ว/ยังไม่อ่าน ซิงก์ข้ามเครื่อง + ใครอ่านข้อความเราแล้ว
+  const receipts = useReadReceipts(meEmail, meName, onVoiceError)
+  const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming, serverRead: receipts.mine.d, onMarked: receipts.markDM })
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [setTab, setDmWith])
 
   const onVoiceMoved = useCallback(() => (onInfo ?? cb.current.onError)('🎧 ย้ายเสียงไปใช้ที่หน้าต่างอื่นแล้ว (ใช้เสียงได้ทีละหน้าต่าง)'), [onInfo])
@@ -670,6 +678,18 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     ...(pos ? [{ email: me, x: (seat ?? pos).x, y: (seat ?? pos).y, name: myAvatar.nick || 'ฉัน', avatar: myAvatar, face: seat ? seat.face : myFace, speaking: voice.meSpeaking, muted: voice.micOn && voice.muted, me: true, sitting: !!seat }] : []),
   ] : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
+  // เห็นแชทห้องนี้อยู่ (หน้าต่างโฟกัส) = อ่านแล้ว → บันทึกขึ้น SharePoint ให้คนส่งเห็น "อ่านแล้ว" และเครื่องอื่นไม่ขึ้นว่ายังไม่อ่าน
+  const lastVisibleId = visibleChat.reduce((mx, c) => Math.max(mx, c.id), 0)
+  const chatRoomKey = tab === 'all' ? '' : tab
+  const { markChat } = receipts
+  useEffect(() => {
+    if (tab === 'dm' || !lastVisibleId) return
+    const mark = () => { if (!document.hidden && document.hasFocus()) markChat(chatRoomKey, lastVisibleId) }
+    mark()
+    window.addEventListener('focus', mark)
+    document.addEventListener('visibilitychange', mark)
+    return () => { window.removeEventListener('focus', mark); document.removeEventListener('visibilitychange', mark) }
+  }, [tab, lastVisibleId, chatRoomKey, markChat])
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }) }, [visibleChat.length, tab])
   // จอแคบ (มือถือ) แผนที่กว้างกว่าจอ — เลื่อนตามตัวเองไว้เสมอ
@@ -1074,32 +1094,41 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         </div>
         {tab === 'dm' ? (
           <OfficeDMPanel me={me} rows={dm.rows} convs={dm.convs} now={dm.now} openWith={dmWith} setOpenWith={setDmWith}
-            send={dm.send} markRead={dm.markRead} callWith={dm.callWith}
+            send={dm.send} markRead={dm.markRead} callWith={dm.callWith} partnerRead={e => receipts.all.get(e.toLowerCase())} onError={onVoiceError}
             people={members.map(mm => ({ email: mm.email, name: mm.name, profileId: mm.profileId, photoFile: mm.photoFile, online: online.some(o => o.email.toLowerCase() === mm.email.toLowerCase()) }))} />
         ) : (<>
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-gray-50/60 dark:bg-gray-900/40">
           {visibleChat.length === 0 && <p className="text-[11px] text-gray-400 text-center py-6">{tab === 'all' ? 'ยังไม่มีข้อความ — ทักทายทีมได้เลย' : `ข้อความในนี้เห็นเฉพาะคนที่อยู่${ZONE_LABEL[myZone]}`}</p>}
           {visibleChat.map(c => {
             const mine = (c.UserEmail ?? '').toLowerCase() === me
+            const { text: body, meta } = decodeMsg(c.Message || c.Title)
+            const readers = mine ? readersOf(receipts.all, c.Room ?? '', c.id, me) : []
+            const who = mine ? 'คุณ' : nickOf((c.UserEmail ?? '').toLowerCase(), c.UserName)
             return (
-              <div key={c.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+              <div key={c.id} data-chat-id={c.id} className={`group flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                 {!mine && <span className="text-[10px] text-gray-400 px-1">{c.UserName}</span>}
-                <div className={`max-w-[85%] px-2.5 py-1.5 rounded-2xl text-xs whitespace-pre-wrap break-words ${mine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-100 dark:border-gray-700'}`}>
-                  {c.Message || c.Title}
+                <div className={`flex items-center gap-1 max-w-[90%] ${mine ? 'flex-row-reverse' : ''}`}>
+                  <div className={`min-w-0 px-2.5 py-1.5 rounded-2xl text-xs whitespace-pre-wrap break-words ${mine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-100 dark:border-gray-700'}`}>
+                    {meta.reply && <ReplyQuote reply={meta.reply} mine={mine} onJump={id => document.querySelector(`[data-chat-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })} />}
+                    {body}
+                    {meta.files?.map(f => <ChatAttachment key={f} list={CHAT_LIST} itemId={c.id} name={f} mine={mine} />)}
+                  </div>
+                  <button onClick={() => setReply({ id: c.id, who, text: snippet(body) })} title="ตอบกลับข้อความนี้"
+                    className="shrink-0 p-1 rounded-full text-gray-400 opacity-0 group-hover:opacity-100 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-800"><CornerUpLeft size={12} /></button>
                 </div>
-                <span className="text-[9px] text-gray-300 px-1">{fmtClock(c.Created)}</span>
+                <span className="text-[9px] text-gray-300 px-1">
+                  {fmtClock(c.Created)}
+                  {mine && readers.length > 0 && (
+                    <span className="ml-1 text-primary-500" title={`อ่านแล้ว: ${readers.map(e => nickOf(e, online.find(o => o.email.toLowerCase() === e)?.UserName ?? memberBy.get(e)?.name ?? e)).join(', ')}`}>✓✓ อ่านแล้ว {readers.length}</span>
+                  )}
+                </span>
               </div>
             )
           })}
           <div ref={chatEndRef} />
         </div>
-        <div className="flex gap-1.5 p-2 border-t border-gray-200 dark:border-gray-800">
-          <input value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
-            placeholder={tab === 'all' ? 'พิมพ์ถึงทั้งออฟฟิศ…' : `พิมพ์ถึงคนใน${ZONE_LABEL[myZone]}…`}
-            className="flex-1 min-w-0 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-          <button onClick={submit} disabled={sending || !text.trim()} className="px-2.5 rounded-lg bg-primary-600 text-white disabled:opacity-50"><Send size={13} /></button>
-        </div>
+        <ChatComposer placeholder={tab === 'all' ? 'พิมพ์ถึงทั้งออฟฟิศ…' : `พิมพ์ถึงคนใน${ZONE_LABEL[myZone]}…`}
+          busy={sending} reply={reply} onCancelReply={() => setReply(null)} onSend={submit} onError={msg => cb.current.onError(msg)} />
         </>)}
         </>)}
       </div>

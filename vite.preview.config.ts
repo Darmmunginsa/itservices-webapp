@@ -14,6 +14,7 @@ export default mergeConfig(base, defineConfig({
       { find: /^(.*)\/services\/officeDM$/, replacement: abs('./dev-preview/mockOfficeDM.ts') },
       { find: /^(.*)\/services\/officeDecor$/, replacement: abs('./dev-preview/mockOfficeDecor.ts') },
       { find: /^(.*)\/services\/officeAvatar$/, replacement: abs('./dev-preview/mockOfficeAvatar.ts') },
+      { find: /^(.*)\/services\/officeRead$/, replacement: abs('./dev-preview/mockOfficeRead.ts') },
     ],
   },
   server: { port: 5179 },

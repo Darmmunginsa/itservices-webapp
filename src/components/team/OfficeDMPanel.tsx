@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Phone, PhoneOff, Send, Search, ExternalLink, Lock } from 'lucide-react'
+import { ArrowLeft, Phone, PhoneOff, Search, ExternalLink, Lock, CornerUpLeft } from 'lucide-react'
 import { PersonPhoto } from '../common/PersonPhoto'
 import { dmThread, voiceState, kindOf, textOf, QUICK_DECLINE, type Conversation, type DMKind, type DMRow } from '../../utils/officeDM'
 import { teamsChatLink } from '../../utils/virtualOffice'
+import { ChatAttachment, ChatComposer, ReplyQuote } from './ChatParts'
+import { decodeMsg, snippet, type ChatReply } from '../../utils/chatMeta'
+import { dmSeen, type ReadState } from '../../utils/readState'
+import { sendWithFiles } from '../../services/chatSend'
+import { DM_LIST } from '../../services/officeDM'
 
 // ── แชทส่วนตัวในออฟฟิศ: รายชื่อ → ห้องแชทของคนนั้น · ขอคุยเสียงก่อนต่อสาย ──
 
@@ -16,9 +21,12 @@ interface Props {
   people: DMPerson[]
   openWith: string | null
   setOpenWith: (email: string | null) => void
-  send: (to: string, kind: DMKind, text?: string) => Promise<boolean>
+  send: (to: string, kind: DMKind, text?: string) => Promise<number>
   markRead: (partner: string) => void
   callWith: string | null
+  /** สถานะอ่านของอีกฝั่ง — ใช้บอกว่าข้อความของเรา "อ่านแล้ว" */
+  partnerRead?: (email: string) => ReadState | undefined
+  onError: (msg: string) => void
 }
 
 const fmtClock = (iso: string) => {
@@ -26,9 +34,9 @@ const fmtClock = (iso: string) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function OfficeDMPanel({ me, rows, convs, now, people, openWith, setOpenWith, send, markRead, callWith }: Props) {
+export function OfficeDMPanel({ me, rows, convs, now, people, openWith, setOpenWith, send, markRead, callWith, partnerRead, onError }: Props) {
   const [q, setQ] = useState('')
-  const [text, setText] = useState('')
+  const [reply, setReply] = useState<ChatReply | null>(null)
   const [busy, setBusy] = useState(false)
   const [declineOpen, setDeclineOpen] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
@@ -62,13 +70,18 @@ export function OfficeDMPanel({ me, rows, convs, now, people, openWith, setOpenW
     await send(openWith, kind, note)
     setBusy(false); setDeclineOpen(false)
   }
-  async function submit() {
-    const t = text.trim()
-    if (!t || !openWith) return
+  async function submit(text: string, files: File[]): Promise<boolean> {
+    if (!openWith || (!text.trim() && !files.length)) return false
     setBusy(true)
-    if (await send(openWith, 'text', t)) setText('')
-    setBusy(false)
+    try {
+      const to = openWith
+      const r = await sendWithFiles(DM_LIST, async raw => { const id = await send(to, 'text', raw); if (!id) throw new Error('send'); return { id } }, text, files, reply)
+      if (r.failed.length) onError(`แนบไฟล์ไม่สำเร็จ: ${r.failed.join(', ')}`)
+      setReply(null)
+      return true
+    } catch { return false } finally { setBusy(false) }
   }
+  const jump = (id: number) => document.querySelector(`[data-dm-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 
   // ── รายชื่อ ──
   if (!openWith) {
@@ -171,23 +184,28 @@ export function OfficeDMPanel({ me, rows, convs, now, people, openWith, setOpenW
           const line = k === 'voice-ask' ? `📞 ${who}ขอคุยด้วยเสียง` : k === 'voice-yes' ? `🎧 ${who}รับสาย` : k === 'voice-no' ? `🙏 ${who}ยังไม่สะดวก${textOf(r) ? ` — ${textOf(r)}` : ''}` : `📴 ${who}วางสาย`
           return <p key={r.id} className="text-center text-[10px] text-gray-400">{line} · {fmtClock(r.Created)}</p>
         }
+        const { text: body, meta } = decodeMsg(textOf(r))
+        const who = mine ? 'คุณ' : p.name.split(/\s+/)[0]
         return (
-          <div key={r.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
-            <div className={`max-w-[85%] px-2.5 py-1.5 rounded-2xl text-xs whitespace-pre-wrap break-words ${mine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-100 dark:border-gray-700'}`}>
-              {textOf(r)}
+          <div key={r.id} data-dm-id={r.id} className={`group flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+            <div className={`flex items-center gap-1 max-w-[90%] ${mine ? 'flex-row-reverse' : ''}`}>
+              <div className={`min-w-0 px-2.5 py-1.5 rounded-2xl text-xs whitespace-pre-wrap break-words ${mine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-bl-sm border border-gray-100 dark:border-gray-700'}`}>
+                {meta.reply && <ReplyQuote reply={meta.reply} mine={mine} onJump={jump} />}
+                {body}
+                {meta.files?.map(f => <ChatAttachment key={f} list={DM_LIST} itemId={r.id} name={f} mine={mine} />)}
+              </div>
+              <button onClick={() => setReply({ id: r.id, who, text: snippet(body) })} title="ตอบกลับข้อความนี้"
+                className="shrink-0 p-1 rounded-full text-gray-400 opacity-0 group-hover:opacity-100 hover:text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-800"><CornerUpLeft size={12} /></button>
             </div>
-            <span className="text-[9px] text-gray-300 px-1">{fmtClock(r.Created)}</span>
+            <span className="text-[9px] text-gray-300 px-1">
+              {fmtClock(r.Created)}
+              {mine && (dmSeen(partnerRead?.(openWith), me, r.id) ? <span className="ml-1 text-primary-500">✓✓ อ่านแล้ว</span> : <span className="ml-1">✓ ส่งแล้ว</span>)}
+            </span>
           </div>
         )
       })}
       <div ref={endRef} />
     </div>
-    <div className="flex gap-1.5 p-2 border-t border-gray-200 dark:border-gray-800">
-      <input value={text} onChange={e => setText(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
-        placeholder={`พิมพ์ถึง ${p.name.split(/\s+/)[0]}…`}
-        className="flex-1 min-w-0 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-      <button onClick={submit} disabled={busy || !text.trim()} className="px-2.5 rounded-lg bg-primary-600 text-white disabled:opacity-50"><Send size={13} /></button>
-    </div>
+    <ChatComposer placeholder={`พิมพ์ถึง ${p.name.split(/\s+/)[0]}…`} busy={busy} reply={reply} onCancelReply={() => setReply(null)} onSend={submit} onError={onError} />
   </>)
 }
