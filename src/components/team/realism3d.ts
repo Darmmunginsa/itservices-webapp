@@ -352,10 +352,11 @@ export function buildSwingA(w: number, h: number): { group: THREE.Group; tick: (
   const g = new THREE.Group(), k = kit(g)
   const wood = M('#8b5a2b', { r: 0.7 })
   const top = 1.9
-  for (const x of [0.15, w - 0.15]) for (const dz of [-1, 1]) {   // ขาตัว A สองฝั่ง
-    const leg = k.box(0.09, 2.05, 0.09, wood, x, 0, h / 2 + dz * 0.42); leg.rotation.x = dz * 0.28; leg.position.y = 1.0
+  const spread = 0.62, legLen = Math.hypot(top, spread), ang = Math.atan2(spread, top)
+  for (const x of [0.15, w - 0.15]) for (const dz of [-1, 1]) {   // ขาตัว A: ยอดชนกันที่คาน · ตีนกางออกที่พื้น
+    const leg = k.box(0.09, legLen, 0.09, wood, x, 0, h / 2 + dz * spread / 2); leg.position.y = top / 2; leg.rotation.x = -dz * ang
   }
-  for (const x of [0.15, w - 0.15]) k.box(0.07, 0.07, 0.7, wood, x, 0.75, h / 2)   // คานขวางกลางตัว A
+  for (const x of [0.15, w - 0.15]) k.box(0.07, 0.07, 2 * spread * (1 - 0.7 / top), wood, x, 0.7, h / 2)   // คานขวางกลางตัว A
   const beam = k.box(w + 0.1, 0.11, 0.11, wood, w / 2, top - 0.05, h / 2)
   void beam
   const seat = new THREE.Group(); seat.position.set(w / 2, top - 0.05, h / 2); g.add(seat)
