@@ -215,8 +215,14 @@ function fallsSheet(width: number, y0: number, z0: number, y1: number, z1: numbe
 const featherTex = (drake: boolean) => canvasTex(128, 128, x => {
   x.fillStyle = drake ? '#f7f6f1' : '#8a6a46'; x.fillRect(0, 0, 128, 128)
   const R = rnd(drake ? 901 : 907)
-  if (drake) { x.strokeStyle = 'rgba(150,150,140,.18)'; x.lineWidth = 0.6; for (let y = 0; y < 128; y += 2.2) { x.beginPath(); x.moveTo(0, y); for (let xx = 0; xx <= 128; xx += 8) x.lineTo(xx, y + Math.sin(xx * 0.4 + y) * 0.8); x.stroke() } }
-  else for (let i = 0; i < 260; i++) { const px = R() * 128, py = R() * 128; x.fillStyle = `rgba(${50 + R() * 30},${32 + R() * 20},${18},.75)`; x.beginPath(); x.ellipse(px, py, 4 + R() * 3, 2.2 + R() * 1.5, 0.2, 0, Math.PI * 2); x.fill(); x.fillStyle = 'rgba(225,195,150,.6)'; x.beginPath(); x.ellipse(px + 1, py + 2.5, 4, 1, 0.2, 0, Math.PI); x.fill() }
+  // ลายเกล็ดขนซ้อนกันแบบตัวเมีย — ตัวขาวใช้เงาเทาอ่อน/ครีมแทนน้ำตาล
+  for (let i = 0; i < 260; i++) {
+    const px = R() * 128, py = R() * 128
+    x.fillStyle = drake ? `rgba(${170 + R() * 30},${168 + R() * 28},${155 + R() * 25},.55)` : `rgba(${50 + R() * 30},${32 + R() * 20},${18},.75)`
+    x.beginPath(); x.ellipse(px, py, 4 + R() * 3, 2.2 + R() * 1.5, 0.2, 0, Math.PI * 2); x.fill()
+    x.fillStyle = drake ? 'rgba(255,255,252,.85)' : 'rgba(225,195,150,.6)'
+    x.beginPath(); x.ellipse(px + 1, py + 2.5, 4, 1, 0.2, 0, Math.PI); x.fill()
+  }
 })
 
 export interface DuckRig { group: THREE.Group; body: THREE.Group; head: THREE.Group; feet: THREE.Group[] }
