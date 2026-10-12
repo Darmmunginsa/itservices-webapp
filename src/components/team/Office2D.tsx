@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand } from 'lucide-react'
+import { Send, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand, PictureInPicture2 } from 'lucide-react'
 import {
   parseMap, tileAt, zoneAt, step, spawnPoint, clampToMap, isOnline, chatVisible, sameZone, findPath, KEY_DIR, ZONE_LABEL, type Zone, type Pos, type Dir, isWalkable, type OfficeMap, isFurnitureTile,
 } from '../../utils/officeMap'
@@ -712,6 +712,20 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={() => dm.send(dm.callWith!, 'voice-end')} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-600 text-white hover:bg-red-700"><PhoneOff size={11} /> วางสาย</button>
           </div>
         )}
+        <div className="relative">
+        {/* หน้าต่างลอย — ไอคอนมุมขวาบนของแผนที่ (กดก่อนย่อหน้าต่าง แล้วหน้าต่างลอยจะค้างบนจอ) */}
+        <button type="button" onClick={e => {
+            e.stopPropagation()
+            if (pip.win) { pip.close(); return }
+            const why = pipBlockReason()
+            if (why) { cb.current.onError(`เปิดหน้าต่างลอยไม่ได้ — ${why}`); return }
+            openPip().then(ok => { if (!ok) cb.current.onError('เปิดหน้าต่างลอยไม่ได้ — เบราว์เซอร์ปฏิเสธ (ลองกดอีกครั้ง หรือดูว่าถูกบล็อกโดยนโยบายองค์กรไหม)') })
+          }}
+          title={pip.win ? 'ปิดหน้าต่างลอย' : 'หน้าต่างลอย — ลอยอยู่บนสุดเสมอ ย่อหน้าต่างนี้ลงแล้วยังเห็นออฟฟิศ (กดก่อนย่อ)'}
+          aria-label="หน้าต่างลอย"
+          className={`absolute top-2 right-2 z-30 p-1.5 rounded-lg shadow border ${pip.win ? 'bg-primary-600 text-white border-primary-600' : 'bg-white/90 dark:bg-gray-900/90 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:text-primary-600'}`}>
+          <PictureInPicture2 size={15} />
+        </button>
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onClick={() => boardRef.current?.focus()}
           className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${theaterOn ? 'hidden' : ''} ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
@@ -885,6 +899,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             })()}
           </div>
         </div>
+        </div>
         {/* ใต้แผนที่: แถบเครื่องมือ · จอที่แชร์ · สถานะเสียง · การ์ดของห้อง (เพลง/เสียงสวน/ให้อาหารนก) */}
         <div className="mt-2">
         <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
@@ -909,19 +924,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             <button onClick={() => setDressing(true)} title="แต่งตัวละครของคุณ — ผม เสื้อผ้า ของประดับ · ทุกคนเห็น"
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600">
               👤 แต่งตัวละคร
-            </button>
-          )}
-          {/* แสดงเสมอ — เบราว์เซอร์ไม่รองรับ = กดแล้วบอกเหตุผลที่ชัด (เดิมซ่อนปุ่มไป ผู้ใช้ไม่รู้ว่ามีหรือทำไมไม่มี) */}
-          {(
-            <button onClick={() => {
-              if (pip.win) { pip.close(); return }
-              const why = pipBlockReason()
-              if (why) { cb.current.onError(`เปิดหน้าต่างลอยไม่ได้ — ${why}`); return }
-              openPip().then(ok => { if (!ok) cb.current.onError('เปิดหน้าต่างลอยไม่ได้ — เบราว์เซอร์ปฏิเสธ (ลองกดอีกครั้ง หรือดูว่าถูกบล็อกโดยนโยบายองค์กรไหม)') })
-            }}
-              title="หน้าต่างเล็กลอยอยู่บนสุดเสมอ — ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด และกดเปิด/ปิดไมค์ได้"
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border ${pip.win ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600'}`}>
-              🗗 {pip.win ? 'ปิดหน้าต่างลอย' : 'หน้าต่างลอย'}
             </button>
           )}
           {pos && !decor.decorating && (
