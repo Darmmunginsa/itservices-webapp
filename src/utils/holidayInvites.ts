@@ -44,7 +44,8 @@ export async function sendHolidayInvite(h: Pick<Holiday, 'id' | 'Title' | 'Holid
     showAs: 'oof',
     body: `วันหยุด${h.HolidayType}: ${h.Title}\nวันที่: ${ymd(start)}`,
   })
-  if (ev?.id) await spUpdate('HD_Holidays', h.id, { CalendarEventId: ev.id })
+  // ส่งไปแล้ว — บันทึก id ไม่ได้ (เช่นยังไม่มีคอลัมน์) ก็ไม่ถือว่าล้มเหลว
+  if (ev?.id) await spUpdate('HD_Holidays', h.id, { CalendarEventId: ev.id }).catch(() => {})
   return attendees.length
 }
 
@@ -54,7 +55,11 @@ export async function sendDueHolidayInvites(me: string, force = false): Promise<
     if (!force) { const last = Number(localStorage.getItem(THROTTLE_KEY) ?? 0); if (Date.now() - last < THROTTLE_MS) return 0 }
     localStorage.setItem(THROTTLE_KEY, String(Date.now()))
   } catch { /* storage ปิด — เช็กทุกครั้งก็ไม่เป็นไร */ }
-  const all = await spGet<Holiday>('HD_Holidays', undefined, 'Id,Title,HolidayDate,HolidayType,CalendarEventId')
+  // ต้องมีคอลัมน์ CalendarEventId (Single line of text) ในลิสต์ HD_Holidays ไว้จำว่าส่งแล้ว
+  // ยังไม่มี → ไม่ส่งอัตโนมัติเลย (ไม่งั้นจะส่งซ้ำทุกรอบ)
+  let all: Holiday[]
+  try { all = await spGet<Holiday>('HD_Holidays', undefined, 'Id,Title,HolidayDate,HolidayType,CalendarEventId') }
+  catch { return 0 }
   const now = Date.now()
   const due = all.filter(h => withinLead(h) && needsInvite(h, now))
   let sent = 0
