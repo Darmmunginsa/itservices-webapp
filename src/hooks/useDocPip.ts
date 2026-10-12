@@ -70,7 +70,7 @@ export interface WinBox { x: number; y: number; w: number; h: number }
 export const SHRUNK = { w: 320, h: 110 }
 
 /** ตำแหน่งแถบเล็ก: มุมซ้ายล่างของจอ (หน้าต่างลอยมักอยู่มุมขวาล่าง จะได้ไม่ทับกัน) */
-export function shrunkBox(screenW: number, screenH: number, left = 0, top = 0): WinBox {
+export function shrunkBox(screenH: number, left = 0, top = 0): WinBox {
   return { x: left + 8, y: top + Math.max(0, screenH - SHRUNK.h - 8), w: SHRUNK.w, h: SHRUNK.h }
 }
 
@@ -81,7 +81,7 @@ export function shrinkWindow(): WinBox | null {
   if (!canShrinkWindow()) return null
   const before: WinBox = { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight }
   const sc = window.screen as Screen & { availLeft?: number; availTop?: number }
-  const b = shrunkBox(sc.availWidth, sc.availHeight, sc.availLeft ?? 0, sc.availTop ?? 0)
+  const b = shrunkBox(sc.availHeight, sc.availLeft ?? 0, sc.availTop ?? 0)
   try { window.resizeTo(b.w, b.h); window.moveTo(b.x, b.y) } catch { return null }
   return before
 }
