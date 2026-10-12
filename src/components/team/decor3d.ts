@@ -7,7 +7,7 @@ const cache = new Map<string, THREE.Material>()
 const M = (color: string, emissive?: string, opacity = 1): THREE.Material => {
   const k = `${color}|${emissive ?? ''}|${opacity}`
   let m = cache.get(k)
-  if (!m) { m = new THREE.MeshLambertMaterial({ color, emissive: emissive ?? '#000000', transparent: opacity < 1, opacity }); cache.set(k, m) }
+  if (!m) { m = new THREE.MeshStandardMaterial({ color, emissive: emissive ?? '#000000', roughness: opacity < 1 ? 0.15 : 0.65, metalness: 0, transparent: opacity < 1, opacity }); cache.set(k, m) }
   return m
 }
 

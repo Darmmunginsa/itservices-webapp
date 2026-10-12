@@ -12,8 +12,8 @@ const M = (color: string, opts: { emissive?: string; opacity?: number } = {}): T
   const k = `${color}|${opts.emissive ?? ''}|${opts.opacity ?? 1}`
   let m = mats.get(k)
   if (!m) {
-    m = new THREE.MeshLambertMaterial({
-      color, emissive: opts.emissive ?? '#000000',
+    m = new THREE.MeshStandardMaterial({
+      color, emissive: opts.emissive ?? '#000000', roughness: (opts.opacity ?? 1) < 1 ? 0.15 : 0.72, metalness: 0,
       transparent: (opts.opacity ?? 1) < 1, opacity: opts.opacity ?? 1,
     })
     mats.set(k, m)

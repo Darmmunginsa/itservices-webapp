@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { floorTexture, groundTexture, skyTexture } from './textures3d'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 import { propDef, type Prop } from '../../utils/officeProps'
 import { deskSurface, type Desk } from '../../utils/officeDecor'
@@ -48,7 +51,7 @@ const isPlant = (ch: string) => ch in PLANT_COLORS
 // ── ตัวละคร (ทรงการ์ตูนหัวโต) ──
 interface AvatarRig { group: THREE.Group; legL: THREE.Object3D; legR: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; body: THREE.Object3D; ring: THREE.Mesh; label: CSS2DObject; key: string }
 
-const lambert = (color: string) => new THREE.MeshLambertMaterial({ color })
+const lambert = (color: string) => new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0 })
 
 function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
   const g = new THREE.Group()
@@ -77,7 +80,7 @@ function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
   }
   const armL = arm(-0.21), armR = arm(0.21)
   // หัวโต
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), skin); head.position.y = 1.07; head.castShadow = true; body.add(head)
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 28, 22), skin); head.position.y = 1.07; head.castShadow = true; body.add(head)
   const eyeM = lambert('#1f2937')
   for (const x of [-0.08, 0.08]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), eyeM); e.position.set(x, 1.09, 0.235); body.add(e) }
   const blush = lambert('#fb7185')
@@ -120,7 +123,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls
-    world: THREE.Group; avatars: Map<string, AvatarRig>; floor: THREE.InstancedMesh | null; tiles: { x: number; y: number }[]
+    world: THREE.Group; avatars: Map<string, AvatarRig>; floors: { mesh: THREE.InstancedMesh; tiles: { x: number; y: number }[] }[]
     /** สิ่งของที่ขยับได้ (น้ำตก ชิงช้า ...) */
     ticks: ((t: number) => void)[]
     robot: RobotRig & { label: CSS2DObject }
@@ -144,14 +147,25 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
+    // สีแบบภาพยนตร์ + แสงสะท้อนจากห้องจำลอง → วัสดุดูมีมิติ นุ่มตา
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 0.92
     host.appendChild(renderer.domElement)
     const labels = new CSS2DRenderer()
     labels.domElement.style.position = 'absolute'; labels.domElement.style.inset = '0'; labels.domElement.style.pointerEvents = 'none'
     host.appendChild(labels.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#dbeafe')
-    scene.fog = new THREE.Fog('#dbeafe', 40, 90)
+    scene.background = skyTexture()
+    scene.fog = new THREE.Fog('#e6eef7', 45, 110)
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    scene.environmentIntensity = 0.3
+    // พื้นดินรอบตึก
+    const gtex = groundTexture(); gtex.repeat.set(70, 70)
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(240, 240), new THREE.MeshStandardMaterial({ map: gtex, roughness: 1 }))
+    ground.rotation.x = -Math.PI / 2; ground.position.set(20, -0.12, 10); ground.receiveShadow = true
+    scene.add(ground)
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200)
     camera.position.set(0, 14, 16)
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -160,10 +174,11 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     controls.maxPolarAngle = 1.25
     controls.screenSpacePanning = false
 
-    scene.add(new THREE.HemisphereLight('#ffffff', '#b8a68a', 1.6))
-    const sun = new THREE.DirectionalLight('#fff4e0', 1.6)
+    scene.add(new THREE.HemisphereLight('#eaf4ff', '#b8a68a', 0.9))
+    const sun = new THREE.DirectionalLight('#fff1dc', 2.4)
     sun.position.set(-12, 22, 10); sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
+    sun.shadow.mapSize.set(2048, 2048)
+    sun.shadow.radius = 4
     sun.shadow.camera.left = -30; sun.shadow.camera.right = 30; sun.shadow.camera.top = 30; sun.shadow.camera.bottom = -30
     sun.shadow.bias = -0.0005
     scene.add(sun, sun.target)
@@ -174,7 +189,7 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     rel.style.cssText = 'font: 600 9px system-ui, sans-serif; padding: 1px 6px; border-radius: 999px; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; white-space: nowrap'
     const rlabel = new CSS2DObject(rel); rlabel.position.set(0, 1.3, 0); rr.group.add(rlabel)
     rr.group.visible = false; scene.add(rr.group)
-    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floor: null, tiles: [], ticks: [], robot: { ...rr, label: rlabel }, birds: [] }
+    sceneRef.current = { scene, camera, controls, world, avatars: new Map(), floors: [], ticks: [], robot: { ...rr, label: rlabel }, birds: [] }
 
     const resize = () => {
       const w = host.clientWidth, h = host.clientHeight
@@ -192,12 +207,13 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 5) { downAt = null; return }
       downAt = null
       const st = sceneRef.current
-      if (!st?.floor) return
+      if (!st?.floors.length) return
       const r = renderer.domElement.getBoundingClientRect()
       ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
       ray.setFromCamera(ndc, camera)
-      const hit = ray.intersectObject(st.floor)[0]
-      if (hit?.instanceId != null) { const t = st.tiles[hit.instanceId]; if (t) clickRef.current(t.x, t.y) }
+      const hit = ray.intersectObjects(st.floors.map(f => f.mesh))[0]
+      const fl = hit && st.floors.find(f => f.mesh === hit.object)
+      if (fl && hit.instanceId != null) { const t = fl.tiles[hit.instanceId]; if (t) clickRef.current(t.x, t.y) }
     }
     renderer.domElement.addEventListener('pointerdown', onDown)
     renderer.domElement.addEventListener('pointerup', onUp)
@@ -305,9 +321,10 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     const dummy = new THREE.Object3D()
 
     /** วางกล่องหลายชิ้นในครั้งเดียว (InstancedMesh) */
-    const boxes = (items: { x: number; z: number; w: number; d: number; h: number; y?: number; color: string }[], cast = true) => {
+    const boxes = (items: { x: number; z: number; w: number; d: number; h: number; y?: number; color: string }[], cast = true, rounded = false, roughness = 0.75) => {
       if (!items.length) return null
-      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial(), items.length)
+      const geo = rounded ? new RoundedBoxGeometry(1, 1, 1, 2, 0.12) : new THREE.BoxGeometry(1, 1, 1)
+      const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness, metalness: 0 }), items.length)
       items.forEach((it, i) => {
         dummy.position.set(it.x, (it.y ?? 0) + it.h / 2, it.z); dummy.scale.set(it.w, it.h, it.d); dummy.rotation.set(0, 0, 0); dummy.updateMatrix()
         mesh.setMatrixAt(i, dummy.matrix); mesh.setColorAt(i, color.set(it.color))
@@ -316,25 +333,41 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
       world.add(mesh); return mesh
     }
 
-    // พื้น (คลิกเดินได้) — ทุกช่องเป็นพื้นบาง ๆ สีตามโซน
-    const tiles: { x: number; y: number }[] = []
-    const floorItems: Parameters<typeof boxes>[0] = []
+    // พื้น (คลิกเดินได้) — แยกตามวัสดุ: ไม้ปาร์เก้ พรม กระเบื้อง หญ้า ทางหิน น้ำ ...
+    const groupsByTex = new Map<string, { x: number; y: number; ch: string }[]>()
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
-      tiles.push({ x, y })
-      const base = FLOOR[ch] ?? (isPlant(ch) ? (rows[y + 1]?.[x] === 'g' || rows[y]?.[x - 1] === 'g' ? FLOOR.g : FLOOR['.']) : FLOOR['.'])
-      const shade = (x + y) % 2 ? 0.96 : 1   // ลายตารางจาง ๆ ให้รู้ระยะ
-      color.set(base).multiplyScalar(shade)
-      floorItems.push({ x: x + 0.5, z: y + 0.5, w: 1, d: 1, h: ch === 'w' ? 0.04 : 0.1, y: ch === 'w' ? -0.06 : -0.1, color: `#${color.getHexString()}` })
+      // ช่องต้นไม้/ของ ใช้พื้นของช่องข้าง ๆ (สวน = หญ้า · ในอาคาร = ไม้)
+      const base = isPlant(ch) ? (rows[y + 1]?.[x] === 'g' || rows[y]?.[x - 1] === 'g' || rows[y]?.[x + 1] === 'g' ? 'g' : '.') : ch === 'T' || ch === 'W' ? 'M' : ch
+      const key = floorTexture(base) ? base : '#'
+      if (!groupsByTex.has(key)) groupsByTex.set(key, [])
+      groupsByTex.get(key)!.push({ x, y, ch: base })
     }))
-    st.floor = boxes(floorItems, false)
-    st.tiles = tiles
+    st.floors = []
+    for (const [key, list] of groupsByTex) {
+      const tex = floorTexture(key)
+      const water = key === 'w'
+      const mat = new THREE.MeshStandardMaterial({ map: tex ?? undefined, color: tex ? '#ffffff' : (FLOOR[key] ?? FLOOR['.']), roughness: water ? 0.08 : key === 'C' ? 0.35 : key === '.' ? 0.55 : 0.95, metalness: 0, transparent: water, opacity: water ? 0.92 : 1 })
+      const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, list.length)
+      list.forEach((t, i) => {
+        const h = water ? 0.04 : 0.1, y0 = water ? -0.06 : -0.1
+        dummy.position.set(t.x + 0.5, y0 + h / 2, t.y + 0.5); dummy.scale.set(1, h, 1); dummy.rotation.set(0, 0, 0); dummy.updateMatrix()
+        mesh.setMatrixAt(i, dummy.matrix)
+      })
+      mesh.receiveShadow = true
+      world.add(mesh)
+      st.floors.push({ mesh, tiles: list.map(t => ({ x: t.x, y: t.y })) })
+    }
 
-    const walls: Parameters<typeof boxes>[0] = [], tables: Parameters<typeof boxes>[0] = [], dark: Parameters<typeof boxes>[0] = []
+    const walls: Parameters<typeof boxes>[0] = [], caps: Parameters<typeof boxes>[0] = [], tables: Parameters<typeof boxes>[0] = [], dark: Parameters<typeof boxes>[0] = []
     const pots: Parameters<typeof boxes>[0] = [], hedges: Parameters<typeof boxes>[0] = [], white: Parameters<typeof boxes>[0] = []
     const foliage: { x: number; z: number; color: string; r: number }[] = []
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
       const cx = x + 0.5, cz = y + 0.5
-      if (ch === '#') walls.push({ x: cx, z: cz, w: 1, d: 1, h: 1.5, color: '#94a3b8' })
+      if (ch === '#') {
+        walls.push({ x: cx, z: cz, w: 1, d: 1, h: 1.3, color: '#eef1f5' })
+        caps.push({ x: cx, z: cz, w: 1.04, d: 1.04, h: 0.07, y: 1.3, color: '#64748b' })
+        caps.push({ x: cx, z: cz, w: 1.02, d: 1.02, h: 0.1, color: '#9aa4b2' })
+      }
       else if (ch === 'T') tables.push({ x: cx, z: cz, w: 1, d: 1, h: 0.08, y: 0.68, color: '#a16207' }, { x: cx, z: cz, w: 0.12, d: 0.12, h: 0.68, color: '#713f12' })
       else if (ch === 'd') {
         tables.push({ x: cx, z: cz - 0.1, w: 0.95, d: 0.6, h: 0.06, y: 0.7, color: '#c79a63' })
@@ -350,10 +383,10 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
         foliage.push({ x: cx, z: cz, color: PLANT_COLORS[ch], r: ch === 'G' || ch === 'U' ? 0.55 : 0.42 })
       }
     }))
-    boxes(walls); boxes(tables); boxes(dark); boxes(pots); boxes(hedges); boxes(white)
+    boxes(walls, true, false, 0.9); boxes(caps, true, false, 0.6); boxes(tables, true, true, 0.45); boxes(dark, true, true, 0.5); boxes(pots, true, true, 0.8); boxes(hedges, true, true, 0.95); boxes(white, true, false, 0.3)
     // พุ่มไม้/ดอกไม้ = ทรงกลม
     if (foliage.length) {
-      const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshLambertMaterial({ flatShading: true }), foliage.length)
+      const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 2), new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.7 }), foliage.length)
       foliage.forEach((f, i) => {
         const big = f.r > 0.3
         dummy.position.set(f.x, big ? 0.32 + f.r : 0.12, f.z); dummy.scale.setScalar(f.r); dummy.rotation.set(0, (f.x * 7 + f.z) % 3, 0); dummy.updateMatrix()
@@ -396,10 +429,13 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     // โต๊ะส่วนตัว (3×3 · ตัวโต๊ะ 6 ช่อง + เก้าอี้)
     const deskItems: Parameters<typeof boxes>[0] = []
     for (const { desk } of desks) {
-      for (const t of deskSurface(desk)) deskItems.push({ x: t.x + 0.5, z: t.y + 0.5, w: 1, d: 1, h: 0.07, y: 0.7, color: '#c79a63' })
-      deskItems.push({ x: desk.x + 0.5, z: desk.y + 0.5, w: 0.15, d: 0.15, h: 0.7, color: '#8b6a43' })
+      // หน้าโต๊ะชิ้นเดียว (ไม่ต่อ 6 ชิ้นจนเห็นรอยต่อ)
+      const sf = deskSurface(desk)
+      const x0 = Math.min(...sf.map(t => t.x)), x1 = Math.max(...sf.map(t => t.x)) + 1, z0 = Math.min(...sf.map(t => t.y)), z1 = Math.max(...sf.map(t => t.y)) + 1
+      deskItems.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, w: x1 - x0 - 0.06, d: z1 - z0 - 0.06, h: 0.07, y: 0.7, color: '#b8875a' })
+      for (const [lx, lz] of [[x0 + 0.15, z0 + 0.15], [x1 - 0.15, z0 + 0.15], [x0 + 0.15, z1 - 0.15], [x1 - 0.15, z1 - 0.15]]) deskItems.push({ x: lx, z: lz, w: 0.08, d: 0.08, h: 0.7, color: '#6b4f33' })
     }
-    boxes(deskItems)
+    boxes(deskItems, true, true, 0.45)
 
     // ตั้งกล้องให้เห็นทั้งออฟฟิศครั้งแรก (ถ้ายังไม่มีตัวเรา)
     if (!st.controls.target.lengthSq()) { st.controls.target.set(W / 2, 0, H / 2); st.camera.position.set(W / 2, Math.max(W, H) * 0.7, H + 8) }
