@@ -391,7 +391,11 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     st.ticks = []
     // พื้น (คลิกเดินได้) — แยกตามวัสดุ: ไม้ปาร์เก้ พรม กระเบื้อง หญ้า ทางหิน น้ำ ...
     const groupsByTex = new Map<string, { x: number; y: number; ch: string }[]>()
+    // บ่อน้ำตกลึกลงใต้พื้น — เว้นพื้นตรงแถวบ่อ (ชิ้นน้ำตกวาดขอบหญ้าเจาะรูเอง)
+    const pondHole = new Set<string>()
+    for (const p of props) if (p.kind === 'waterfall') { const d = propDef(p.kind); if (d) for (let yy = 2; yy < d.h; yy++) for (let xx = 0; xx < d.w; xx++) pondHole.add(`${p.x + xx},${p.y + yy}`) }
     rows.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (pondHole.has(`${x},${y}`)) return
       // ช่องต้นไม้/ของ ใช้พื้นของช่องข้าง ๆ (สวน = หญ้า · ในอาคาร = ไม้)
       const base = isPlant(ch) ? (rows[y + 1]?.[x] === 'g' || rows[y]?.[x - 1] === 'g' || rows[y]?.[x + 1] === 'g' ? 'g' : '.') : ch === 'T' || ch === 'W' ? 'M' : ch
       const key = floorTexture(base) ? base : '#'

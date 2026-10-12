@@ -1,7 +1,6 @@
 import * as THREE from 'three'
-import { floorTexture } from './textures3d'
-import { waterMaterial } from './detail3d'
 import { buildVendingReal, buildLogoReal, buildSwingA } from './realism3d'
+import { buildWaterfallReal } from './waterfall3d'
 
 // ── สิ่งของชิ้นใหญ่ในมุมมอง 3D (เฟส 2) — ทรงการ์ตูน สร้างจากรูปทรงพื้นฐาน ──
 // พิกัดในชิ้น: x = 0..กว้าง (คอลัมน์), z = 0..ลึก (แถว), y = สูง · ด้านหลังของชิ้นอยู่ทาง z = 0 (ทิศเหนือ) หน้าหันมาทางกล้อง
@@ -40,21 +39,6 @@ function kit(g: THREE.Group) {
   }
 }
 
-/** น้ำไหล: เส้นขาวบนพื้นฟ้า เลื่อนลงด้วย offset ของ texture (ไม่ต้องสร้างรูปใหม่ทุกเฟรม) */
-function fallsTexture(): THREE.CanvasTexture {
-  const c = document.createElement('canvas'); c.width = 64; c.height = 128
-  const x = c.getContext('2d')!
-  const g = x.createLinearGradient(0, 0, 64, 0)
-  g.addColorStop(0, '#7dd3fc'); g.addColorStop(0.5, '#e0f2fe'); g.addColorStop(1, '#7dd3fc')
-  x.fillStyle = g; x.fillRect(0, 0, 64, 128)
-  x.fillStyle = 'rgba(255,255,255,.85)'
-  for (let i = 0; i < 26; i++) x.fillRect(Math.random() * 62, Math.random() * 128, 1 + Math.random() * 2, 10 + Math.random() * 26)
-  const t = new THREE.CanvasTexture(c)
-  t.wrapS = t.wrapT = THREE.RepeatWrapping
-  t.colorSpace = THREE.SRGBColorSpace
-  return t
-}
-
 function duck(g: THREE.Group, x: number, z: number) {
   const d = new THREE.Group(); d.position.set(x, 0.02, z); g.add(d)
   const k = kit(d)
@@ -67,52 +51,7 @@ function duck(g: THREE.Group, x: number, z: number) {
 
 const BUILD: Record<string, (w: number, h: number) => Built3D> = {
   // ═══ สวน ═══
-  waterfall: (w) => {
-    const g = new THREE.Group(), k = kit(g)
-    // หน้าผาหินเป็นชั้น ๆ (2 แถวหลัง)
-    const rock = ['#57534e', '#78716c', '#a8a29e']
-    for (let i = 0; i < w; i++) {
-      const tall = 1.4 + ((i * 37) % 5) * 0.12
-      k.box(1.02, tall, 1.02, rock[i % 3], i + 0.5, 0, 0.5)
-      k.box(1.0, tall * 0.55, 0.9, rock[(i + 1) % 3], i + 0.5, 0, 1.45)
-      k.ball(0.32, '#2f7a3a', i + 0.5, tall + 0.05, 0.45).scale.set(1, 0.5, 1)   // มอสบนหิน
-    }
-    // บ่อ: ขอบหิน + น้ำ
-    for (let i = 0; i < w; i++) for (const z of [2, 3]) k.box(1, 0.06, 1, '#155e75', i + 0.5, -0.05, z + 0.5)
-    const wm = waterMaterial(floorTexture('w')!)   // ผิวน้ำไหล สะท้อนแสง เหมือนบ่อในสวน
-    const water = k.box(w - 0.3, 0.02, 1.8, wm.material, w / 2, 0.02, 2.95)
-    water.receiveShadow = true
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2
-      k.ball(0.14 + (i % 3) * 0.04, rock[i % 3], w / 2 + Math.cos(a) * (w / 2 - 0.1), 0.08, 2.95 + Math.sin(a) * 0.95)
-    }
-    // ม่านน้ำตก (เลื่อนลงตลอด) + ฟองที่ตีน
-    const tex = fallsTexture()
-    const fallsMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.92 })
-    const falls = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.7), fallsMat)
-    falls.position.set(w / 2, 0.9, 1.92); g.add(falls)
-    const foam: THREE.Mesh[] = []
-    for (let i = 0; i < 6; i++) foam.push(k.ball(0.16, M('#ffffff', { opacity: 0.9 }), w / 2 - 0.75 + i * 0.3, 0.08, 2.15, 8))
-    // ใบบัว + ปลาคาร์ฟ + เป็ด
-    for (const [x, z] of [[1.4, 2.6], [6.3, 3.3], [2.6, 3.5]]) k.cyl(0.22, 0.22, 0.02, '#16a34a', x, 0.04, z)
-    const koi = [0, 1, 2].map(i => k.ball(0.08, ['#f97316', '#fafafa', '#fbbf24'][i], 0, 0.04, 0, 8))
-    koi.forEach(f => f.scale.set(1.8, 0.6, 0.8))
-    const ducks = [duck(g, 2.0, 2.8), duck(g, 6.0, 3.0)]
-    return {
-      group: g,
-      tick: t => {
-        tex.offset.y = (t * 0.9) % 1
-        wm.tick(t)
-        foam.forEach((f, i) => f.scale.setScalar(0.8 + Math.abs(Math.sin(t * 3 + i)) * 0.5))
-        koi.forEach((f, i) => {
-          const a = t * (0.35 + i * 0.1) + i * 2
-          f.position.set(w / 2 + Math.cos(a) * (2.2 - i * 0.5), 0.03, 2.95 + Math.sin(a) * 0.55)
-          f.rotation.y = -a - Math.PI / 2
-        })
-        ducks.forEach((d, i) => { d.position.y = 0.02 + Math.sin(t * 2 + i) * 0.02; d.position.x += Math.sin(t * 0.3 + i) * 0.002; d.rotation.y = Math.sin(t * 0.4 + i) * 0.6 })
-      },
-    }
-  },
+  waterfall: (w) => buildWaterfallReal(w),
   bench: (w) => {
     const g = new THREE.Group(), k = kit(g)
     for (const z of [0.42, 0.55, 0.68]) k.box(w - 0.15, 0.05, 0.11, '#b07a3a', w / 2, 0.42, z)
