@@ -67,7 +67,7 @@ type KoiScheme = 'kohaku' | 'sanke' | 'ogon' | 'showa' | 'chagoi'
 /** ลายปลาคาร์ฟมองจากด้านบน: u = หัว→หาง (ซ้าย=หาง ขวา=หัว) · v = ข้างซ้าย→ข้างขวา · ลายแดง/ดำเกาะกลางหลัง ท้องขาว */
 function koiTex(seed: number, scheme: KoiScheme) {
   return canvasTex(256, 128, x => {
-    const base = { kohaku: '#fbfaf5', sanke: '#fbfaf5', ogon: '#fbfaf5', showa: '#202020', chagoi: '#b98a52' }[scheme]
+    const base = { kohaku: '#fbfaf5', sanke: '#fbfaf5', ogon: '#fbfaf5', showa: '#202020', chagoi: '#d8361a' }[scheme]
     x.fillStyle = base; x.fillRect(0, 0, 256, 128)
     const R = rnd(seed)
     // ลายเป็นปื้นใหญ่ตามแนวหลัง (ไม่ลามถึงท้อง)
@@ -82,7 +82,7 @@ function koiTex(seed: number, scheme: KoiScheme) {
     if (scheme === 'sanke') { patch('#d8361a', 3, 26, 60, 230); patch('#151515', 5, 9, 50, 200) }
     if (scheme === 'showa') { patch('#d8361a', 3, 26, 70, 235); patch('#fbfaf5', 3, 18, 60, 200) }
     if (scheme === 'ogon') { patch('#d8361a', 3, 24, 60, 230); patch('#f5c518', 3, 18, 50, 220) }   // ขาว แดง เหลือง
-    if (scheme === 'chagoi') { x.fillStyle = 'rgba(90,60,30,.35)'; x.fillRect(0, 50, 256, 28) }
+    if (scheme === 'chagoi') { patch('#fbfaf5', 3, 22, 50, 220); patch('#151515', 5, 10, 50, 210) }   // แดง ขาว ดำ
     // เกล็ดตาข่าย (เห็นชัดบนหลัง)
     x.strokeStyle = scheme === 'showa' ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.16)'; x.lineWidth = 0.8
     for (let yy = 6; yy < 122; yy += 7) for (let xx = (yy % 14 ? 0 : 4); xx < 225; xx += 8) { x.beginPath(); x.arc(xx, yy, 4.2, -Math.PI / 2 - 1.2, -Math.PI / 2 + 1.2, true); x.stroke() }
@@ -117,7 +117,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
     const sx = pos.getX(i), sy = pos.getY(i), sz = pos.getZ(i)
     const r = Math.hypot(sy, sz) || 1e-6, k = prof(sx) / Math.max(r, 1e-6) * Math.min(1, r / 1)
     const ny = sy * k, nz = sz * k
-    pos.setXYZ(i, sx * L / 2, (ny * 0.38 + (ny < 0 ? ny * -0.08 : 0)) * L / 2, nz * 0.35 * L / 2)   // แบนข้างเล็กน้อย ท้องแบน
+    pos.setXYZ(i, sx * L / 2, (ny * 0.38 + (ny < 0 ? ny * -0.08 : 0)) * L / 2, nz * 0.28 * L / 2)   // แบนข้างเล็กน้อย ท้องแบน
     uv.setXY(i, (sx + 1) / 2, 0.5 + nz * 0.5 * (ny >= 0 ? 1 : 1.25))   // แปะลายจากด้านบน
   }
   geo.computeVertexNormals()
@@ -125,7 +125,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   const body = new THREE.Mesh(geo, std({ map: koiTex(seed, scheme), roughness: 0.42, metalness: 0.04 }))
   body.castShadow = true; g.add(body)
 
-  const tint = { kohaku: 'rgba(255,235,225,.75)', sanke: 'rgba(255,235,225,.75)', ogon: 'rgba(255,235,200,.75)', showa: 'rgba(60,60,60,.75)', chagoi: 'rgba(200,150,95,.8)' }[scheme]
+  const tint = { kohaku: 'rgba(255,235,225,.75)', sanke: 'rgba(255,235,225,.75)', ogon: 'rgba(255,235,200,.75)', showa: 'rgba(60,60,60,.75)', chagoi: 'rgba(255,220,210,.75)' }[scheme]
   const fin = new THREE.MeshStandardMaterial({ map: finTex(tint), transparent: true, side: THREE.DoubleSide, roughness: 0.4, depthWrite: false })
 
   // หางแฉกบาน (แนวตั้งเอียงนิด ให้มองจากบนเห็นเป็นพัด)
@@ -147,7 +147,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   for (const [d, xx, sc] of [[1, 0.22, 0.5], [-1, 0.22, 0.5], [1, -0.18, 0.3], [-1, -0.18, 0.3]] as const) {
     // วางราบ ชี้ไปด้านหลัง-ออกข้าง (กลับด้านด้วย scale แทนการหมุนหลายแกน)
     const m = new THREE.Mesh(finGeo, fin); m.scale.set(-L * sc, d > 0 ? -L * sc : L * sc, L * sc)
-    m.position.set(xx * L, -0.04 * L, d * 0.085 * L); m.rotation.x = -Math.PI / 2
+    m.position.set(xx * L, -0.04 * L, d * 0.07 * L); m.rotation.x = -Math.PI / 2
     m.userData.d = d; g.add(m); pecs.push(m)
   }
   // ครีบหลัง (ยาวตามแนวสันหลัง)
@@ -155,7 +155,7 @@ export function buildKoi(seed: number, scheme: KoiScheme, size: number) {
   const dorsal = new THREE.Mesh(new THREE.ShapeGeometry(dShape, 8), fin); dorsal.scale.setScalar(L * 0.55); dorsal.position.set(-0.3 * L, 0.17 * L, 0); g.add(dorsal)
   // ตา + หนวดสองคู่
   for (const d of [-1, 1]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.024 * L, 10, 8), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.37 * L, 0.05 * L, d * 0.105 * L); g.add(e)
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.024 * L, 10, 8), std({ color: '#0b0b0b', roughness: 0.1 })); e.position.set(0.37 * L, 0.05 * L, d * 0.085 * L); g.add(e)
     const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.006 * L, 0.003 * L, 0.12 * L, 4), std({ color: '#d9c9a8' })); bar.rotation.set(d * 0.9, 0, -1.2); bar.position.set(0.5 * L, -0.03 * L, d * 0.06 * L); g.add(bar)
   }
 
