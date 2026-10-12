@@ -230,7 +230,7 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
   }
   // ผิวน้ำ: ใส เห็นปลา สะท้อนแสง ระลอกเคลื่อน
   const surfMap = surfaceTex(); surfMap.repeat.set(3, 1.1)
-  const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 48), std({ map: surfMap, color: '#9fd3ea', roughness: 0.04, metalness: 0.15, transparent: true, opacity: 0.3, depthWrite: false, envMapIntensity: 2 }))
+  const surface = new THREE.Mesh(new THREE.CircleGeometry(1, 48), std({ map: surfMap, color: '#9fd3ea', roughness: 0.04, metalness: 0.15, transparent: true, opacity: 0.22, depthWrite: false, envMapIntensity: 1 }))
   surface.rotation.x = -Math.PI / 2; surface.scale.set(rx, rz, 1); surface.position.set(cx, 0.02, cz); surface.renderOrder = 2; g.add(surface)
   ticks.push(t => { surfMap.offset.set(Math.sin(t * 0.12) * 0.1, t * 0.03) })
   // ขอบบ่อหินก้อนกลม
@@ -279,11 +279,11 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
   // ── ปลาคาร์ฟ 7 ตัว ว่ายตามเส้นทางของตัวเอง ใต้ผิวน้ำ ──
   const schemes = ['kohaku', 'sanke', 'ogon', 'showa', 'kohaku', 'chagoi', 'sanke'] as const
   schemes.forEach((sc, i) => {
-    const f = buildKoi(1000 + i * 77, sc, 1.2 + (i % 3) * 0.22)
+    const f = buildKoi(1000 + i * 77, sc, 1.7 + (i % 3) * 0.3)
     g.add(f.group)
     const pts: THREE.Vector3[] = []
     const Rk = rnd(500 + i * 31)
-    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Rk() * 0.6; pts.push(new THREE.Vector3(cx + Math.cos(a) * rx * (0.35 + Rk() * 0.5), -0.1 - Rk() * 0.12, cz + Math.sin(a) * rz * (0.3 + Rk() * 0.5))) }
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Rk() * 0.6; pts.push(new THREE.Vector3(cx + Math.cos(a) * rx * (0.35 + Rk() * 0.5), -0.05 - Rk() * 0.06, cz + Math.sin(a) * rz * (0.3 + Rk() * 0.5))) }
     const path = new THREE.CatmullRomCurve3(pts, true, 'catmullrom', 0.5)
     const speed = 0.018 + (i % 4) * 0.006, off = i * 0.13
     const look = new THREE.Vector3()
@@ -291,7 +291,8 @@ export function buildWaterfallReal(w: number): { group: THREE.Group; tick: (t: n
       const u = (t * speed + off) % 1
       path.getPointAt(u, f.group.position)
       path.getPointAt((u + 0.01) % 1, look)
-      f.group.lookAt(look); f.group.rotateY(-Math.PI / 2)
+      // หันหัวตามทิศว่าย (พิกัดในชิ้น — lookAt ใช้พิกัดโลก จึงคำนวณมุมเอง)
+      f.group.rotation.set(0, Math.atan2(-(look.z - f.group.position.z), look.x - f.group.position.x), Math.sin(t * 2 + i) * 0.05)
       f.tail.rotation.y = Math.sin(t * 7 + i) * 0.5
     })
   })
