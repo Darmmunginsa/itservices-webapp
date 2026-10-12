@@ -8,3 +8,5 @@ export async function spAttachmentBlob(): Promise<{ url: string; type: string }>
 export async function spGetAttachments(): Promise<{ FileName: string; ServerRelativeUrl: string }[]> { return [] }
 export async function spUploadAttachment(): Promise<void> {}
 export async function spDeleteAttachment(): Promise<void> {}
+export async function spWaitForItem(): Promise<void> {}
+export function safeAttachmentName(name: string): string { return name.replace(/\s+/g, '_') }

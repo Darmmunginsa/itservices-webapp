@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CornerUpLeft, Users, Keyboard, Mic, MicOff, PhoneOff, Headphones, Phone, Lock, MonitorUp, MonitorX, Maximize2, Map as MapIcon, Expand, PictureInPicture2 } from 'lucide-react'
 import {
@@ -26,6 +26,9 @@ import { readersOf } from '../../utils/readState'
 import { useReadReceipts } from '../../hooks/useReadReceipts'
 import { sendWithFiles } from '../../services/chatSend'
 import { MiniOffice, type MiniPerson } from './MiniOffice'
+import type { Person3D } from './Office3D'
+// มุมมอง 3D โหลดเฉพาะตอนเปิด — คนใช้ 2D ไม่ต้องโหลด three.js
+const Office3D = lazy(() => import('./Office3D'))
 import { useDocPip, pipBlockReason, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
@@ -174,6 +177,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const [zoomPref, setZoomPref] = useState<'fit' | number>(() => {
     try { const v = localStorage.getItem('hd-office-zoom'); return v === null || v === 'fit' ? 'fit' : Math.min(1.5, Math.max(0.4, Number(v) || 1)) } catch { return 'fit' }
   })
+  // มุมมอง 3D (เฟส 1) — จำไว้ในเครื่อง
+  const [view3d, setView3d] = useState(() => { try { return localStorage.getItem('hd-office-3d') === '1' } catch { return false } })
+  const pick3d = (on: boolean) => { setView3d(on); try { localStorage.setItem('hd-office-3d', on ? '1' : '0') } catch { /* แค่ไม่จำ */ } }
   const pickZoom = (z: 'fit' | number) => { setZoomPref(z); try { localStorage.setItem('hd-office-zoom', String(z)) } catch { /* แค่ไม่จำ */ } }
   const [boardBox, setBoardBox] = useState({ w: 0, h: 0 })
   useEffect(() => {
@@ -677,6 +683,18 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     }),
     ...(pos ? [{ email: me, x: (seat ?? pos).x, y: (seat ?? pos).y, name: myAvatar.nick || 'ฉัน', avatar: myAvatar, face: seat ? seat.face : myFace, speaking: voice.meSpeaking, muted: voice.micOn && voice.muted, me: true, sitting: !!seat }] : []),
   ] : []
+  const statusDot = (slot: TeamStatusSlot | null | undefined) =>
+    slot ? STATUS_META[slot.StatusType as StatusType]?.color ?? '#6366f1' : STATUS_META.Available.color
+  // คน + โต๊ะสำหรับมุมมอง 3D (คำนวณเฉพาะตอนเปิด 3D)
+  const people3d: Person3D[] = view3d ? [
+    ...online.map(o => {
+      const e = o.email.toLowerCase(), st = o.seat ? seatAt(seats, o.seat.x, o.seat.y) : null
+      const mo = motion[e]
+      return { email: e, x: (st ?? o).x, y: (st ?? o).y, name: nickOf(e, o.UserName), avatar: avatarOf(e), face: st ? st.face : mo?.face ?? 'down', moving: !st && !!mo && mo.until > robotNow, sitting: !!st, speaking: speakingSet.has(e), statusColor: statusDot(memberBy.get(e)?.slot), me: false }
+    }),
+    ...(pos ? [{ email: me, x: (seat ?? pos).x, y: (seat ?? pos).y, name: myAvatar.nick || 'ฉัน', avatar: myAvatar, face: seat ? seat.face : myFace, moving: meMoving && !seat, sitting: !!seat, speaking: voice.meSpeaking, statusColor: statusDot(memberBy.get(me)?.slot), me: true }] : []),
+  ] : []
+  const desks3d = view3d ? allDecor.filter(d => d.decor.desk).map(d => ({ email: d.email, desk: d.decor.desk! })) : []
   const visibleChat = tab === 'dm' ? [] : chat.filter(c => chatVisible(c, tab))
   // เห็นแชทห้องนี้อยู่ (หน้าต่างโฟกัส) = อ่านแล้ว → บันทึกขึ้น SharePoint ให้คนส่งเห็น "อ่านแล้ว" และเครื่องอื่นไม่ขึ้นว่ายังไม่อ่าน
   const lastVisibleId = visibleChat.reduce((mx, c) => Math.max(mx, c.id), 0)
@@ -705,8 +723,6 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     return out
   }, [map])
 
-  const statusDot = (slot: TeamStatusSlot | null | undefined) =>
-    slot ? STATUS_META[slot.StatusType as StatusType]?.color ?? '#6366f1' : STATUS_META.Available.color
 
   return (
     <div className="flex flex-col lg:flex-row gap-3">
@@ -752,9 +768,21 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           className={`absolute top-2 right-2 z-30 p-1.5 rounded-lg shadow border ${pip.win ? 'bg-primary-600 text-white border-primary-600' : 'bg-white/90 dark:bg-gray-900/90 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:text-primary-600'}`}>
           <PictureInPicture2 size={15} />
         </button>
+        {view3d && !theaterOn && (
+          <div className={`rounded-2xl border-2 ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`} style={{ height: '70vh' }}>
+            <Suspense fallback={<div className="h-full flex items-center justify-center text-xs text-gray-400">กำลังโหลดมุมมอง 3D…</div>}>
+              <Office3D rows={map.rows} props={mapProps} desks={desks3d} people={people3d} onFocusChange={setFocused}
+                onTileClick={(x, y) => {
+                  const st3 = seatAt(seats, x, y)
+                  if (st3) { sitOn(st3); return }
+                  if (isWalkable(propMap, x, y)) walkTo({ x, y })
+                }} />
+            </Suspense>
+          </div>
+        )}
         <div ref={boardRef} tabIndex={0} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
           onClick={() => boardRef.current?.focus()}
-          className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${theaterOn ? 'hidden' : ''} ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
+          className={`hd-office-map relative overflow-auto rounded-2xl border-2 outline-none select-none ${theaterOn || view3d ? 'hidden' : ''} ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`}
           style={{ maxHeight: '70vh' }}>
           {!focused && pos && (
             <div className="absolute z-20 top-2 left-1/2 -translate-x-1/2 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white pointer-events-none">คลิกที่แผนที่แล้วใช้ลูกศรเดิน</div>
@@ -931,6 +959,11 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         <div className="flex items-center gap-2 mb-2 text-xs text-gray-500 flex-wrap">
           <span className="inline-flex items-center gap-1"><Keyboard size={12} /> ลูกศร / WASD เดิน · คลิกช่องว่างเพื่อเดินไป</span>
           <span className="ml-auto inline-flex items-center gap-1"><Users size={12} /> ออนไลน์ {online.length + (pos ? 1 : 0)} คน</span>
+          {/* สลับ 2D / 3D */}
+          <button onClick={() => pick3d(!view3d)} title={view3d ? 'กลับไปมุมมอง 2D' : 'มุมมอง 3D — ลากเพื่อหมุนกล้อง · ล้อเมาส์ซูม · คลิกพื้นเพื่อเดิน'}
+            className={`px-2.5 py-1 rounded-full border ${view3d ? 'bg-primary-600 text-white border-primary-600' : 'border-gray-200 dark:border-gray-700 hover:border-primary-400 hover:text-primary-600'}`}>
+            {view3d ? '🗺️ 2D' : '🧊 3D'}
+          </button>
           {/* ย่อ/ขยายแผนที่ */}
           <span className="inline-flex items-center rounded-full border border-gray-200 dark:border-gray-700 overflow-hidden">
             <button onClick={() => stepZoom(-0.1)} title="ย่อแผนที่" className="px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800">−</button>
