@@ -28,7 +28,21 @@ export function placePets(
     pets.forEach((p, i) => {
       const id = `${email}:${p.kind}`
       if (p.follow && o) {
-        const [bx, by] = BACK[o.face], [sx, sy] = SIDE[o.face]
+        const [sx, sy] = SIDE[o.face]
+        if (o.sitting) {
+          // เจ้าของนั่งม้านั่ง/เก้าอี้ → สัตว์นั่งบนพื้นหน้าที่นั่ง เยื้องข้าง (ไม่มุดใต้ม้านั่ง)
+          const [fx, fy] = BACK[o.face].map(v => -v) as [number, number]
+          const lane = i === 0 ? -0.45 : i === 1 ? 0.45 : 0
+          const cand: [number, number][] = [
+            [o.x + fx * 0.85 + sx * lane, o.y + fy * 0.85 + sy * lane],
+            [o.x + sx * (lane >= 0 ? 1 : -1), o.y + sy * (lane >= 0 ? 1 : -1)],
+            [o.x - sx * (lane >= 0 ? 1 : -1), o.y - sy * (lane >= 0 ? 1 : -1)],
+          ]
+          const [x, y] = cand.find(([cx, cy]) => walkable(Math.round(cx), Math.round(cy))) ?? cand[0]
+          out.push({ id, owner: email, kind: p.kind, x, y, mode: 'sit', face: o.face })
+          return
+        }
+        const [bx, by] = BACK[o.face]
         const lane = i === 0 ? -0.55 : i === 1 ? 0.55 : 0
         const back = i === 2 ? 1.3 : 0.75
         let x = o.x + bx * back + sx * lane, y = o.y + by * back + sy * lane
