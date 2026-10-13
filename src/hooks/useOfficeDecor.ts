@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getAllDecor, saveMyDecor, type DecorRow } from '../services/officeDecor'
 import {
-  canPlace, placeDesk, setDeskStyle, rotateDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
-  type MyDecor, type OthersDecor,
+  canPlace, placeDesk, setDeskStyle, togglePet, togglePetFollow, rotateDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
+  type MyDecor, type OthersDecor, type PetKind,
 } from '../utils/officeDecor'
 import type { OfficeMap, Pos } from '../utils/officeMap'
 
@@ -114,7 +114,7 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
 
   const releaseDesk = useCallback(() => {
     if (!window.confirm('คืนโต๊ะนี้? ของแต่งทั้งหมดจะถูกเอาออก (กดบันทึกถึงจะมีผล)')) return
-    setDraft(emptyDecor()); setSelected(null); setKind(null); setMovingDesk(true)
+    setDraft(d => ({ ...emptyDecor(), pets: d.pets })); setSelected(null); setKind(null); setMovingDesk(true)
   }, [])
 
   // คีย์ลัดระหว่างตกแต่ง: R หมุน · F กลับด้าน · Delete ลบ · Esc เลิกเลือก
@@ -143,6 +143,8 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
       if ('error' in r) cb.current.onError(r.error); else setDraft(r.decor)
     },
     pickKind: (k: string | null) => { setKind(k); setSelected(null) },
+    togglePet: (k: PetKind) => setDraft(d => togglePet(d, k)),
+    togglePetFollow: (k: PetKind) => setDraft(d => togglePetFollow(d, k)),
     startMoveDesk: () => { setMovingDesk(true); setKind(null); setSelected(null) },
     selectedLabel: selectedItem ? defOf(selectedItem.kind)?.label ?? '' : '',
   }

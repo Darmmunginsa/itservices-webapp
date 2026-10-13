@@ -41,6 +41,8 @@ import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
 import { propBlocked, propDef, seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom, type Prop, type Seat } from '../../utils/officeProps'
 import { meetingSeats, deskSeats, guestSeats } from '../../utils/officeSeats'
+import { placePets, type OwnerState } from '../../utils/officePets'
+import { PetSprite } from './PetSprite'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
@@ -685,6 +687,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   ] : []
   const statusDot = (slot: TeamStatusSlot | null | undefined) =>
     slot ? STATUS_META[slot.StatusType as StatusType]?.color ?? '#6366f1' : STATUS_META.Available.color
+  // สัตว์เลี้ยง: วิ่งตามเจ้าของที่ออนไลน์ (ถ้าตั้งให้ตาม) ไม่งั้นนอนที่โต๊ะ — ใช้ทั้ง 2D และ 3D
+  const petOwners = new Map<string, OwnerState>()
+  for (const o of online) {
+    const e = o.email.toLowerCase(), st = o.seat ? seatAt(seats, o.seat.x, o.seat.y) : null
+    const p = st ?? clampToMap(walkMap, { x: o.X, y: o.Y }, hashIndex(o.email)), mo = motion[e]
+    petOwners.set(e, { x: p.x, y: p.y, face: st ? st.face : mo?.face ?? 'down', moving: !st && !!mo && mo.until > robotNow, sitting: !!st })
+  }
+  if (pos) petOwners.set(me, { x: (seat ?? pos).x, y: (seat ?? pos).y, face: seat ? seat.face : myFace, moving: meMoving && !seat, sitting: !!seat })
+  const pets = placePets(allDecor, petOwners, (x, y) => isWalkable(walkMap, x, y))
   // คน + โต๊ะสำหรับมุมมอง 3D (คำนวณเฉพาะตอนเปิด 3D)
   const people3d: Person3D[] = view3d ? [
     ...online.map(o => {
@@ -776,7 +787,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         {view3d && !theaterOn && (
           <div className={`rounded-2xl border-2 ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`} style={{ height: '70vh' }}>
             <Suspense fallback={<div className="h-full flex items-center justify-center text-xs text-gray-400">กำลังโหลดมุมมอง 3D…</div>}>
-              <Office3D rows={map.rows} props={mapProps} desks={desks3d} items={items3d} people={people3d} onFocusChange={setFocused}
+              <Office3D rows={map.rows} props={mapProps} desks={desks3d} items={items3d} people={people3d} pets={pets} onFocusChange={setFocused}
                 robot={robot3d}
                 feeders={[...(feeding && pos ? [pos] : []), ...online.filter(o => o.feed).map(o => ({ x: o.x, y: o.y }))]}
                 onTileClick={(x, y) => {
@@ -919,6 +930,14 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
                 </button>
               )
             })}
+            {/* สัตว์เลี้ยง — วิ่งตามแบบหน่วงกว่าเจ้าของนิดหน่อย (transition ยาวกว่า) */}
+            {pets.map(p => (
+              <div key={p.id} className="absolute pointer-events-none" title={p.mode === 'sleep' ? 'หลับอยู่ข้างโต๊ะ' : undefined}
+                style={{ left: p.x * TILE + (TILE - 26) / 2, top: p.y * TILE + TILE - 25, zIndex: p.mode === 'sleep' ? 3 : 9,
+                  transition: p.owner === me ? 'left .55s ease-out, top .55s ease-out' : 'left 2.9s linear, top 2.9s linear' }}>
+                <PetSprite kind={p.kind} mode={p.mode} left={p.face === 'left'} />
+              </div>
+            ))}
             {/* คนอื่น — ตัวละครเดินไปตำแหน่งใหม่ (หันตามทาง แกว่งแขนขา) · ชื่ออยู่เหนือหัวแบบ Gather */}
             {online.map(r => {
               const e = r.email.toLowerCase()
@@ -1118,7 +1137,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           <DecorPanel draft={decor.draft} kind={decor.kind} pickKind={decor.pickKind} selectedLabel={decor.selectedLabel}
             hasSelection={!!decor.selectedItem} act={decor.act} movingDesk={decor.movingDesk} startMoveDesk={decor.startMoveDesk}
             releaseDesk={decor.releaseDesk} dirty={decor.dirty} saving={decor.saving} save={decor.save} cancel={decor.cancel}
-            deskStyle={decor.deskStyle} pickDeskStyle={decor.pickDeskStyle} turnDesk={decor.turnDesk} />
+            deskStyle={decor.deskStyle} pickDeskStyle={decor.pickDeskStyle} turnDesk={decor.turnDesk}
+            togglePet={decor.togglePet} togglePetFollow={decor.togglePetFollow} />
         ) : (<>
         <div className="flex text-xs border-b border-gray-200 dark:border-gray-800 items-stretch">
           <button onClick={() => setTab('all')} className={`flex-1 py-2 ${tab === 'all' ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500'}`}>ทั้งออฟฟิศ</button>

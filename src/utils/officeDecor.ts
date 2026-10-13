@@ -67,8 +67,29 @@ export const DESK_STYLES: DeskStyle[] = [
 const STYLE_SET = new Set(DESK_STYLES.map(d => d.style))
 
 export interface Desk extends Pos { style: string; rot: Rot }
-export interface MyDecor { desk: Desk | null; items: DecorItem[] }
-export const emptyDecor = (): MyDecor => ({ desk: null, items: [] })
+
+// ── สัตว์เลี้ยง: หมา แมว กระต่าย อย่างละตัว · follow = วิ่งตามเจ้าของ · ไม่ตาม/เจ้าของออฟไลน์ = นอนที่โต๊ะ ──
+export type PetKind = 'dog' | 'cat' | 'rabbit'
+export interface Pet { kind: PetKind; follow: boolean }
+export const PET_KINDS: { kind: PetKind; label: string }[] = [
+  { kind: 'dog', label: 'หมา' }, { kind: 'cat', label: 'แมว' }, { kind: 'rabbit', label: 'กระต่าย' },
+]
+const PET_SET = new Set<string>(PET_KINDS.map(p => p.kind))
+
+export interface MyDecor { desk: Desk | null; items: DecorItem[]; pets?: Pet[] }
+export const emptyDecor = (): MyDecor => ({ desk: null, items: [], pets: [] })
+export const petsOf = (d: MyDecor): Pet[] => d.pets ?? []
+/** มี/ไม่มีสัตว์ชนิดนี้ (เพิ่มใหม่ = วิ่งตามเป็นค่าเริ่มต้น) */
+export const togglePet = (d: MyDecor, kind: PetKind): MyDecor => {
+  const has = petsOf(d).some(p => p.kind === kind)
+  return { ...d, pets: has ? petsOf(d).filter(p => p.kind !== kind) : [...petsOf(d), { kind, follow: true }] }
+}
+export const togglePetFollow = (d: MyDecor, kind: PetKind): MyDecor =>
+  ({ ...d, pets: petsOf(d).map(p => (p.kind === kind ? { ...p, follow: !p.follow } : p)) })
+/** ที่นอนของสัตว์ข้างโต๊ะ (ข้างเก้าอี้ซ้าย/ขวา + หลังเก้าอี้) ตามทิศโต๊ะ */
+export function petHomes(d: Desk): Pos[] {
+  return [[-1, 1], [1, 1], [0, 2]].map(([dx, dy]) => world(d, dx, dy))
+}
 
 /** อ่าน JSON จาก SharePoint แบบไม่เชื่อ — ของเสีย/ชนิดที่ไม่รู้จักทิ้ง ไม่ให้ทั้งแผนที่พัง */
 export function parseDecor(raw?: string): MyDecor {
@@ -91,7 +112,12 @@ export function parseDecor(raw?: string): MyDecor {
         rot: ([0, 90, 180, 270] as const).includes(i.rot as Rot) ? i.rot as Rot : 0,
         flip: !!i.flip,
       })) : []
-    return { desk, items }
+    const pets: Pet[] = Array.isArray((j as { pets?: unknown }).pets)
+      ? ((j as { pets: Partial<Pet>[] }).pets).filter(p => p && PET_SET.has(p.kind as string))
+          .filter((p, i, a) => a.findIndex(q => q.kind === p.kind) === i)
+          .map(p => ({ kind: p.kind as PetKind, follow: p.follow !== false }))
+      : []
+    return { desk, items, pets }
   } catch { return emptyDecor() }
 }
 
@@ -256,9 +282,9 @@ export function placeDesk(m: OfficeMap, mine: MyDecor, others: OthersDecor[], at
   const c = canPlaceDesk(m, { ...mine, items: [] }, others, at)
   if (!c.ok) return { error: c.reason }
   const desk: Desk = { x: at.x, y: at.y, style: style ?? mine.desk?.style ?? 'classic', rot: mine.desk?.rot ?? 0 }
-  if (!mine.desk) return { decor: { desk, items: [] }, dropped: 0 }
+  if (!mine.desk) return { decor: { desk, items: [], pets: mine.pets }, dropped: 0 }
   const dx = at.x - mine.desk.x, dy = at.y - mine.desk.y
-  let next: MyDecor = { desk, items: [] }
+  let next: MyDecor = { desk, items: [], pets: mine.pets }
   let dropped = 0
   for (const i of mine.items) {
     const to = { x: i.x + dx, y: i.y + dy }
@@ -283,5 +309,5 @@ export function rotateDesk(m: OfficeMap, mine: MyDecor, others: OthersDecor[]): 
   if (!c.ok) return { error: c.reason }
   const turn = (p: Pos): Pos => { const [x, y] = ROT(p.x - d.x, p.y - d.y, 90); return { x: d.x + x, y: d.y + y } }
   const onDesk = (i: DecorItem) => defOf(i.kind)?.surface === 'desk'
-  return { decor: { desk: { ...d, rot }, items: mine.items.map(i => (onDesk(i) ? { ...i, ...turn(i) } : i)) } }
+  return { decor: { ...mine, desk: { ...d, rot }, items: mine.items.map(i => (onDesk(i) ? { ...i, ...turn(i) } : i)) } }
 }

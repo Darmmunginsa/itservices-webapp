@@ -14,6 +14,8 @@ import { propDef, type Prop } from '../../utils/officeProps'
 import type { Desk } from '../../utils/officeDecor'
 import { buildProp3D } from './props3d'
 import { buildKoi } from './waterfall3d'
+import { buildPet3D, animatePet, type PetRig } from './pets3d'
+import type { PetPlace } from '../../utils/officePets'
 import { buildDecor3D, buildRobot3D, buildBird3D, type RobotRig, type BirdRig } from './decor3d'
 import { birdHomes, birdFeedSpot, type BirdHome } from '../../utils/gardenBirds'
 
@@ -39,6 +41,8 @@ interface Props {
   /** คนที่กำลังให้อาหารนก */
   feeders: { x: number; y: number }[]
   people: Person3D[]
+  /** สัตว์เลี้ยง (ตำแหน่ง/ท่าคำนวณจาก utils/officePets) */
+  pets?: PetPlace[]
   onTileClick: (x: number, y: number) => void
   onFocusChange: (focused: boolean) => void
 }
@@ -135,7 +139,7 @@ function buildAvatar(a: Avatar): Omit<AvatarRig, 'ring' | 'label' | 'key'> {
 
 const FACE_ROT: Record<Facing, number> = { down: 0, up: Math.PI, left: -Math.PI / 2, right: Math.PI / 2 }
 
-export default function Office3D({ rows, props, desks, items, robot, feeders, people, onTileClick, onFocusChange }: Props) {
+export default function Office3D({ rows, props, desks, items, robot, feeders, people, pets = [], onTileClick, onFocusChange }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<{
     scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls
@@ -155,6 +159,9 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
   useEffect(() => { qualityRef.current = quality; sceneRef.current?.fx.setQuality(quality) }, [quality])
   const peopleRef = useRef(people)
   useEffect(() => { peopleRef.current = people }, [people])
+  const petsRef = useRef(pets)
+  useEffect(() => { petsRef.current = pets }, [pets])
+  const petRigs = useRef(new Map<string, PetRig>())
   const robotRef = useRef(robot)
   useEffect(() => { robotRef.current = robot }, [robot])
   const feedRef = useRef(feeders)
@@ -312,6 +319,17 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
         bg.visible = b.away < 0.95
         bg.rotation.y = spot ? (bg.position.x > spot.cx ? Math.PI : 0) : (b.home.flip ? Math.PI : 0)
         b.rig.head.rotation.z = b.away > 0 ? 0 : -Math.max(0, Math.sin(t * 7 + b.i * 1.7)) * 0.9
+      }
+      // สัตว์เลี้ยง: วิ่งตามแบบหน่วง ๆ (lerp ช้ากว่าเจ้าของ) · หันตามทางที่วิ่ง · ท่าตามโหมด
+      for (const p of petsRef.current) {
+        const r = petRigs.current.get(p.id)
+        if (!r) continue
+        tmp.set(p.x + 0.5, 0, p.y + 0.5)
+        const dx = tmp.x - r.group.position.x, dz = tmp.z - r.group.position.z, far = Math.hypot(dx, dz)
+        r.group.position.lerp(tmp, Math.min(1, step * (p.mode === 'sleep' ? 2 : 3.2)))
+        const mode = far > 0.12 && p.mode !== 'sleep' ? 'walk' : p.mode
+        if (far > 0.05) { const want = Math.atan2(-dz, dx); let d = want - r.group.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); r.group.rotation.y += d * Math.min(1, step * 8) }
+        animatePet(r, mode, t, p.id.length)
       }
       for (const p of peopleRef.current) {
         const rig = st.avatars.get(p.email)
@@ -599,6 +617,22 @@ export default function Office3D({ rows, props, desks, items, robot, feeders, pe
     }
     for (const [email, rig] of st.avatars) if (!seen.has(email)) { rig.label.element.remove(); st.scene.remove(rig.group); st.avatars.delete(email) }
   }, [peopleKey])
+
+  // ── สัตว์เลี้ยง: สร้าง/ลบ ตามรายการ ──
+  const petsKey = pets.map(p => p.id).join(';')
+  useEffect(() => {
+    const st = sceneRef.current
+    if (!st) return
+    const seen = new Set<string>()
+    for (const p of petsRef.current) {
+      seen.add(p.id)
+      if (petRigs.current.has(p.id)) continue
+      const r = buildPet3D(p.kind)
+      r.group.position.set(p.x + 0.5, 0, p.y + 0.5)
+      st.scene.add(r.group); petRigs.current.set(p.id, r)
+    }
+    for (const [id, r] of petRigs.current) if (!seen.has(id)) { st.scene.remove(r.group); petRigs.current.delete(id) }
+  }, [petsKey])
 
   return (
     <div className="relative w-full h-full">

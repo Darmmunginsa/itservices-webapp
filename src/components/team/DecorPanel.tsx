@@ -1,5 +1,6 @@
 import { RotateCw, FlipHorizontal2, Trash2, Save, X, MoveRight, LogOut, RotateCcwSquare } from 'lucide-react'
-import { CATALOG, DESK_STYLES, MAX_ITEMS, DESK_ITEM_SLOTS, type MyDecor } from '../../utils/officeDecor'
+import { CATALOG, DESK_STYLES, MAX_ITEMS, DESK_ITEM_SLOTS, PET_KINDS, petsOf, type MyDecor, type PetKind } from '../../utils/officeDecor'
+import { PetSprite } from './PetSprite'
 import { DecorSprite } from './DecorSprite'
 import { DeskSprite } from './DeskSprite'
 
@@ -22,6 +23,8 @@ interface Props {
   deskStyle: string
   pickDeskStyle: (style: string) => void
   turnDesk: () => void
+  togglePet: (k: PetKind) => void
+  togglePetFollow: (k: PetKind) => void
 }
 
 const GROUPS = [...new Set(CATALOG.map(c => c.group))]
@@ -71,6 +74,31 @@ export function DecorPanel(p: Props) {
               )
             })}
           </div>
+        </div>
+        {/* สัตว์เลี้ยง — อย่างละตัว · วิ่งตาม หรือ นอนที่โต๊ะ */}
+        <div>
+          <p className="text-[10px] font-semibold text-gray-500 mb-1 px-1">สัตว์เลี้ยง</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {PET_KINDS.map(k => {
+              const pet = petsOf(p.draft).find(x => x.kind === k.kind)
+              return (
+                <div key={k.kind} className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border bg-white dark:bg-gray-900 ${pet ? 'border-primary-500 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <button onClick={() => p.togglePet(k.kind)} className="flex flex-col items-center" title={pet ? `เอา${k.label}ออก` : `รับ${k.label}มาเลี้ยง`}>
+                    <PetSprite kind={k.kind} mode={pet ? (pet.follow ? 'idle' : 'sleep') : 'idle'} left={false} size={36} />
+                    <span className="text-[9px] text-gray-600 dark:text-gray-300 mt-0.5">{pet ? `✓ ${k.label}` : `+ ${k.label}`}</span>
+                  </button>
+                  {pet && (
+                    <button onClick={() => p.togglePetFollow(k.kind)}
+                      className={`w-full text-[9px] px-1 py-0.5 rounded ${pet.follow ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}
+                      title="สลับ: วิ่งตามฉัน / นอนที่โต๊ะ">
+                      {pet.follow ? '🐾 วิ่งตาม' : '💤 นอนที่โต๊ะ'}
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[9px] text-gray-400 mt-1 px-1">ไม่ได้ออนไลน์ สัตว์จะกลับไปนอนที่โต๊ะ (ต้องมีโต๊ะ) · กดบันทึกถึงจะมีผล</p>
         </div>
         {GROUPS.map(g => (
           <div key={g}>
