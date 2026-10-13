@@ -123,12 +123,13 @@ export function buildPet3D(kind: PetKind): PetRig {
   const prof = kind === 'rabbit'
     ? (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.5) * (1 + (s < 0 ? -s * 0.15 : -s * 0.12))
     : kind === 'cat'
-      ? (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.55) * (0.92 + 0.08 * Math.cos(s * 3))
+      ? (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.3 : 0.55) * (0.92 + 0.08 * Math.cos(s * 3))   // หน้าอกมนทู่ ไม่แหลม
       : (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.5) * (s > 0 ? 1.05 : 0.9 + 0.1 * (1 + s))
   const torso = shapedBody(P.len, P.h, P.w, prof, fur); torso.userData.fur = 1
   torso.position.y = hip + P.h * 0.45
   if (kind === 'rabbit') torso.rotation.z = 0.25        // กระต่ายหลังโค้ง ก้นต่ำ
   body.add(torso)
+  if (kind === 'cat') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.5, 18, 14), fur); chest.userData.fur = 1.2; chest.scale.set(0.9, 1, 1.05); chest.position.set(P.len * 0.3, hip + P.h * 0.42, 0); body.add(chest) }
   if (kind === 'dog') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.48, 16, 12), pale); chest.userData.fur = 1.3; chest.scale.set(0.8, 1, 0.9); chest.position.set(P.len * 0.33, hip + P.h * 0.35, 0); body.add(chest) }
 
   // ── ขา: สะโพก(หมุน) → ต้นขา → เข่า(หมุน) → หน้าแข้ง → อุ้งเท้า ──
