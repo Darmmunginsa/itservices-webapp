@@ -170,7 +170,17 @@ export function buildPet3D(kind: PetKind): PetRig {
     const hx = (front ? 1 : -1) * P.len * (kind === 'rabbit' ? 0.28 : 0.3)
     const hipG = new THREE.Group(); hipG.position.set(hx, hip + 0.02, side * P.w * 0.32); body.add(hipG)
     const pawM = kind === 'cat' || kind === 'dog' ? pale : furPlain
-    if (front || kind === 'rabbit') {
+    if (front && kind === 'rabbit') {
+      // ขาหน้ากระต่าย: เรียวเล็ก ลงตรงใต้อก ชิดกัน · ปลายแขนเฉียงไปหน้านิด · อุ้งเท้ากลมเล็ก
+      hipG.position.set(P.len * 0.3, hip + 0.06, side * P.w * 0.2)
+      const up = 0.055, lo = 0.06
+      { const a = limb(0.019, up, fur); a.userData.fur = 0.9; hipG.add(a) }   // ต้นแขนฝังในอก (ขนฟูกลืนกับตัว)
+      const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
+      { const f2 = limb(0.014, lo, furLimb); f2.userData.fur = 0.5; knee.add(f2) }
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.019, 12, 8), pawM); paw.scale.set(1.45, 0.6, 1); paw.position.set(0.01, -lo + 0.002, 0); knee.add(paw)
+      hipG.rotation.z = -0.12; knee.rotation.z = 0.2
+      legs.push({ hip: hipG, knee, front })
+    } else if (front || kind === 'rabbit') {
       // ขาหน้า (และขาหลังกระต่าย): ต้นแขน → ข้อศอก → แขนล่าง → อุ้งเท้า
       if (!front) { const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.4, 16, 12), fur); haunch.scale.set(1.2, 1, 0.6); haunch.userData.fur = 1; haunch.position.set(0, 0.03, side * 0.012); hipG.add(haunch) }
       const up = hip * (kind === 'rabbit' ? 0.7 : 0.52)
@@ -300,8 +310,8 @@ export function animatePet(r: PetRig, mode: PetMode, t: number, seed: number) {
       if (l.front) { l.hip.rotation.z = -0.5; l.knee.rotation.z = 0 }
       else { l.hip.rotation.z = -0.5; l.knee.rotation.z = -0.9 }
     } else {
-      l.hip.rotation.z = sw * (rabbit ? 0.7 : 0.55)
-      l.knee.rotation.z = (rabbit && !l.front ? -0.9 : 0) + lift * (l.front ? -0.5 : 0.6)
+      l.hip.rotation.z = (rabbit && l.front ? -0.12 : 0) + sw * (rabbit ? 0.7 : 0.55)
+      l.knee.rotation.z = (rabbit ? (l.front ? 0.2 : -0.9) : 0) + lift * (l.front ? -0.5 : 0.6)
     }
   })
 

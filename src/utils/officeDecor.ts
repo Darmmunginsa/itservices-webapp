@@ -68,11 +68,12 @@ const STYLE_SET = new Set(DESK_STYLES.map(d => d.style))
 
 export interface Desk extends Pos { style: string; rot: Rot }
 
-// ── สัตว์เลี้ยง: หมา แมว กระต่าย อย่างละตัว · follow = วิ่งตามเจ้าของ · ไม่ตาม/เจ้าของออฟไลน์ = นอนที่โต๊ะ ──
+// ── สัตว์เลี้ยง: หมา กระต่าย อย่างละตัว · follow = วิ่งตามเจ้าของ · ไม่ตาม/เจ้าของออฟไลน์ = นอนที่โต๊ะ ──
 export type PetKind = 'dog' | 'cat' | 'rabbit'
 export interface Pet { kind: PetKind; follow: boolean }
 export const PET_KINDS: { kind: PetKind; label: string }[] = [
-  { kind: 'dog', label: 'หมา' }, { kind: 'cat', label: 'แมว' }, { kind: 'rabbit', label: 'กระต่าย' },
+  // แมวเอาออกจากตัวเลือกแล้ว (เคยเลือกไว้ = ไม่แสดง) — โค้ดโมเดลยังเก็บไว้
+  { kind: 'dog', label: 'หมา' }, { kind: 'rabbit', label: 'กระต่าย' },
 ]
 const PET_SET = new Set<string>(PET_KINDS.map(p => p.kind))
 
