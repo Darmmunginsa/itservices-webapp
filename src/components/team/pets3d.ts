@@ -17,32 +17,37 @@ export interface PetRig {
 
 const texCache = new Map<string, THREE.Texture>()
 /** ลายขน: เส้นขนสั้นเอียงตามแนวลำตัว · ท้อง (ขอบล่างของ uv) สีอ่อน · ลายเสือสำหรับแมว */
-function furTex(kind: PetKind): THREE.Texture {
-  const hit = texCache.get(kind); if (hit) return hit
+function furTex(kind: PetKind, limb = false): THREE.Texture {
+  const key = `${kind}${limb ? ':limb' : ''}`
+  const hit = texCache.get(key); if (hit) return hit
   const c = document.createElement('canvas'); c.width = 256; c.height = 128
   const x = c.getContext('2d')!
   const base = kind === 'dog' ? ['#c98a4b', '#a86a33', '#e0a868'] : kind === 'cat' ? ['#e9963f', '#c56f22', '#f6b866'] : ['#f2efea', '#d9d3ca', '#ffffff']
   const belly = kind === 'dog' ? '#f6e3c8' : kind === 'cat' ? '#fbe6c9' : '#ffffff'
   const g = x.createLinearGradient(0, 0, 0, 128)
-  g.addColorStop(0, base[0]); g.addColorStop(0.62, base[0]); g.addColorStop(0.82, belly); g.addColorStop(1, belly)
+  // ขา/หาง/คอ = สีเดียวทั้งท่อน (ไม่มีแถบท้อง) · ลำตัว = หลังเข้ม → ท้องอ่อน
+  if (limb) { g.addColorStop(0, base[0]); g.addColorStop(1, base[0]) }
+  else { g.addColorStop(0, base[0]); g.addColorStop(0.62, base[0]); g.addColorStop(0.82, belly); g.addColorStop(1, belly) }
   x.fillStyle = g; x.fillRect(0, 0, 256, 128)
   let s = kind.length * 97; const R = () => { s = (s * 16807) % 2147483647; return s / 2147483647 }
-  if (kind === 'cat') { x.fillStyle = 'rgba(150,72,20,.55)'; for (let i = 0; i < 9; i++) { const px = 14 + i * 27 + R() * 6; x.beginPath(); x.moveTo(px, 0); x.quadraticCurveTo(px + 8, 40, px - 2, 78); x.lineTo(px + 6, 78); x.quadraticCurveTo(px + 15, 40, px + 9, 0); x.fill() } }
-  if (kind === 'dog') { x.fillStyle = 'rgba(110,64,26,.35)'; x.beginPath(); x.ellipse(140, 18, 70, 22, 0, 0, Math.PI * 2); x.fill() }   // อานหลังเข้ม
+  if (kind === 'cat' && !limb) { x.fillStyle = 'rgba(150,72,20,.55)'; for (let i = 0; i < 9; i++) { const px = 14 + i * 27 + R() * 6; x.beginPath(); x.moveTo(px, 0); x.quadraticCurveTo(px + 8, 40, px - 2, 78); x.lineTo(px + 6, 78); x.quadraticCurveTo(px + 15, 40, px + 9, 0); x.fill() } }
+  if (kind === 'dog' && !limb) { x.fillStyle = 'rgba(110,64,26,.35)'; x.beginPath(); x.ellipse(140, 18, 70, 22, 0, 0, Math.PI * 2); x.fill() }   // อานหลังเข้ม
   for (let i = 0; i < 2600; i++) {
     const px = R() * 256, py = R() * 128, l = 2 + R() * 4
-    x.strokeStyle = py > 95 ? 'rgba(255,255,255,.25)' : R() < 0.5 ? `${base[1]}66` : `${base[2]}77`
+    x.strokeStyle = py > 95 && !limb ? 'rgba(255,255,255,.25)' : R() < 0.5 ? `${base[1]}66` : `${base[2]}77`
     x.lineWidth = 0.7; x.beginPath(); x.moveTo(px, py); x.lineTo(px - l, py + l * 0.35); x.stroke()
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
-  texCache.set(kind, t); return t
+  texCache.set(key, t); return t
 }
 
+/** ท่อนแคปซูล (ปลายมน) ยาว len จากจุดหมุนลงไปทาง -y — ต่อกันแล้วไม่เห็นรอยตัด */
+const limb = (r: number, len: number, m: THREE.Material) => { const c = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, len), 6, 12), m); c.position.y = -len / 2; return c }
 const mat = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.9, ...o })
 
 /** ทรงรีที่ดัดตามแกน x: prof(s) = รัศมีที่ตำแหน่ง s ∈ [-1,1] */
 function shapedBody(len: number, h: number, w: number, prof: (s: number) => number, m: THREE.Material) {
-  const geo = new THREE.SphereGeometry(1, 28, 18); geo.rotateZ(-Math.PI / 2)
+  const geo = new THREE.SphereGeometry(1, 40, 28); geo.rotateZ(-Math.PI / 2)
   const p = geo.attributes.position as THREE.BufferAttribute
   for (let i = 0; i < p.count; i++) {
     const sx = p.getX(i), y = p.getY(i), z = p.getZ(i), r = Math.hypot(y, z) || 1e-6, k = prof(sx) / Math.max(r, 1e-6) * Math.min(1, r)
@@ -56,6 +61,7 @@ function shapedBody(len: number, h: number, w: number, prof: (s: number) => numb
 export function buildPet3D(kind: PetKind): PetRig {
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body)
   const fur = mat({ map: furTex(kind) })
+  const furLimb = mat({ map: furTex(kind, true) })
   const tone = kind === 'dog' ? '#c98a4b' : kind === 'cat' ? '#e9963f' : '#f2efea'
   const furPlain = mat({ color: tone })
   const pale = mat({ color: kind === 'dog' ? '#f6e3c8' : kind === 'cat' ? '#fbe6c9' : '#ffffff' })
@@ -90,11 +96,11 @@ export function buildPet3D(kind: PetKind): PetRig {
     const hipG = new THREE.Group(); hipG.position.set(hx, hip + 0.02, side * P.w * 0.32); body.add(hipG)
     if (!front && kind !== 'dog') { const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * (kind === 'rabbit' ? 0.4 : 0.32), 14, 10), fur); haunch.scale.set(1.2, 1, 0.6); haunch.position.set(0, 0.03, side * 0.012); hipG.add(haunch) }
     const up = hip * (kind === 'rabbit' ? 0.7 : 0.52)
-    const thigh = new THREE.Mesh(new THREE.CylinderGeometry(legR * 1.3, legR, up, 10), furPlain); thigh.position.y = -up / 2; hipG.add(thigh)
+    // ต้นขาเริ่มในลำตัว (ปลายมนจมในตัว) → ไม่เห็นรอยต่อกับลำตัว
+    hipG.add(limb(legR * 1.35, up, furLimb))
     const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
-    const kj = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.02, 10, 8), furPlain); knee.add(kj)
     const lo = hip * 0.5 + 0.02
-    const shin = new THREE.Mesh(new THREE.CylinderGeometry(legR, legR * 0.85, lo, 10), furPlain); shin.position.y = -lo / 2; knee.add(shin)
+    knee.add(limb(legR * 1.05, lo, furLimb))
     const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.35, 10, 8), kind === 'dog' && front ? pale : furPlain)
     paw.scale.set(kind === 'rabbit' && !front ? 2.6 : 1.5, 0.6, 1.1); paw.position.set(legR * (kind === 'rabbit' && !front ? 1.6 : 0.6), -lo + 0.006, 0); knee.add(paw)
     if (kind === 'rabbit' && !front) knee.rotation.z = -0.9
@@ -103,7 +109,8 @@ export function buildPet3D(kind: PetKind): PetRig {
 
   // ── หัว ──
   const head = new THREE.Group(); head.position.set(P.neck[0] * (kind === 'rabbit' ? 0.8 : 1), hip + P.neck[1] - (kind === 'rabbit' ? 0.02 : 0), 0); body.add(head)
-  if (kind !== 'rabbit') { const neck = new THREE.Mesh(new THREE.CylinderGeometry(P.headR * 0.62, P.headR * 0.9, kind === 'cat' ? 0.08 : 0.12, 12), furPlain); neck.position.set(-0.04, -0.06, 0); neck.rotation.z = -0.9; head.add(neck) }
+  // คอ: แคปซูลอวบจากอกขึ้นไปฝังในหัว — ไม่มีขอบตัด
+  if (kind !== 'rabbit') { const neck = new THREE.Mesh(new THREE.CapsuleGeometry(P.headR * 0.78, kind === 'cat' ? 0.06 : 0.1, 6, 14), furLimb); neck.position.set(-P.headR * 0.75, -P.headR * 0.95, 0); neck.rotation.z = -0.75; head.add(neck) }
   const skull = new THREE.Mesh(new THREE.SphereGeometry(P.headR, 20, 16), fur)
   skull.scale.set(kind === 'cat' ? 1 : 1.05, kind === 'cat' ? 0.92 : 0.95, kind === 'cat' ? 1.1 : 0.95); head.add(skull)
   const ears: THREE.Object3D[] = []
@@ -165,8 +172,7 @@ export function buildPet3D(kind: PetKind): PetRig {
     for (let i = 0; i < n; i++) {
       const sg = new THREE.Group(); if (i) sg.position.y = segL; parent.add(sg)
       const r0 = (kind === 'cat' ? 0.019 : 0.022) * (1 - i / (n + 1)), r1 = (kind === 'cat' ? 0.019 : 0.022) * (1 - (i + 1) / (n + 1))
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, segL, 8), i === n - 1 && kind === 'dog' ? pale : furPlain); m.position.y = segL / 2; sg.add(m)
-      const j = new THREE.Mesh(new THREE.SphereGeometry(r1, 8, 6), furPlain); j.position.y = segL; sg.add(j)
+      const m = new THREE.Mesh(new THREE.CapsuleGeometry((r0 + r1) / 2, segL, 4, 10), i === n - 1 && kind === 'dog' ? pale : furLimb); m.position.y = segL / 2; sg.add(m)
       tailSegs.push(sg); parent = sg
     }
     tail.rotation.z = kind === 'cat' ? 0.35 : -0.35
