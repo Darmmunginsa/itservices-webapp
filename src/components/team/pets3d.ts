@@ -16,37 +16,65 @@ export interface PetRig {
 }
 
 const texCache = new Map<string, THREE.Texture>()
-/** ลายขน: เส้นขนสั้นเอียงตามแนวลำตัว · ท้อง (ขอบล่างของ uv) สีอ่อน · ลายเสือสำหรับแมว */
-function furTex(kind: PetKind, limb = false): THREE.Texture {
-  const key = `${kind}${limb ? ':limb' : ''}`
+/**
+ * ลายขนตามสายพันธุ์ (อ้างอิงลูกบีเกิล / ลูกแมวส้มท้องขาว)
+ * พิกัดบนลำตัว (ทรงกลมหมุนแกนยาวไป +x): แกนนอน canvas = รอบตัว (ขอบซ้าย/ขวา = สันหลัง · กลาง = ท้อง) · แกนตั้ง = หัว(บน) → หาง(ล่าง)
+ * พิกัดบนหัว: แกนนอน = รอบหัว (กลาง = หน้า · ขอบ = ท้ายทอย) · แกนตั้ง = กระหม่อม(บน) → คาง(ล่าง)
+ */
+type Part = 'body' | 'limb' | 'head'
+function furTex(kind: PetKind, part: Part = 'body'): THREE.Texture {
+  const key = `${kind}:${part}`
   const hit = texCache.get(key); if (hit) return hit
   const c = document.createElement('canvas'); c.width = 256; c.height = 128
   const x = c.getContext('2d')!
-  const base = kind === 'dog' ? ['#c98a4b', '#a86a33', '#e0a868'] : kind === 'cat' ? ['#e9963f', '#c56f22', '#f6b866'] : ['#f2efea', '#d9d3ca', '#ffffff']
-  const belly = kind === 'dog' ? '#f6e3c8' : kind === 'cat' ? '#fbe6c9' : '#ffffff'
-  const g = x.createLinearGradient(0, 0, 0, 128)
-  // ขา/หาง/คอ = สีเดียวทั้งท่อน (ไม่มีแถบท้อง) · ลำตัว = หลังเข้ม → ท้องอ่อน
-  if (limb) { g.addColorStop(0, base[0]); g.addColorStop(1, base[0]) }
-  else { g.addColorStop(0, base[0]); g.addColorStop(0.62, base[0]); g.addColorStop(0.82, belly); g.addColorStop(1, belly) }
-  x.fillStyle = g; x.fillRect(0, 0, 256, 128)
-  let s = kind.length * 97; const R = () => { s = (s * 16807) % 2147483647; return s / 2147483647 }
-  if (kind === 'cat' && !limb) { x.fillStyle = 'rgba(150,72,20,.55)'; for (let i = 0; i < 9; i++) { const px = 14 + i * 27 + R() * 6; x.beginPath(); x.moveTo(px, 0); x.quadraticCurveTo(px + 8, 40, px - 2, 78); x.lineTo(px + 6, 78); x.quadraticCurveTo(px + 15, 40, px + 9, 0); x.fill() } }
-  if (kind === 'dog' && !limb) { x.fillStyle = 'rgba(110,64,26,.35)'; x.beginPath(); x.ellipse(140, 18, 70, 22, 0, 0, Math.PI * 2); x.fill() }   // อานหลังเข้ม
+  let s = kind.length * 97 + part.length; const R = () => { s = (s * 16807) % 2147483647; return s / 2147483647 }
+  const WHITE = '#f7f4ef', TAN = '#b8732f', BLACK = '#2a2421', ORANGE = '#ec9a45'
+  const blob = (col: string, cx: number, cy: number, rx: number, ry: number, blur = 6) => { x.save(); x.filter = `blur(${blur}px)`; x.fillStyle = col; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); x.fill(); x.restore() }
+  let strokes: [string, string] = ['rgba(0,0,0,.08)', 'rgba(255,255,255,.12)']
+  if (kind === 'dog') {
+    if (part === 'body') {
+      x.fillStyle = WHITE; x.fillRect(0, 0, 256, 128)
+      // อานดำกลางหลัง ขอบน้ำตาลแดง · ไหล่/สะโพกน้ำตาล
+      for (const cx of [0, 256]) { blob(TAN, cx, 64, 92, 56, 8); blob(BLACK, cx, 66, 74, 44, 7) }
+      for (const cx of [0, 256]) { blob(TAN, cx, 8, 70, 18, 7) }
+      strokes = ['rgba(0,0,0,.12)', 'rgba(255,255,255,.15)']
+    } else if (part === 'head') {
+      x.fillStyle = TAN; x.fillRect(0, 0, 256, 128)
+      blob('#8f5320', 0, 30, 60, 40, 10); blob('#8f5320', 256, 30, 60, 40, 10)    // ท้ายทอยเข้ม
+      // แถบขาวกลางหน้า กว้างขึ้นตอนลงไปถึงปาก
+      x.save(); x.filter = 'blur(3px)'; x.fillStyle = WHITE; x.beginPath(); x.moveTo(122, 4); x.lineTo(134, 4); x.lineTo(150, 128); x.lineTo(106, 128); x.closePath(); x.fill(); x.restore()
+      blob(WHITE, 128, 120, 46, 20, 5)
+    } else { x.fillStyle = WHITE; x.fillRect(0, 0, 256, 128) }
+  } else if (kind === 'cat') {
+    if (part === 'body') {
+      x.fillStyle = ORANGE; x.fillRect(0, 0, 256, 128)
+      blob(WHITE, 128, 60, 54, 80, 10)                 // ท้อง+อกขาว
+      x.fillStyle = 'rgba(176,90,25,.6)'
+      for (let i = 0; i < 7; i++) { const y = 18 + i * 15; for (const [x0, x1] of [[0, 74], [182, 256]]) { x.beginPath(); x.ellipse((x0 + x1) / 2, y, (x1 - x0) / 2, 3.2, 0, 0, Math.PI * 2); x.fill() } }
+    } else if (part === 'head') {
+      x.fillStyle = ORANGE; x.fillRect(0, 0, 256, 128)
+      blob(WHITE, 128, 104, 52, 34, 7)                 // แก้ม ปาก คางขาว
+      x.fillStyle = 'rgba(176,90,25,.65)'                // ลาย "M" หน้าผาก
+      for (const dx of [-12, 0, 12]) { x.beginPath(); x.ellipse(128 + dx, 22, 2.6, 13, 0, 0, Math.PI * 2); x.fill() }
+    } else {
+      x.fillStyle = ORANGE; x.fillRect(0, 0, 256, 128)
+      x.fillStyle = 'rgba(176,90,25,.5)'; for (let i = 0; i < 8; i++) x.fillRect(0, 8 + i * 15, 256, 4)
+    }
+    strokes = ['rgba(150,70,20,.18)', 'rgba(255,240,220,.25)']
+  } else {
+    x.fillStyle = '#f2efea'; x.fillRect(0, 0, 256, 128)
+    strokes = ['rgba(170,160,150,.2)', 'rgba(255,255,255,.4)']
+  }
+  // เส้นขนสั้น ๆ ทั่วทั้งผืน
   for (let i = 0; i < 2600; i++) {
     const px = R() * 256, py = R() * 128, l = 2 + R() * 4
-    x.strokeStyle = py > 95 && !limb ? 'rgba(255,255,255,.25)' : R() < 0.5 ? `${base[1]}66` : `${base[2]}77`
-    x.lineWidth = 0.7; x.beginPath(); x.moveTo(px, py); x.lineTo(px - l, py + l * 0.35); x.stroke()
+    x.strokeStyle = R() < 0.5 ? strokes[0] : strokes[1]
+    x.lineWidth = 0.7; x.beginPath(); x.moveTo(px, py); x.lineTo(px + l * 0.3, py + l); x.stroke()
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4
   texCache.set(key, t); return t
 }
 
-/** ท่อนแคปซูล (ปลายมน) ยาว len จากจุดหมุนลงไปทาง -y — ต่อกันแล้วไม่เห็นรอยตัด */
-const limb = (r: number, len: number, m: THREE.Material) => { const c = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, len), 6, 12), m); c.position.y = -len / 2; return c }
-/**
- * ขนนุ่มแบบ shell: ซ้อนผิวโปร่งหลายชั้นดันออกตามแนว normal · แต่ละชั้นเหลือเฉพาะ "เส้นขน" (สุ่มต่อจุด)
- * ชั้นยิ่งนอกยิ่งเหลือน้อย → ปลายขนเรียว · โคนขนมืดกว่า (เงาในขน) · ปลายตกลงนิด ๆ ตามแรงโน้มถ่วง
- */
 const furShellMats = new Map<string, THREE.MeshStandardMaterial>()
 function shellMat(base: THREE.MeshStandardMaterial, layer: number, len: number, density: number): THREE.MeshStandardMaterial {
   const key = `${base.uuid}|${layer}|${len}|${density}`
@@ -86,6 +114,8 @@ function growFur(root: THREE.Object3D, layers: number, len: number, density: num
     }
   }
 }
+/** ท่อนแคปซูล (ปลายมน) ยาว len จากจุดหมุนลงไปทาง -y — ต่อกันแล้วไม่เห็นรอยตัด */
+const limb = (r: number, len: number, m: THREE.Material) => { const c = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.001, len), 6, 12), m); c.position.y = -len / 2; return c }
 const mat = (o: THREE.MeshStandardMaterialParameters) => new THREE.MeshStandardMaterial({ roughness: 0.9, ...o })
 
 /** ทรงรีที่ดัดตามแกน x: prof(s) = รัศมีที่ตำแหน่ง s ∈ [-1,1] */
@@ -104,18 +134,19 @@ function shapedBody(len: number, h: number, w: number, prof: (s: number) => numb
 export function buildPet3D(kind: PetKind): PetRig {
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body)
   const fur = mat({ map: furTex(kind) })
-  const furLimb = mat({ map: furTex(kind, true) })
+  const furLimb = mat({ map: furTex(kind, 'limb') })
+  const furHead = mat({ map: furTex(kind, 'head') })
   const tone = kind === 'dog' ? '#c98a4b' : kind === 'cat' ? '#e9963f' : '#f2efea'
   const furPlain = mat({ color: tone })
-  const pale = mat({ color: kind === 'dog' ? '#f6e3c8' : kind === 'cat' ? '#fbe6c9' : '#ffffff' })
+  const pale = mat({ color: kind === 'rabbit' ? '#ffffff' : '#f7f4ef' })
   const pink = mat({ color: '#f4a3b8', roughness: 0.6 })
-  const dark = mat({ color: kind === 'dog' ? '#7a4a22' : kind === 'cat' ? '#b9631d' : '#d8d1c6' })
+  const dark = mat({ color: kind === 'dog' ? '#a0612b' : kind === 'cat' ? '#c9712a' : '#d8d1c6' })
 
   // สัดส่วน (หน่วยของฉาก · 1 ช่อง = 1)
   const P = kind === 'dog'
-    ? { len: 0.5, h: 0.2, w: 0.2, leg: 0.2, headR: 0.085, neck: [0.2, 0.3] }
+    ? { len: 0.44, h: 0.21, w: 0.2, leg: 0.15, headR: 0.108, neck: [0.2, 0.28] }   // ลูกบีเกิล: หัวโต ขาสั้น
     : kind === 'cat'
-      ? { len: 0.42, h: 0.16, w: 0.15, leg: 0.12, headR: 0.072, neck: [0.18, 0.22] }
+      ? { len: 0.36, h: 0.17, w: 0.16, leg: 0.1, headR: 0.1, neck: [0.17, 0.23] }    // ลูกแมว: หัวกลมโต ตัวป้อม
       : { len: 0.3, h: 0.2, w: 0.19, leg: 0.06, headR: 0.07, neck: [0.12, 0.2] }
   const hip = P.leg
 
@@ -145,7 +176,7 @@ export function buildPet3D(kind: PetKind): PetRig {
     const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
     const lo = hip * 0.5 + 0.02
     { const sn = limb(legR * 1.05, lo, furLimb); sn.userData.fur = 0.45; knee.add(sn) }
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.35, 10, 8), kind === 'dog' && front ? pale : furPlain)
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.35, 10, 8), kind === 'cat' || kind === 'dog' ? pale : furPlain)
     paw.scale.set(kind === 'rabbit' && !front ? 2.6 : 1.5, 0.6, 1.1); paw.position.set(legR * (kind === 'rabbit' && !front ? 1.6 : 0.6), -lo + 0.006, 0); knee.add(paw)
     if (kind === 'rabbit' && !front) knee.rotation.z = -0.9
     legs.push({ hip: hipG, knee, front })
@@ -155,18 +186,19 @@ export function buildPet3D(kind: PetKind): PetRig {
   const head = new THREE.Group(); head.position.set(P.neck[0] * (kind === 'rabbit' ? 0.8 : 1), hip + P.neck[1] - (kind === 'rabbit' ? 0.02 : 0), 0); body.add(head)
   // คอ: แคปซูลอวบจากอกขึ้นไปฝังในหัว — ไม่มีขอบตัด
   if (kind !== 'rabbit') { const neck = new THREE.Mesh(new THREE.CapsuleGeometry(P.headR * 0.78, kind === 'cat' ? 0.06 : 0.1, 6, 14), furLimb); neck.userData.fur = 1.1; neck.position.set(-P.headR * 0.75, -P.headR * 0.95, 0); neck.rotation.z = -0.75; head.add(neck) }
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(P.headR, 20, 16), fur)
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(P.headR, 24, 18), furHead)
   skull.userData.fur = 0.6; skull.scale.set(kind === 'cat' ? 1 : 1.05, kind === 'cat' ? 0.92 : 0.95, kind === 'cat' ? 1.1 : 0.95); head.add(skull)
   const ears: THREE.Object3D[] = []
   const lids: THREE.Mesh[] = []
   // ตา: ลูกตา + ประกาย + เปลือกตา (กะพริบ)
-  const eyeM = mat({ color: kind === 'cat' ? '#3f8f2e' : '#1a120b', roughness: 0.08, metalness: 0.1 })
+  const eyeM = mat({ color: kind === 'cat' ? '#5fae3a' : kind === 'dog' ? '#2a1608' : '#1a120b', roughness: 0.05, metalness: 0.1 })
+  const eyeR = kind === 'cat' ? 0.3 : kind === 'dog' ? 0.25 : 0.2   // ตาโตแบบลูกสัตว์
   for (const z of [-1, 1]) {
     const ex = P.headR * (kind === 'rabbit' ? 0.55 : 0.75), ey = P.headR * 0.2, ez = z * P.headR * (kind === 'rabbit' ? 0.7 : 0.5)
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.2, 12, 10), eyeM); eye.position.set(ex, ey, ez); head.add(eye)
-    if (kind === 'cat') { const pupil = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.08, 8, 6), mat({ color: '#050505' })); pupil.scale.set(0.5, 1.6, 0.5); pupil.position.set(ex + P.headR * 0.14, ey, ez * 1.05); head.add(pupil) }
-    const glint = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.055, 6, 4), new THREE.MeshBasicMaterial({ color: '#ffffff' })); glint.position.set(ex + P.headR * 0.16, ey + P.headR * 0.08, ez * 1.02); head.add(glint)
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.215, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), fur); lid.position.copy(eye.position); lid.scale.y = 0.05; head.add(lid); lids.push(lid)
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(P.headR * eyeR, 16, 12), eyeM); eye.position.set(ex, ey, ez); head.add(eye)
+    if (kind === 'cat') { const pupil = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.17, 10, 8), mat({ color: '#050505', roughness: 0.05 })); pupil.scale.set(0.3, 1.15, 0.85); pupil.position.set(ex + P.headR * eyeR * 0.93, ey, ez); head.add(pupil) }
+    const glint = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.055, 6, 4), new THREE.MeshBasicMaterial({ color: '#ffffff' })); glint.position.set(ex + P.headR * eyeR * 0.85, ey + P.headR * eyeR * 0.4, ez * 1.02 - Math.sign(ez) * P.headR * 0.04); head.add(glint)
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(P.headR * (eyeR + 0.015), 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), furHead); lid.position.copy(eye.position); lid.scale.y = 0.05; head.add(lid); lids.push(lid)
   }
   if (kind === 'dog') {
     const muzzle = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.62, 14, 10), pale); muzzle.scale.set(1.5, 0.85, 1); muzzle.position.set(P.headR * 0.95, -P.headR * 0.32, 0); head.add(muzzle)
@@ -174,7 +206,7 @@ export function buildPet3D(kind: PetKind): PetRig {
     const tongue = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.18, 8, 6), pink); tongue.scale.set(1, 0.4, 0.8); tongue.position.set(P.headR * 1.35, -P.headR * 0.68, 0); head.add(tongue)
     for (const z of [-1, 1]) {
       const ear = new THREE.Group(); ear.position.set(-P.headR * 0.1, P.headR * 0.55, z * P.headR * 0.78); head.add(ear)
-      const flap = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.5, 12, 10), dark); flap.scale.set(0.75, 1.5, 0.28); flap.position.y = -P.headR * 0.55; flap.rotation.x = z * 0.15; ear.add(flap)
+      const flap = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.5, 12, 10), dark); flap.scale.set(0.85, 2.2, 0.26); flap.position.y = -P.headR * 0.85; flap.userData.fur = 0.8; flap.rotation.x = z * 0.15; ear.add(flap)
       ears.push(ear)
     }
     const collar = new THREE.Mesh(new THREE.TorusGeometry(P.headR * 0.85, 0.012, 8, 20), mat({ color: '#c81e1e', roughness: 0.45 })); collar.position.set(-P.headR * 0.55, -P.headR * 0.85, 0); collar.rotation.set(0, Math.PI / 2, 0.75); head.add(collar)
@@ -191,7 +223,7 @@ export function buildPet3D(kind: PetKind): PetRig {
     if (kind === 'cat') {
       for (const z of [-1, 1]) {
         const ear = new THREE.Group(); ear.position.set(-P.headR * 0.05, P.headR * 0.72, z * P.headR * 0.55); ear.rotation.x = z * 0.28; head.add(ear)
-        const outer = new THREE.Mesh(new THREE.ConeGeometry(P.headR * 0.42, P.headR * 0.85, 4), fur); outer.position.y = P.headR * 0.32; outer.rotation.y = Math.PI / 4; outer.scale.z = 0.45; ear.add(outer)
+        const outer = new THREE.Mesh(new THREE.ConeGeometry(P.headR * 0.42, P.headR * 0.8, 4), furHead); outer.position.y = P.headR * 0.32; outer.rotation.y = Math.PI / 4; outer.scale.z = 0.45; ear.add(outer)
         const inner = new THREE.Mesh(new THREE.ConeGeometry(P.headR * 0.27, P.headR * 0.6, 4), pink); inner.position.set(P.headR * 0.07, P.headR * 0.28, 0); inner.rotation.y = Math.PI / 4; inner.scale.z = 0.3; ear.add(inner)
         ears.push(ear)
       }
