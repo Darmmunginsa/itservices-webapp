@@ -6,7 +6,7 @@ import type { SeatFace } from './officeProps'
 // ไม่ตาม หรือเจ้าของไม่อยู่ → นอนขดที่ข้างโต๊ะ · ไม่มีโต๊ะและไม่ได้ตาม → ไม่แสดง
 
 export type PetMode = 'walk' | 'idle' | 'sit' | 'sleep'
-export interface PetPlace { id: string; owner: string; kind: PetKind; x: number; y: number; mode: PetMode; face: SeatFace }
+export interface PetPlace { id: string; owner: string; kind: PetKind; x: number; y: number; mode: PetMode; face: SeatFace; /** วิ่งเล่นอิสระในสวน */ roam?: boolean }
 
 export interface OwnerState { x: number; y: number; face: SeatFace; moving: boolean; sitting: boolean }
 
@@ -18,6 +18,9 @@ export function placePets(
   all: { email: string; decor: MyDecor }[],
   owners: Map<string, OwnerState>,
   walkable: (x: number, y: number) => boolean,
+  /** ช่องสวน (หญ้า/ทางเดินในสวน) — เจ้าของอยู่ในสวน = ปล่อยสัตว์วิ่งเล่นอิสระ */
+  garden: (x: number, y: number) => boolean = () => false,
+  now = Date.now(),
 ): PetPlace[] {
   const out: PetPlace[] = []
   for (const { email, decor } of all) {
@@ -40,6 +43,24 @@ export function placePets(
           ]
           const [x, y] = cand.find(([cx, cy]) => walkable(Math.round(cx), Math.round(cy))) ?? cand[0]
           out.push({ id, owner: email, kind: p.kind, x, y, mode: 'sit', face: o.face })
+          return
+        }
+        if (garden(Math.round(o.x), Math.round(o.y))) {
+          // ── วิ่งเล่นอิสระในสวน: สุ่มจุดใหม่ทุกไม่กี่วิ รอบตัวเจ้าของ (ไม่เกิน 4 ช่อง) ──
+          // สุ่มจาก id + ช่วงเวลา → ทุกเครื่องเห็นตำแหน่งเดียวกัน
+          const period = 3800 + i * 1300
+          const k = Math.floor(now / period), phase = (now % period) / period
+          let h = 2166136261; for (const ch of `${id}:${k}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) }
+          const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h ^= h >>> 13; return ((h >>> 0) % 10000) / 10000 }
+          let x = o.x + (i ? 1 : -1), y = o.y
+          for (let n = 0; n < 12; n++) {
+            const cx = Math.round(o.x + (rnd() - 0.5) * 8), cy = Math.round(o.y + (rnd() - 0.5) * 8)
+            if (walkable(cx, cy) && garden(cx, cy)) { x = cx + (rnd() - 0.5) * 0.5; y = cy + (rnd() - 0.5) * 0.5; break }
+          }
+          // ช่วงแรกของรอบ = วิ่งไป · ที่เหลือ = ยืนดม/นั่งเล่น
+          const mode: PetMode = phase < 0.35 ? 'walk' : rnd() < 0.5 ? 'sit' : 'idle'
+          const face: SeatFace = x < o.x ? 'left' : 'right'
+          out.push({ id, owner: email, kind: p.kind, x, y, mode, face, roam: true })
           return
         }
         const [bx, by] = BACK[o.face]

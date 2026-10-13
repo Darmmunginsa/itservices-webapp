@@ -695,7 +695,9 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     petOwners.set(e, { x: p.x, y: p.y, face: st ? st.face : mo?.face ?? 'down', moving: !st && !!mo && mo.until > robotNow, sitting: !!st })
   }
   if (pos) petOwners.set(me, { x: (seat ?? pos).x, y: (seat ?? pos).y, face: seat ? seat.face : myFace, moving: meMoving && !seat, sitting: !!seat })
-  const pets = placePets(allDecor, petOwners, (x, y) => isWalkable(walkMap, x, y))
+  // อยู่ในสวน (หญ้า/ทางเดินหิน) → สัตว์วิ่งเล่นอิสระรอบ ๆ
+  const inGarden = (x: number, y: number) => { const ch = map.rows[y]?.[x]; return ch === 'g' || ch === 'p' }
+  const pets = placePets(allDecor, petOwners, (x, y) => isWalkable(walkMap, x, y), inGarden, robotNow)
   // คน + โต๊ะสำหรับมุมมอง 3D (คำนวณเฉพาะตอนเปิด 3D)
   const people3d: Person3D[] = view3d ? [
     ...online.map(o => {
@@ -934,7 +936,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
             {pets.map(p => (
               <div key={p.id} className="absolute pointer-events-none" title={p.mode === 'sleep' ? 'หลับอยู่ข้างโต๊ะ' : undefined}
                 style={{ left: p.x * TILE + (TILE - 26) / 2, top: p.y * TILE + TILE - 25, zIndex: p.mode === 'sleep' ? 3 : 9,
-                  transition: p.owner === me ? 'left .55s ease-out, top .55s ease-out' : 'left 2.9s linear, top 2.9s linear' }}>
+                  transition: p.roam ? 'left 1.3s ease-in-out, top 1.3s ease-in-out' : p.owner === me ? 'left .55s ease-out, top .55s ease-out' : 'left 2.9s linear, top 2.9s linear' }}>
                 <PetSprite kind={p.kind} mode={p.mode} left={p.face === 'left'} />
               </div>
             ))}
