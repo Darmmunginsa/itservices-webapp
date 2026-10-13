@@ -60,6 +60,12 @@ const ART: Record<string, ReactElement> = {
       <rect x="5" y={y + 8} width="26" height="1.4" fill="#a16207" /></g>)}</g>,
   rug: <g><ellipse cx="18" cy="18" rx="17" ry="14" fill="#c084fc" opacity=".85" /><ellipse cx="18" cy="18" rx="13" ry="10.5" fill="none" stroke="#f5d0fe" strokeWidth="1.6" />
     <ellipse cx="18" cy="18" rx="8" ry="6" fill="#a855f7" opacity=".7" /><ellipse cx="18" cy="18" rx="17" ry="14" fill="none" stroke="#7e22ce" strokeWidth=".8" strokeDasharray="1.5 1.5" /></g>,
+  // เก้าอี้รับแขก (หันหน้าลง = ด้านหน้าเบาะอยู่ล่าง) — โครงไม้ เบาะผ้าน้ำเงิน มีที่วางแขน
+  guestchair: <g>{sh(18, 32, 13, 3)}<rect x="8" y="27" width="2" height="6" fill="#78350f" /><rect x="26" y="27" width="2" height="6" fill="#78350f" />
+    <rect x="7" y="3" width="22" height="13" rx="3" fill="#1e3a8a" /><rect x="9" y="5" width="18" height="9" rx="2" fill="#2b4fae" />
+    <rect x="6" y="15" width="24" height="12" rx="3" fill="#1e40af" /><rect x="8" y="16.5" width="20" height="8" rx="2.5" fill="#3b63c9" />
+    <rect x="4" y="13" width="4" height="14" rx="1.5" fill="#92400e" /><rect x="28" y="13" width="4" height="14" rx="1.5" fill="#92400e" />
+    <rect x="9" y="17" width="9" height="2" rx="1" fill="#fff" opacity=".18" /></g>,
   beanbag: <g>{sh(18, 30, 15, 4, .28)}<path d="M4 27 q-2 -14 14 -19 q16 5 14 19 q-14 6 -28 0z" fill="#f97316" />
     <path d="M9 22 q9 -8 18 0" fill="none" stroke="#c2410c" strokeWidth="1.2" /><ellipse cx="13" cy="15" rx="4" ry="2" fill="#fdba74" opacity=".7" /></g>,
   floorlamp: <g>{sh(18, 33, 7, 2.2)}<ellipse cx="18" cy="32" rx="6" ry="2" fill="#334155" /><rect x="17" y="10" width="2" height="22" fill="#475569" />

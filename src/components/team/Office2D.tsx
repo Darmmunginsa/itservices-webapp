@@ -40,7 +40,7 @@ import { notifyNew } from '../../utils/officeAlerts'
 import { DecorSprite } from './DecorSprite'
 import { PropSprite } from './PropArt'
 import { propBlocked, propDef, seatsOf, seatAt, seatApproach, nextToSeat, canSitFrom, type Prop, type Seat } from '../../utils/officeProps'
-import { meetingSeats, deskSeats } from '../../utils/officeSeats'
+import { meetingSeats, deskSeats, guestSeats } from '../../utils/officeSeats'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
@@ -539,7 +539,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const blockedKey = [...new Set([...blockedTiles(allDecor.map(d => d.decor.desk)), ...(propKey ? propKey.split(';') : [])])].sort().join(';')
   const walkMap = walkMapFor(map.rows, blockedKey)
   // ที่นั่งบนผัง (ม้านั่ง โซฟา โต๊ะปิกนิก) · ใครนั่งตรงไหนอยู่
-  const seats = [...seatsOf(mapProps), ...meetingSeats(map), ...deskSeats(allDecor.map(d => ({ email: d.email, desk: d.decor.desk })))]
+  const seats = [...seatsOf(mapProps), ...meetingSeats(map), ...deskSeats(allDecor.map(d => ({ email: d.email, desk: d.decor.desk }))), ...guestSeats(allDecor.flatMap(d => d.decor.items))]
   const takenBy = (s: Seat) => online.find(o => o.seat && o.seat.x === s.x && o.seat.y === s.y)
   const sitOn = (s: Seat) => {
     const cur = posRef.current

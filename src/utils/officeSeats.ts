@@ -27,6 +27,12 @@ const CHAIR: Record<number, { dx: number; dy: number; face: SeatFace }> = {
   270: { dx: 1, dy: 0, face: 'left' },
 }
 
+/** เก้าอี้รับแขก (ของแต่งโต๊ะ) — ใครก็นั่งได้ · หันตามทิศของชิ้น (0° = หันหน้าลง) */
+const GUEST_FACE: Record<number, SeatFace> = { 0: 'down', 90: 'left', 180: 'up', 270: 'right' }
+export function guestSeats(items: { kind: string; x: number; y: number; rot: number }[]): Seat[] {
+  return items.filter(i => i.kind === 'guestchair').map(i => ({ x: i.x, y: i.y, face: GUEST_FACE[i.rot] ?? 'down', kind: 'guest', sy: 16, behind: false, walk: true }))
+}
+
 /** เก้าอี้ของโต๊ะส่วนตัวทุกคน — นั่งได้เฉพาะเจ้าของโต๊ะ */
 export function deskSeats(desks: { email: string; desk: Desk | null | undefined }[]): Seat[] {
   const out: Seat[] = []

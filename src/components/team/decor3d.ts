@@ -51,6 +51,19 @@ const DECOR: Record<string, () => Built> = {
   snake: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.14, 0.11, 0.22, '#e7e5e4', 0, 0, 0); for (let i = 0; i < 6; i++) { const l = k.box(0.06, 0.55 + (i % 3) * 0.12, 0.02, i % 2 ? '#3f6212' : '#65a30d', Math.cos(i) * 0.06, 0.2, Math.sin(i) * 0.06); l.rotation.y = i } return { group: g } },
   bookshelf: () => { const g = new THREE.Group(), k = kit(g); k.box(0.85, 1.5, 0.35, '#92400e', 0, 0, -0.25); for (let r = 0; r < 4; r++) for (let i = 0; i < 6; i++) k.box(0.08, 0.26, 0.24, ['#dc2626', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#f8fafc'][(r + i) % 6], -0.3 + i * 0.12, 0.08 + r * 0.36, -0.12); return { group: g } },
   rug: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.46, 0.46, 0.01, '#f472b6', 0, 0.005, 0, 24); k.cyl(0.32, 0.32, 0.011, '#fbcfe8', 0, 0.006, 0, 24); return { group: g } },
+  // เก้าอี้รับแขก: หันหน้าไป +z (ทิศ 'ลง' ในแผนที่) · โครงไม้ เบาะ/พนักผ้าน้ำเงิน ที่วางแขนไม้
+  guestchair: () => {
+    const g = new THREE.Group(), k = kit(g)
+    const wood = M('#7c4a1e'), fabric = M('#1e40af'), fabric2 = M('#2b4fae')
+    for (const [x, z] of [[-0.22, -0.2], [0.22, -0.2], [-0.22, 0.2], [0.22, 0.2]]) k.box(0.05, 0.42, 0.05, wood, x, 0, z)
+    k.box(0.5, 0.06, 0.46, wood, 0, 0.4, 0)
+    k.box(0.46, 0.08, 0.42, fabric, 0, 0.46, 0.01)
+    k.box(0.42, 0.02, 0.38, fabric2, 0, 0.54, 0.02)
+    k.box(0.5, 0.5, 0.06, wood, 0, 0.44, -0.22)
+    k.box(0.44, 0.42, 0.06, fabric, 0, 0.5, -0.18)
+    for (const x of [-0.25, 0.25]) { k.box(0.06, 0.04, 0.44, wood, x, 0.66, 0); k.box(0.04, 0.22, 0.04, wood, x, 0.44, 0.18) }
+    return { group: g }
+  },
   beanbag: () => { const g = new THREE.Group(), k = kit(g); k.ball(0.4, '#f97316', 0, 0.22, 0, 14).scale.set(1, 0.6, 1); k.ball(0.25, '#ea580c', 0, 0.38, -0.2, 12).scale.set(1.2, 0.8, 0.7); return { group: g } },
   floorlamp: () => { const g = new THREE.Group(), k = kit(g); k.cyl(0.16, 0.18, 0.04, '#1f2937', 0, 0, 0); k.cyl(0.02, 0.02, 1.4, '#1f2937', 0, 0.04, 0); k.cyl(0.12, 0.22, 0.25, M('#fef3c7', '#f59e0b'), 0, 1.4, 0); return { group: g } },
   fridge: () => { const g = new THREE.Group(), k = kit(g); k.box(0.55, 0.85, 0.5, '#e5e7eb', 0, 0, -0.1); k.box(0.03, 0.3, 0.03, '#6b7280', 0.2, 0.45, 0.16); k.box(0.12, 0.08, 0.005, '#f472b6', -0.1, 0.6, 0.155); return { group: g } },

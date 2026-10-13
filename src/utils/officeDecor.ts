@@ -36,6 +36,7 @@ export const CATALOG: DecorDef[] = [
   { kind: 'snake',      label: 'ลิ้นมังกร',       surface: 'floor', group: 'ต้นไม้' },
   { kind: 'bookshelf',  label: 'ชั้นหนังสือ',     surface: 'floor', group: 'เฟอร์นิเจอร์' },
   { kind: 'rug',        label: 'พรมกลม',         surface: 'floor', group: 'เฟอร์นิเจอร์' },
+  { kind: 'guestchair', label: 'เก้าอี้รับแขก',  surface: 'floor', group: 'เฟอร์นิเจอร์' },
   { kind: 'beanbag',    label: 'บีนแบ็ก',        surface: 'floor', group: 'เฟอร์นิเจอร์' },
   { kind: 'floorlamp',  label: 'โคมไฟตั้งพื้น',   surface: 'floor', group: 'เฟอร์นิเจอร์' },
   { kind: 'fridge',     label: 'ตู้เย็นมินิ',     surface: 'floor', group: 'เฟอร์นิเจอร์' },
