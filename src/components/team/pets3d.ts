@@ -171,15 +171,21 @@ export function buildPet3D(kind: PetKind): PetRig {
     const hipG = new THREE.Group(); hipG.position.set(hx, hip + 0.02, side * P.w * 0.32); body.add(hipG)
     const pawM = kind === 'cat' || kind === 'dog' ? pale : furPlain
     if (front && kind === 'rabbit') {
-      // ขาหน้ากระต่าย: เรียวเล็ก ลงตรงใต้อก ชิดกัน · ปลายแขนเฉียงไปหน้านิด · อุ้งเท้ากลมเล็ก
-      hipG.position.set(P.len * 0.3, hip + 0.06, side * P.w * 0.2)
-      const up = 0.055, lo = 0.06
-      { const a = limb(0.019, up, fur); a.userData.fur = 0.9; hipG.add(a) }   // ต้นแขนฝังในอก (ขนฟูกลืนกับตัว)
+      // ขาหน้ากระต่าย (ตามภาพจริง): ขนอกฟูคลุมขาเกือบหมด เห็นแค่ช่วงล่างสั้น ๆ กับอุ้งเท้ากลม
+      hipG.position.set(P.len * 0.3, hip + 0.035, side * P.w * 0.19)
+      const up = 0.03, lo = 0.03
+      { const a = limb(0.024, up, fur); a.userData.fur = 1.4; hipG.add(a) }
       const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
-      { const f2 = limb(0.014, lo, furLimb); f2.userData.fur = 0.5; knee.add(f2) }
-      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.019, 12, 8), pawM); paw.scale.set(1.45, 0.6, 1); paw.position.set(0.01, -lo + 0.002, 0); knee.add(paw)
+      { const f2 = limb(0.02, lo, fur); f2.userData.fur = 1.2; knee.add(f2) }
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.022, 14, 10), fur); paw.userData.fur = 1.2
+      paw.scale.set(1.35, 0.75, 1.05); paw.position.set(0.008, -lo, 0); knee.add(paw)
       hipG.rotation.z = -0.12; knee.rotation.z = 0.2
       legs.push({ hip: hipG, knee, front })
+      if (side === 1) {
+        // ขนอกฟูก้อนใหญ่ คลุมโคนขาหน้าทั้งสองข้าง
+        const bib = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.36, 20, 16), fur); bib.userData.fur = 1.5
+        bib.scale.set(0.8, 1, 1.2); bib.position.set(P.len * 0.33, hip + 0.07, 0); body.add(bib)
+      }
     } else if (front || kind === 'rabbit') {
       // ขาหน้า (และขาหลังกระต่าย): ต้นแขน → ข้อศอก → แขนล่าง → อุ้งเท้า
       if (!front) { const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.4, 16, 12), fur); haunch.scale.set(1.2, 1, 0.6); haunch.userData.fur = 1; haunch.position.set(0, 0.03, side * 0.012); hipG.add(haunch) }
