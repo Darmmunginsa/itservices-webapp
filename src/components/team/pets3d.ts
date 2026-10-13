@@ -147,18 +147,18 @@ export function buildPet3D(kind: PetKind): PetRig {
     ? { len: 0.44, h: 0.21, w: 0.2, leg: 0.15, headR: 0.108, neck: [0.2, 0.28] }   // ลูกบีเกิล: หัวโต ขาสั้น
     : kind === 'cat'
       ? { len: 0.36, h: 0.17, w: 0.16, leg: 0.1, headR: 0.1, neck: [0.17, 0.23] }    // ลูกแมว: หัวกลมโต ตัวป้อม
-      : { len: 0.3, h: 0.2, w: 0.19, leg: 0.06, headR: 0.07, neck: [0.12, 0.2] }
+      : { len: 0.32, h: 0.22, w: 0.22, leg: 0.06, headR: 0.088, neck: [0.12, 0.19] }   // กระต่ายแคระ: ตัวกลมแบบไข่ หัวโตชิดตัว
   const hip = P.leg
 
   // ── ลำตัว ──
   const prof = kind === 'rabbit'
-    ? (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.5) * (1 + (s < 0 ? -s * 0.15 : -s * 0.12))
+    ? (s: number) => Math.pow(Math.max(0, 1 - s * s), s < 0 ? 0.33 : 0.45) * (1 + (s < 0 ? -s * 0.12 : -s * 0.1))   // ก้นกลมใหญ่
     : kind === 'cat'
       ? (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.3 : 0.36) * (0.92 + 0.08 * Math.cos(s * 3))   // หน้าอกมนทู่ ไม่แหลม
       : (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.42 : 0.36) * (s > 0 ? 1.05 : 0.97)   // ก้นกลมเต็ม ไม่เรียวแหลม
   const torso = shapedBody(P.len, P.h, P.w, prof, fur); torso.userData.fur = 1
   torso.position.y = hip + P.h * 0.45
-  if (kind === 'rabbit') torso.rotation.z = 0.25        // กระต่ายหลังโค้ง ก้นต่ำ
+  if (kind === 'rabbit') torso.rotation.z = 0.15        // หลังโค้งนิด ก้นต่ำ
   body.add(torso)
   if (kind === 'cat') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.5, 18, 14), fur); chest.userData.fur = 1.2; chest.scale.set(0.9, 1, 1.05); chest.position.set(P.len * 0.3, hip + P.h * 0.42, 0); body.add(chest) }
   if (kind === 'dog') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.48, 16, 12), pale); chest.userData.fur = 1.3; chest.scale.set(0.8, 1, 0.9); chest.position.set(P.len * 0.33, hip + P.h * 0.35, 0); body.add(chest) }
@@ -218,7 +218,7 @@ export function buildPet3D(kind: PetKind): PetRig {
   const lids: THREE.Mesh[] = []
   // ตา: ลูกตา + ประกาย + เปลือกตา (กะพริบ)
   const eyeM = mat({ color: kind === 'cat' ? '#5fae3a' : kind === 'dog' ? '#2a1608' : '#1a120b', roughness: 0.05, metalness: 0.1 })
-  const eyeR = kind === 'cat' ? 0.3 : kind === 'dog' ? 0.25 : 0.2   // ตาโตแบบลูกสัตว์
+  const eyeR = kind === 'cat' ? 0.3 : kind === 'dog' ? 0.25 : 0.22   // ตาโตแบบลูกสัตว์
   for (const z of [-1, 1]) {
     const ex = P.headR * (kind === 'rabbit' ? 0.55 : 0.75), ey = P.headR * 0.2, ez = z * P.headR * (kind === 'rabbit' ? 0.7 : 0.5)
     const eye = new THREE.Mesh(new THREE.SphereGeometry(P.headR * eyeR, 16, 12), eyeM); eye.position.set(ex, ey, ez); head.add(eye)
@@ -255,9 +255,9 @@ export function buildPet3D(kind: PetKind): PetRig {
       }
     } else {
       for (const z of [-1, 1]) {
-        const ear = new THREE.Group(); ear.position.set(-P.headR * 0.2, P.headR * 0.75, z * P.headR * 0.38); ear.rotation.set(z * 0.22, 0, -0.25); head.add(ear)
-        const outer = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.32, 12, 10), fur); outer.scale.set(0.75, 3.3, 0.38); outer.position.y = P.headR * 1.0; ear.add(outer)
-        const inner = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.22, 10, 8), pink); inner.scale.set(0.6, 3.0, 0.2); inner.position.set(P.headR * 0.07, P.headR * 1.0, 0); ear.add(inner)
+        const ear = new THREE.Group(); ear.position.set(-P.headR * 0.15, P.headR * 0.78, z * P.headR * 0.32); ear.rotation.set(z * 0.3, 0, -0.12); head.add(ear)
+        const outer = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.32, 12, 10), fur); outer.scale.set(0.42, 2.3, 0.95); outer.position.y = P.headR * 0.68;   // แผ่นหูหันหน้าไปข้างหน้า ear.add(outer)
+        const inner = new THREE.Mesh(new THREE.SphereGeometry(P.headR * 0.22, 10, 8), pink); inner.scale.set(0.2, 2.1, 0.8); inner.position.set(P.headR * 0.075, P.headR * 0.7, 0); ear.add(inner)
         ears.push(ear)
       }
     }
