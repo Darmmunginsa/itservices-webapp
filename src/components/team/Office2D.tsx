@@ -46,7 +46,7 @@ import { PetSprite } from './PetSprite'
 import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
-import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, defOf, type MyDecor } from '../../utils/officeDecor'
+import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, defOf, petsOf, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, type DMRow } from '../../utils/officeDM'
 import { decodeRoom, encodeRoom, joinMuted, shareGroups, HEAR_RADIUS } from '../../utils/voiceProximity'
 
@@ -1011,6 +1011,19 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
               👤 แต่งตัวละคร
             </button>
           )}
+          {/* ปุ่มลัดสัตว์เลี้ยง: วิ่งตาม ⇄ นอนที่โต๊ะ (บันทึกทันที ไม่ต้องเข้าโหมดตกแต่ง) */}
+          {!decor.decorating && petsOf(decor.saved).length > 0 && (() => {
+            const following = petsOf(decor.saved).some(p => p.follow)
+            return (
+              <span className="inline-flex rounded-full border border-gray-200 dark:border-gray-700 overflow-hidden" title="สัตว์เลี้ยงของฉัน">
+                <button onClick={() => decor.setPetsFollow(true)}
+                  className={`px-2.5 py-1 ${following ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 font-medium' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}>🐾 วิ่งตาม</button>
+                <button onClick={() => decor.setPetsFollow(false)} disabled={!decor.saved.desk}
+                  title={decor.saved.desk ? 'ให้นอนรอที่โต๊ะ' : 'ต้องวางโต๊ะก่อน สัตว์ถึงจะมีที่นอน'}
+                  className={`px-2.5 py-1 border-l border-gray-200 dark:border-gray-700 disabled:opacity-40 ${!following ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}>💤 นอนที่โต๊ะ</button>
+              </span>
+            )
+          })()}
           {pos && !decor.decorating && (
             <>
               <button onClick={() => requestRobot('clean')} disabled={requesting || myPending}

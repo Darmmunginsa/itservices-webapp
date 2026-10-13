@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getAllDecor, saveMyDecor, type DecorRow } from '../services/officeDecor'
 import {
-  canPlace, placeDesk, setDeskStyle, togglePet, togglePetFollow, rotateDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
+  canPlace, placeDesk, setDeskStyle, togglePet, togglePetFollow, petsOf, rotateDesk, placeItem, rotateItem, flipItem, removeItem, moveItem, emptyDecor, defOf, serializeDecor,
   type MyDecor, type OthersDecor, type PetKind,
 } from '../utils/officeDecor'
 import type { OfficeMap, Pos } from '../utils/officeMap'
@@ -66,6 +66,14 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
     } catch { cb.current.onError('บันทึกไม่สำเร็จ — ตรวจว่ามี list HD_OfficeDecor') }
     finally { setSaving(false) }
   }, [draft, me, meName])
+
+  /** ปุ่มลัดนอกโหมดตกแต่ง: สัตว์ทุกตัว "วิ่งตาม" หรือ "นอนที่โต๊ะ" — บันทึกทันที (แสดงผลทันทีก่อนบันทึกเสร็จ) */
+  const setPetsFollow = useCallback(async (follow: boolean) => {
+    const next: MyDecor = { ...saved, pets: petsOf(saved).map(p => ({ ...p, follow })) }
+    setRows(rs => rs.map(r => (r.email === me ? { ...r, decor: next } : r)))
+    try { await saveMyDecor(me, meName, next, myRow?.id) }
+    catch { cb.current.onError('บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง'); load() }
+  }, [saved, me, meName, myRow, load])
 
   /** คลิกช่องบนแผนที่ระหว่างตกแต่ง */
   const onTileClick = useCallback((p: Pos) => {
@@ -135,7 +143,7 @@ export function useOfficeDecor({ meEmail, meName, map, onError, onInfo }: Args) 
   const selectedItem = draft.items.find(i => i.id === selected) ?? null
   return {
     rows, others, mine, saved, decorating, draft, dirty, saving, kind, selected, selectedItem, movingDesk,
-    begin, cancel, save, onTileClick, act, releaseDesk,
+    begin, cancel, save, onTileClick, act, releaseDesk, setPetsFollow,
     deskStyle: draft.desk?.style ?? pendingStyle,
     pickDeskStyle: (st: string) => { if (draft.desk) setDraft(d => setDeskStyle(d, st)); else setPendingStyle(st) },
     turnDesk: () => {
