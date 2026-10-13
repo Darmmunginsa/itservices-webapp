@@ -10,7 +10,7 @@ import type { PetMode } from '../../utils/officePets'
 
 export interface PetRig {
   group: THREE.Group; body: THREE.Group; head: THREE.Group; tail: THREE.Group; tailSegs: THREE.Group[]
-  legs: { hip: THREE.Group; knee: THREE.Group; front: boolean }[]; ears: THREE.Object3D[]; lids: THREE.Mesh[]; kind: PetKind
+  legs: { hip: THREE.Group; knee: THREE.Group; hock?: THREE.Group; front: boolean }[]; ears: THREE.Object3D[]; lids: THREE.Mesh[]; kind: PetKind
   /** ความสูงช่วงขา — นอนแล้วตัวลดลงเท่านี้ (ท้องแนบพื้น) */
   legLen: number
 }
@@ -154,8 +154,8 @@ export function buildPet3D(kind: PetKind): PetRig {
   const prof = kind === 'rabbit'
     ? (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.5) * (1 + (s < 0 ? -s * 0.15 : -s * 0.12))
     : kind === 'cat'
-      ? (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.3 : 0.55) * (0.92 + 0.08 * Math.cos(s * 3))   // หน้าอกมนทู่ ไม่แหลม
-      : (s: number) => Math.pow(Math.max(0, 1 - s * s), 0.5) * (s > 0 ? 1.05 : 0.9 + 0.1 * (1 + s))
+      ? (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.3 : 0.36) * (0.92 + 0.08 * Math.cos(s * 3))   // หน้าอกมนทู่ ไม่แหลม
+      : (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.42 : 0.36) * (s > 0 ? 1.05 : 0.97)   // ก้นกลมเต็ม ไม่เรียวแหลม
   const torso = shapedBody(P.len, P.h, P.w, prof, fur); torso.userData.fur = 1
   torso.position.y = hip + P.h * 0.45
   if (kind === 'rabbit') torso.rotation.z = 0.25        // กระต่ายหลังโค้ง ก้นต่ำ
@@ -167,19 +167,35 @@ export function buildPet3D(kind: PetKind): PetRig {
   const legs: PetRig['legs'] = []
   const legR = kind === 'dog' ? 0.028 : kind === 'cat' ? 0.023 : 0.026
   for (const front of [true, false]) for (const side of [-1, 1]) {
-    const hx = (front ? 1 : -1) * P.len * (kind === 'rabbit' ? 0.28 : 0.34)
+    const hx = (front ? 1 : -1) * P.len * (kind === 'rabbit' ? 0.28 : 0.3)
     const hipG = new THREE.Group(); hipG.position.set(hx, hip + 0.02, side * P.w * 0.32); body.add(hipG)
-    if (!front && kind !== 'dog') { const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * (kind === 'rabbit' ? 0.4 : 0.32), 14, 10), fur); haunch.scale.set(1.2, 1, 0.6); haunch.userData.fur = 1; haunch.position.set(0, 0.03, side * 0.012); hipG.add(haunch) }
-    const up = hip * (kind === 'rabbit' ? 0.7 : 0.52)
-    // ต้นขาเริ่มในลำตัว (ปลายมนจมในตัว) → ไม่เห็นรอยต่อกับลำตัว
-    { const th = limb(legR * 1.35, up, furLimb); th.userData.fur = 0.7; hipG.add(th) }
-    const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
-    const lo = hip * 0.5 + 0.02
-    { const sn = limb(legR * 1.05, lo, furLimb); sn.userData.fur = 0.45; knee.add(sn) }
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.35, 10, 8), kind === 'cat' || kind === 'dog' ? pale : furPlain)
-    paw.scale.set(kind === 'rabbit' && !front ? 2.6 : 1.5, 0.6, 1.1); paw.position.set(legR * (kind === 'rabbit' && !front ? 1.6 : 0.6), -lo + 0.006, 0); knee.add(paw)
-    if (kind === 'rabbit' && !front) knee.rotation.z = -0.9
-    legs.push({ hip: hipG, knee, front })
+    const pawM = kind === 'cat' || kind === 'dog' ? pale : furPlain
+    if (front || kind === 'rabbit') {
+      // ขาหน้า (และขาหลังกระต่าย): ต้นแขน → ข้อศอก → แขนล่าง → อุ้งเท้า
+      if (!front) { const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.4, 16, 12), fur); haunch.scale.set(1.2, 1, 0.6); haunch.userData.fur = 1; haunch.position.set(0, 0.03, side * 0.012); hipG.add(haunch) }
+      const up = hip * (kind === 'rabbit' ? 0.7 : 0.52)
+      { const th = limb(legR * 1.35, up, furLimb); th.userData.fur = 0.7; hipG.add(th) }
+      const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
+      const lo = hip * 0.5 + 0.02
+      { const sn = limb(legR * 1.05, lo, furLimb); sn.userData.fur = 0.45; knee.add(sn) }
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.35, 12, 8), pawM)
+      paw.scale.set(kind === 'rabbit' && !front ? 2.6 : 1.5, 0.6, 1.1); paw.position.set(legR * (kind === 'rabbit' && !front ? 1.6 : 0.6), -lo + 0.006, 0); knee.add(paw)
+      if (kind === 'rabbit' && !front) knee.rotation.z = -0.9
+      legs.push({ hip: hipG, knee, front })
+    } else {
+      // ขาหลังหมา/แมว (ทรงซิกแซกแบบจริง): สะโพก/ต้นขาหนาเฉียงไปหน้า → เข่าหักไปหลัง → ข้อเท้า (hock) → ฝ่าเท้าตั้งตรง → อุ้งเท้า
+      const thighL = hip * 0.46, shankL = hip * 0.44, metaL = hip * 0.34
+      const haunch = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.33, 18, 14), fur)
+      haunch.scale.set(0.72, 1.25, 0.55); haunch.position.set(0.004, -thighL * 0.32, side * 0.006); haunch.userData.fur = 1; hipG.add(haunch)   // กล้ามต้นขา กลืนกับก้น
+      { const th = limb(legR * 1.9, thighL, furLimb); th.userData.fur = 0.8; hipG.add(th) }
+      const knee = new THREE.Group(); knee.position.y = -thighL; hipG.add(knee)
+      { const sk = limb(legR * 1.2, shankL, furLimb); sk.userData.fur = 0.55; knee.add(sk) }
+      const hock = new THREE.Group(); hock.position.y = -shankL; knee.add(hock)
+      { const mt = limb(legR * 0.95, metaL, furLimb); mt.userData.fur = 0.4; hock.add(mt) }
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(legR * 1.4, 12, 8), pawM)
+      paw.scale.set(1.6, 0.6, 1.1); paw.position.set(legR * 0.7, -metaL + 0.004, 0); hock.add(paw)
+      legs.push({ hip: hipG, knee, hock, front })
+    }
   }
 
   // ── หัว ──
@@ -272,16 +288,23 @@ export function animatePet(r: PetRig, mode: PetMode, t: number, seed: number) {
   r.legs.forEach((l, i) => {
     const ph = rabbit ? (l.front ? 0 : Math.PI) : (i === 0 || i === 3 ? 0 : Math.PI)
     const sw = walk ? Math.sin(t * f + ph) : 0
-    l.hip.visible = !sleep                                   // นอนขด = ขาซุกใต้ตัว
+    const lift = walk ? Math.max(0, -Math.sin(t * f + ph)) : 0      // ช่วงยกเท้า
+    l.hip.visible = !sleep                                           // นอนขด = ขาซุกใต้ตัว
+    if (l.hock) {
+      // ขาหลังซิกแซก: ท่ายืน = ต้นขาเฉียงหน้า 0.5 · เข่าพับหลัง -1.05 · ข้อเท้าคืนตั้งตรง +0.55
+      if (sit) { l.hip.rotation.z = 1.45; l.knee.rotation.z = -2.5; l.hock.rotation.z = 1.05 }   // นั่ง: พับขาหลังราบกับพื้น
+      else { l.hip.rotation.z = 0.5 + sw * 0.45; l.knee.rotation.z = -1.05 - lift * 0.5; l.hock.rotation.z = 0.55 + lift * 0.45 }
+      return
+    }
     if (sit) {
-      // นั่ง: ตัวเชิดขึ้น 0.5 rad → ขาหน้าตั้งตรงกับพื้น · ขาหลังพับราบไปข้างหน้า
       if (l.front) { l.hip.rotation.z = -0.5; l.knee.rotation.z = 0 }
-      else { l.hip.rotation.z = rabbit ? -0.5 : 0.9; l.knee.rotation.z = rabbit ? -0.9 : -1.9 }
+      else { l.hip.rotation.z = -0.5; l.knee.rotation.z = -0.9 }
     } else {
       l.hip.rotation.z = sw * (rabbit ? 0.7 : 0.55)
-      l.knee.rotation.z = (rabbit && !l.front ? -0.9 : 0) + (walk ? Math.max(0, -Math.sin(t * f + ph)) * (l.front ? -0.5 : 0.6) : 0)
+      l.knee.rotation.z = (rabbit && !l.front ? -0.9 : 0) + lift * (l.front ? -0.5 : 0.6)
     }
   })
+
 
   const breath = Math.sin(t * (sleep ? 2.2 : 3.2) + seed) * 0.02
   r.body.position.y = sleep ? -r.legLen : sit ? -0.03 : walk ? Math.abs(Math.sin(t * f)) * (rabbit ? 0.06 : 0.015) : 0
