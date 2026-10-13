@@ -147,7 +147,7 @@ export function buildPet3D(kind: PetKind): PetRig {
     ? { len: 0.44, h: 0.21, w: 0.2, leg: 0.15, headR: 0.108, neck: [0.2, 0.28] }   // ลูกบีเกิล: หัวโต ขาสั้น
     : kind === 'cat'
       ? { len: 0.36, h: 0.17, w: 0.16, leg: 0.1, headR: 0.1, neck: [0.17, 0.23] }    // ลูกแมว: หัวกลมโต ตัวป้อม
-      : { len: 0.32, h: 0.22, w: 0.22, leg: 0.06, headR: 0.088, neck: [0.12, 0.19] }   // กระต่ายแคระ: ตัวกลมแบบไข่ หัวโตชิดตัว
+      : { len: 0.31, h: 0.23, w: 0.18, leg: 0.06, headR: 0.085, neck: [0.12, 0.25] }   // กระต่ายแคระ: ตัวกลมแบบไข่ หัวโตชิดตัว
   const hip = P.leg
 
   // ── ลำตัว ──
@@ -158,7 +158,7 @@ export function buildPet3D(kind: PetKind): PetRig {
       : (s: number) => Math.pow(Math.max(0, 1 - s * s), s > 0 ? 0.42 : 0.36) * (s > 0 ? 1.05 : 0.97)   // ก้นกลมเต็ม ไม่เรียวแหลม
   const torso = shapedBody(P.len, P.h, P.w, prof, fur); torso.userData.fur = 1
   torso.position.y = hip + P.h * 0.45
-  if (kind === 'rabbit') torso.rotation.z = 0.15        // หลังโค้งนิด ก้นต่ำ
+  if (kind === 'rabbit') torso.rotation.z = 0.32        // อกเชิดขึ้น ก้นต่ำ (นั่งตัวตรงแบบกระต่ายจริง ไม่แบนราบ)
   body.add(torso)
   if (kind === 'cat') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.5, 18, 14), fur); chest.userData.fur = 1.2; chest.scale.set(0.9, 1, 1.05); chest.position.set(P.len * 0.3, hip + P.h * 0.42, 0); body.add(chest) }
   if (kind === 'dog') { const chest = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.48, 16, 12), pale); chest.userData.fur = 1.3; chest.scale.set(0.8, 1, 0.9); chest.position.set(P.len * 0.33, hip + P.h * 0.35, 0); body.add(chest) }
@@ -172,8 +172,8 @@ export function buildPet3D(kind: PetKind): PetRig {
     const pawM = kind === 'cat' || kind === 'dog' ? pale : furPlain
     if (front && kind === 'rabbit') {
       // ขาหน้ากระต่าย (ตามภาพจริง): ขนอกฟูคลุมขาเกือบหมด เห็นแค่ช่วงล่างสั้น ๆ กับอุ้งเท้ากลม
-      hipG.position.set(P.len * 0.3, hip + 0.035, side * P.w * 0.19)
-      const up = 0.03, lo = 0.03
+      hipG.position.set(P.len * 0.3, hip + 0.07, side * P.w * 0.2)
+      const up = 0.05, lo = 0.05
       { const a = limb(0.024, up, fur); a.userData.fur = 1.4; hipG.add(a) }
       const knee = new THREE.Group(); knee.position.y = -up; hipG.add(knee)
       { const f2 = limb(0.02, lo, fur); f2.userData.fur = 1.2; knee.add(f2) }
@@ -183,8 +183,8 @@ export function buildPet3D(kind: PetKind): PetRig {
       legs.push({ hip: hipG, knee, front })
       if (side === 1) {
         // ขนอกฟูก้อนใหญ่ คลุมโคนขาหน้าทั้งสองข้าง
-        const bib = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.36, 20, 16), fur); bib.userData.fur = 1.5
-        bib.scale.set(0.8, 1, 1.2); bib.position.set(P.len * 0.33, hip + 0.07, 0); body.add(bib)
+        const bib = new THREE.Mesh(new THREE.SphereGeometry(P.h * 0.3, 20, 16), fur); bib.userData.fur = 1.3
+        bib.scale.set(0.75, 1.1, 0.85); bib.position.set(P.len * 0.34, hip + 0.11, 0); body.add(bib)
       }
     } else if (front || kind === 'rabbit') {
       // ขาหน้า (และขาหลังกระต่าย): ต้นแขน → ข้อศอก → แขนล่าง → อุ้งเท้า
