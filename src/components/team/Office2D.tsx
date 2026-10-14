@@ -47,7 +47,8 @@ import { DecorPanel } from './DecorPanel'
 import { DeskSprite } from './DeskSprite'
 import { useOfficeDecor } from '../../hooks/useOfficeDecor'
 import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, defOf, petsOf, type MyDecor } from '../../utils/officeDecor'
-import { totalUnread, type DMRow } from '../../utils/officeDM'
+import { totalUnread, voiceState, type DMRow } from '../../utils/officeDM'
+import { NearbyTalkBar, type NearbyTalk } from './NearbyTalkBar'
 import { decodeRoom, encodeRoom, joinMuted, shareGroups, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
@@ -437,6 +438,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const receipts = useReadReceipts(meEmail, meName, onVoiceError)
   const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming, serverRead: receipts.mine.d, onMarked: receipts.markDM })
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [setTab, setDmWith])
+  // แถบ "อยู่ใกล้" — กดซ่อนแล้วไม่เด้งซ้ำ 2 นาที (เวลาที่ซ่อน)
+  const [nearHidden, setNearHidden] = useState<Record<string, number>>({})
 
   const onVoiceMoved = useCallback(() => (onInfo ?? cb.current.onError)('🎧 ย้ายเสียงไปใช้ที่หน้าต่างอื่นแล้ว (ใช้เสียงได้ทีละหน้าต่าง)'), [onInfo])
   const voice = useOfficeVoice({ map, meEmail, mePos: pos, others: online, onError: onVoiceError, onMicChange, privatePeer: dm.callWith, onMoved: onVoiceMoved })
@@ -662,6 +665,17 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   useEffect(() => { ambient.setMix(JSON.parse(mixKey)) }, [mixKey])
   useEffect(() => () => ambient.stop(), [])
   const nameOf = (email: string) => online.find(o => o.email.toLowerCase() === email)?.UserName ?? memberBy.get(email)?.name ?? email.split('@')[0]
+  // ── อยู่ในระยะคุย (แบบ Gather): ห่างไม่เกิน 2.5 ช่อง · ยังไม่ได้ยินกันอยู่ · ไม่ได้คุยส่วนตัวกับคนอื่นอยู่ ──
+  const TALK_RANGE = 2.5
+  const meAt = seat ?? pos
+  const hearing = new Set(voice.peers.filter(p => p.state === 'connected').map(p => p.email))
+  const nearby: NearbyTalk[] = meAt && !dm.callWith ? online
+    .map(o => { const e = o.email.toLowerCase(), st = o.seat ? seatAt(seats, o.seat.x, o.seat.y) : null, at = st ?? o; return { e, d: Math.hypot(at.x - meAt.x, at.y - meAt.y), name: nickOf(e, o.UserName) } })
+    .filter(n => n.d <= TALK_RANGE && !hearing.has(n.e) && robotNow - (nearHidden[n.e] ?? 0) > 120_000)
+    .sort((a, b) => a.d - b.d)
+    .flatMap(n => { const k = voiceState(dm.rows, me, n.e, dm.now).kind; return k === 'none' || k === 'declined' || k === 'asking-out' ? [{ email: n.e, name: n.name, state: k === 'asking-out' ? 'asking-out' as const : 'none' as const }] : [] })
+    : []
+  const nearBar = { items: nearby, onAsk: (e: string) => dm.send(e, 'voice-ask'), onCancel: (e: string) => dm.send(e, 'voice-end'), onDismiss: (e: string) => setNearHidden(h => ({ ...h, [e]: Date.now() })) }
   // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
   const pip = useDocPip()
   const openPip = pip.open
@@ -748,7 +762,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         <MiniOffice rows={map.rows} people={miniPeople} zoneLabel={ZONE_LABEL[myZone]} unread={unread + dmUnread}
           micOn={voice.micOn} muted={voice.muted} onToggleMute={voice.toggleMute} onLeaveVoice={voice.stop}
           onBack={() => { pip.close(); window.focus() }}
-          screen={shown?.screen ?? null} screenBy={shown ? nameOf(shown.email) : ''} />,
+          screen={shown?.screen ?? null} screenBy={shown ? nameOf(shown.email) : ''} nearBar={nearBar} />,
         pip.win.document.body,
       )}
       {dressing && <AvatarEditor initial={myAvatar} seed={me} saving={savingAvatar} onSave={saveAvatar} onClose={() => setDressing(false)} />}
@@ -773,6 +787,7 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           </div>
         )}
         <div className="relative">
+        <NearbyTalkBar {...nearBar} />
         {/* หน้าต่างลอย — ไอคอนมุมขวาบนของแผนที่ (กดก่อนย่อหน้าต่าง แล้วหน้าต่างลอยจะค้างบนจอ) */}
         <button type="button" onClick={e => {
             e.stopPropagation()

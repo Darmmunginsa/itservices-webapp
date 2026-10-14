@@ -1,7 +1,8 @@
-import { memo } from 'react'
+import { memo, type ComponentProps } from 'react'
 import { Mic, MicOff, PhoneOff, MessageCircle, Maximize2 } from 'lucide-react'
 import { AvatarSprite } from './AvatarSprite'
 import { ScreenVideo } from './ScreenVideo'
+import { NearbyTalkBar } from './NearbyTalkBar'
 import type { Avatar, Facing } from '../../utils/officeAvatar'
 
 // ── ออฟฟิศย่อในหน้าต่างลอย: แผนที่ย่อ + ตัวละครทุกคน + ไมค์ + จอที่แชร์ ──
@@ -27,12 +28,15 @@ interface Props {
   onBack: () => void
   screen: MediaStream | null
   screenBy: string
+  /** แถบ "อยู่ใกล้ — ขอคุยด้วยเสียง" (เหมือนหน้าหลัก) */
+  nearBar?: ComponentProps<typeof NearbyTalkBar>
 }
 
-function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggleMute, onLeaveVoice, onBack, screen, screenBy }: Props) {
+function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggleMute, onLeaveVoice, onBack, screen, screenBy, nearBar }: Props) {
   const h = rows.length, w = rows[0]?.length ?? 1
   return (
-    <div className="h-full flex flex-col text-xs text-gray-700 dark:text-gray-200 select-none">
+    <div className="relative h-full flex flex-col text-xs text-gray-700 dark:text-gray-200 select-none">
+      {nearBar && <NearbyTalkBar {...nearBar} compact />}
       {screen ? (
         <div className="relative flex-1 min-h-0 bg-black">
           <ScreenVideo stream={screen} className="w-full h-full object-contain" />
