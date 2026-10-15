@@ -693,6 +693,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   }
   // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
   const pip = useDocPip()
+  // ยังเชื่อมต่ออยู่ (เปิดเสียง / หน้าต่างลอย / แชร์จอ / คุยส่วนตัว) → เผลอปิดหน้าหลัก ให้เบราว์เซอร์ถามยืนยันก่อน
+  // (ปิดหน้าหลักจริง = เบราว์เซอร์ปิดหน้าต่างลอยและตัดสายเสมอ เว็บกันไม่ได้ — จึงกันที่ "เผลอกด" แทน)
+  const keepAlive = voice.micOn || !!pip.win || voice.sharing || !!dm.callWith
+  useEffect(() => {
+    if (!keepAlive) return
+    const guard = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [keepAlive])
   const openPip = pip.open
   // เปิดหน้าต่างลอย → หดหน้าต่างออฟฟิศเป็นแถบเล็กมุมซ้ายล่าง · หน้าต่างลอยปิด (ด้วยวิธีใดก็ตาม) → คืนขนาดเดิม
   const savedBox = useRef<WinBox | null>(null)
