@@ -49,6 +49,7 @@ import { useOfficeDecor } from '../../hooks/useOfficeDecor'
 import { deskSpots, placeableTiles, blockedTiles, walkableRows, DECOR_RADIUS, defOf, petsOf, type MyDecor } from '../../utils/officeDecor'
 import { totalUnread, voiceState, type DMRow } from '../../utils/officeDM'
 import { NearbyTalkBar, type NearbyTalk } from './NearbyTalkBar'
+import { playSoftChime } from '../../utils/softChime'
 import { decodeRoom, encodeRoom, joinMuted, shareGroups, HEAR_RADIUS } from '../../utils/voiceProximity'
 
 // ── ออฟฟิศ 2D แบบ Gather (เฟส A: poll SharePoint ทุก 3 วิ) ──
@@ -438,6 +439,15 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
   const receipts = useReadReceipts(meEmail, meName, onVoiceError)
   const dm = useOfficeDM({ meEmail, meName, onError: onVoiceError, onIncoming: onDMIncoming, serverRead: receipts.mine.d, onMarked: receipts.markDM })
   const openDM = useCallback((email: string) => { setTab('dm'); setDmWith(email.toLowerCase()) }, [setTab, setDmWith])
+  // มีคนขอคุยด้วยเสียง → กระดิ่งเบา ๆ ทุก 8 วิ จนกว่าจะตอบ (ไม่เกิน 1 นาที — คำขอหมดอายุพอดี)
+  const askKey = dm.asks.map(a => a.askId).join(',')
+  useEffect(() => {
+    if (!askKey) return
+    playSoftChime()
+    const started = Date.now()
+    const t = setInterval(() => { if (Date.now() - started > 60_000) clearInterval(t); else playSoftChime() }, 8000)
+    return () => clearInterval(t)
+  }, [askKey])
   // แถบ "อยู่ใกล้" — กดซ่อนแล้วไม่เด้งซ้ำ 2 นาที (เวลาที่ซ่อน)
   const [nearHidden, setNearHidden] = useState<Record<string, number>>({})
 
@@ -675,7 +685,12 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     .sort((a, b) => a.d - b.d)
     .flatMap(n => { const k = voiceState(dm.rows, me, n.e, dm.now).kind; return k === 'none' || k === 'declined' || k === 'asking-out' ? [{ email: n.e, name: n.name, state: k === 'asking-out' ? 'asking-out' as const : 'none' as const }] : [] })
     : []
-  const nearBar = { items: nearby, onAsk: (e: string) => dm.send(e, 'voice-ask'), onCancel: (e: string) => dm.send(e, 'voice-end'), onDismiss: (e: string) => setNearHidden(h => ({ ...h, [e]: Date.now() })) }
+  const nearBar = {
+    items: nearby, onAsk: (e: string) => dm.send(e, 'voice-ask'), onCancel: (e: string) => dm.send(e, 'voice-end'), onDismiss: (e: string) => setNearHidden(h => ({ ...h, [e]: Date.now() })),
+    // แชร์จอ: เลือกจอตอนกด (เบราว์เซอร์ต้องการให้กดเอง) + ขอคุยไปด้วย ถ้ายังไม่ได้ขอ → รับสายแล้วภาพขึ้นเอง
+    onShare: (e: string) => { void voice.startShare(); if (voiceState(dm.rows, me, e, dm.now).kind !== 'asking-out') dm.send(e, 'voice-ask') },
+    sharing: voice.sharing, onStopShare: voice.stopShare,
+  }
   // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
   const pip = useDocPip()
   const openPip = pip.open

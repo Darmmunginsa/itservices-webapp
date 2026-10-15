@@ -1,4 +1,4 @@
-import { Phone, X } from 'lucide-react'
+import { Phone, MonitorUp, X } from 'lucide-react'
 
 // ── แถบ "อยู่ใกล้ใคร" กลางจอด้านบน (แบบ Gather) ──
 // เดินเข้าระยะคุยได้ → เด้งขึ้นเองพร้อมปุ่ม "ขอคุยด้วยเสียง" · ใช้ทั้ง 2D / 3D / หน้าต่างลอย
@@ -10,10 +10,14 @@ interface Props {
   onAsk: (email: string) => void
   onCancel: (email: string) => void
   onDismiss: (email: string) => void
+  /** แชร์จอให้คนนี้ (เลือกจอทันที + ขอคุยไปพร้อมกัน) · sharing = กำลังแชร์อยู่ */
+  onShare?: (email: string) => void
+  sharing?: boolean
+  onStopShare?: () => void
   compact?: boolean
 }
 
-export function NearbyTalkBar({ items, onAsk, onCancel, onDismiss, compact }: Props) {
+export function NearbyTalkBar({ items, onAsk, onCancel, onDismiss, onShare, sharing, onStopShare, compact }: Props) {
   if (!items.length) return null
   return (
     <div className={`absolute z-30 left-1/2 -translate-x-1/2 ${compact ? 'top-1' : 'top-2'} flex flex-col items-center gap-1 pointer-events-none`}>
@@ -32,6 +36,10 @@ export function NearbyTalkBar({ items, onAsk, onCancel, onDismiss, compact }: Pr
               <Phone size={compact ? 10 : 11} /> ขอคุยด้วยเสียง
             </button>
           )}
+          {onShare && (sharing
+            ? <button onClick={onStopShare} className={`inline-flex items-center gap-1 rounded-full bg-red-600 text-white hover:bg-red-700 ${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'}`}><MonitorUp size={compact ? 10 : 11} /> หยุดแชร์</button>
+            : <button onClick={() => onShare(p.email)} title="เลือกจอที่จะแชร์ แล้วขอคุยไปพร้อมกัน — เขารับสายแล้วเห็นจอทันที"
+                className={`inline-flex items-center gap-1 rounded-full border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 ${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'}`}><MonitorUp size={compact ? 10 : 11} /> แชร์จอ</button>)}
           <button onClick={() => onDismiss(p.email)} title="ซ่อน" className="p-0.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={compact ? 10 : 12} /></button>
         </div>
       ))}
