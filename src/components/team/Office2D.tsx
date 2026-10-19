@@ -29,7 +29,7 @@ import { MiniOffice, type MiniPerson } from './MiniOffice'
 import type { Person3D, Item3D, Robot3D } from './Office3D'
 // มุมมอง 3D โหลดเฉพาะตอนเปิด — คนใช้ 2D ไม่ต้องโหลด three.js
 const Office3D = lazy(() => import('./Office3D'))
-import { useDocPip, pipBlockReason, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
+import { useDocPip, pipBlockReason, pipSupported, shrinkWindow, restoreWindow, type WinBox } from '../../hooks/useDocPip'
 import { AvatarSprite } from './AvatarSprite'
 import { AvatarEditor } from './AvatarEditor'
 import { parseAvatar, serializeAvatar, facingFrom, displayName, type Avatar, type Facing } from '../../utils/officeAvatar'
@@ -691,6 +691,33 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     onShare: (e: string) => { void voice.startShare(); if (voiceState(dm.rows, me, e, dm.now).kind !== 'asking-out') dm.send(e, 'voice-ask') },
     sharing: voice.sharing, onStopShare: voice.stopShare,
   }
+  // ── เดินจากหน้าต่างลอย: คลิกแผนที่ / เลือก "ไปหา" ชื่อคน ──
+  const tileClick = (x: number, y: number) => {
+    const st = seatAt(seats, x, y)
+    if (st) { sitOn(st); return }
+    if (isWalkable(propMap, x, y)) walkTo({ x, y })
+  }
+  const goList = [
+    ...online.map(o => ({ email: o.email.toLowerCase(), name: nickOf(o.email.toLowerCase(), o.UserName), online: true })),
+    ...allDecor.filter(d => d.email !== me && d.decor.desk && !online.some(o => o.email.toLowerCase() === d.email)).map(d => ({ email: d.email, name: nickOf(d.email, d.name), online: false })),
+  ].sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, 'th'))
+  /** ไปหาคน: ยืนช่องว่างข้าง ๆ เขา (ใกล้เราที่สุด) · ไม่ออนไลน์ = ไปยืนหน้าโต๊ะเขา */
+  const goTo = (email: string) => {
+    const o = online.find(p => p.email.toLowerCase() === email)
+    const st = o?.seat ? seatAt(seats, o.seat.x, o.seat.y) : null
+    const desk = allDecor.find(d => d.email === email)?.decor.desk
+    const target = o ? (st ?? { x: o.x, y: o.y }) : desk ? deskSeats([{ email, desk }])[0] : null
+    if (!target || !meAt) return
+    let best: Pos | null = null, bd = Infinity
+    for (let r = 1; r <= 3 && !best; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+      const x = Math.round(target.x) + dx, y = Math.round(target.y) + dy
+      if (!isWalkable(walkMap, x, y) || online.some(p => Math.round(p.x) === x && Math.round(p.y) === y)) continue
+      const d = Math.hypot(x - meAt.x, y - meAt.y)
+      if (d < bd) { bd = d; best = { x, y } }
+    }
+    if (best) walkTo(best)
+  }
   // ── หน้าต่างลอย: ย่อหน้าต่างออฟฟิศลงแล้วยังเห็นว่าใครอยู่ไหน ใครพูด · ปุ่มไมค์ · จอที่แชร์ ──
   const pip = useDocPip()
   // ยังเชื่อมต่ออยู่ (เปิดเสียง / หน้าต่างลอย / แชร์จอ / คุยส่วนตัว) → เผลอปิดหน้าหลัก ให้เบราว์เซอร์ถามยืนยันก่อน
@@ -703,6 +730,16 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
     return () => window.removeEventListener('beforeunload', guard)
   }, [keepAlive])
   const openPip = pip.open
+  // เปิดหน้าต่างลอยอัตโนมัติ: เบราว์เซอร์ไม่ให้เปิดเองโดยไม่มีการกด → เปิดทันทีที่คลิก/กดปุ่มครั้งแรกในหน้าต่างนี้
+  const [pipAuto, setPipAuto] = useState(() => { try { return localStorage.getItem('hd-pip-auto') === '1' } catch { return false } })
+  useEffect(() => {
+    if (!pipAuto || pip.win || !pipSupported()) return
+    const go = () => { void openPip() }
+    window.addEventListener('pointerdown', go, { once: true })
+    window.addEventListener('keydown', go, { once: true })
+    return () => { window.removeEventListener('pointerdown', go); window.removeEventListener('keydown', go) }
+  }, [pipAuto, pip.win, openPip])
+  const togglePipAuto = () => setPipAuto(v => { const n = !v; try { localStorage.setItem('hd-pip-auto', n ? '1' : '0') } catch { /* */ } return n })
   // เปิดหน้าต่างลอย → หดหน้าต่างออฟฟิศเป็นแถบเล็กมุมซ้ายล่าง · หน้าต่างลอยปิด (ด้วยวิธีใดก็ตาม) → คืนขนาดเดิม
   const savedBox = useRef<WinBox | null>(null)
   useEffect(() => {
@@ -786,7 +823,8 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
         <MiniOffice rows={map.rows} people={miniPeople} zoneLabel={ZONE_LABEL[myZone]} unread={unread + dmUnread}
           micOn={voice.micOn} muted={voice.muted} onToggleMute={voice.toggleMute} onLeaveVoice={voice.stop}
           onBack={() => { pip.close(); window.focus() }}
-          screen={shown?.screen ?? null} screenBy={shown ? nameOf(shown.email) : ''} nearBar={nearBar} />,
+          screen={shown?.screen ?? null} screenBy={shown ? nameOf(shown.email) : ''} nearBar={nearBar}
+          onTileClick={tileClick} goList={goList} onGoTo={goTo} />,
         pip.win.document.body,
       )}
       {dressing && <AvatarEditor initial={myAvatar} seed={me} saving={savingAvatar} onSave={saveAvatar} onClose={() => setDressing(false)} />}
@@ -825,6 +863,13 @@ export function Office2D({ mapRows, members, meEmail, meName, onZoneChange, onEr
           className={`absolute top-2 right-2 z-30 p-1.5 rounded-lg shadow border ${pip.win ? 'bg-primary-600 text-white border-primary-600' : 'bg-white/90 dark:bg-gray-900/90 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:text-primary-600'}`}>
           <PictureInPicture2 size={15} />
         </button>
+        {pipSupported() && (
+          <button type="button" onClick={e => { e.stopPropagation(); togglePipAuto() }}
+            title={pipAuto ? 'เปิดหน้าต่างลอยอัตโนมัติอยู่ — คลิกครั้งแรกในหน้านี้จะเปิดให้เอง (กดเพื่อปิด)' : 'ให้เปิดหน้าต่างลอยอัตโนมัติทุกครั้งที่เข้าออฟฟิศ (เปิดตอนคลิกครั้งแรก — เบราว์เซอร์ไม่ให้เปิดเองโดยไม่มีการกด)'}
+            className={`absolute top-2 right-11 z-30 px-1.5 py-1 rounded-lg shadow border text-[10px] ${pipAuto ? 'bg-primary-50 text-primary-700 border-primary-300 dark:bg-primary-900/40 dark:text-primary-300' : 'bg-white/90 dark:bg-gray-900/90 text-gray-500 border-gray-200 dark:border-gray-700'}`}>
+            {pipAuto ? '📌 ลอยอัตโนมัติ' : '📌'}
+          </button>
+        )}
         {view3d && !theaterOn && (
           <div className={`rounded-2xl border-2 ${focused ? 'border-primary-400 ring-2 ring-primary-200 dark:ring-primary-900' : 'border-gray-200 dark:border-gray-800'}`} style={{ height: '70vh' }}>
             <Suspense fallback={<div className="h-full flex items-center justify-center text-xs text-gray-400">กำลังโหลดมุมมอง 3D…</div>}>

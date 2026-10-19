@@ -30,9 +30,14 @@ interface Props {
   screenBy: string
   /** แถบ "อยู่ใกล้ — ขอคุยด้วยเสียง" (เหมือนหน้าหลัก) */
   nearBar?: ComponentProps<typeof NearbyTalkBar>
+  /** คลิกแผนที่ในหน้าต่างลอย = เดินไปช่องนั้น (หรือนั่งถ้าเป็นที่นั่ง) */
+  onTileClick?: (x: number, y: number) => void
+  /** รายชื่อสำหรับ "ไปหา" — ออนไลน์ = เดินไปหาตัว · ไม่ออนไลน์แต่มีโต๊ะ = เดินไปโต๊ะ */
+  goList?: { email: string; name: string; online: boolean }[]
+  onGoTo?: (email: string) => void
 }
 
-function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggleMute, onLeaveVoice, onBack, screen, screenBy, nearBar }: Props) {
+function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggleMute, onLeaveVoice, onBack, screen, screenBy, nearBar, onTileClick, goList, onGoTo }: Props) {
   const h = rows.length, w = rows[0]?.length ?? 1
   return (
     <div className="relative h-full flex flex-col text-xs text-gray-700 dark:text-gray-200 select-none">
@@ -45,7 +50,13 @@ function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggl
       ) : (
         <div className="relative flex-1 min-h-0 flex items-center justify-center bg-slate-700 overflow-hidden" style={{ containerType: 'size' }}>
           {/* แผนที่คงอัตราส่วน ย่อ/ขยายตามขนาดหน้าต่างลอย */}
-          <div className="relative" style={{ aspectRatio: `${w} / ${h}`, width: `min(100cqw, ${(w / h).toFixed(4)} * 100cqh)` }}>
+          <div className={`relative ${onTileClick ? 'cursor-pointer' : ''}`} style={{ aspectRatio: `${w} / ${h}`, width: `min(100cqw, ${(w / h).toFixed(4)} * 100cqh)` }}
+            title={onTileClick ? 'คลิกเพื่อเดินไปตรงนั้น' : undefined}
+            onClick={e => {
+              if (!onTileClick) return
+              const r = e.currentTarget.getBoundingClientRect()
+              onTileClick(Math.floor(((e.clientX - r.left) / r.width) * w), Math.floor(((e.clientY - r.top) / r.height) * h))
+            }}>
             <svg viewBox={`0 0 ${w} ${h}`} className="absolute inset-0 w-full h-full" shapeRendering="crispEdges" aria-hidden="true">
               {rows.map((row, y) => row.split('').map((ch, x) => <rect key={`${x},${y}`} x={x} y={y} width="1.02" height="1.02" fill={floorOf(ch)} />))}
             </svg>
@@ -67,6 +78,13 @@ function MiniOfficeBase({ rows, people, zoneLabel, unread, micOn, muted, onToggl
       <div className="h-[34px] shrink-0 flex items-center gap-1.5 px-2 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <span className="truncate text-gray-500">📍 {zoneLabel}</span>
         {unread > 0 && <span className="inline-flex items-center gap-0.5 px-1.5 rounded-full bg-red-500 text-white"><MessageCircle size={10} /> {unread}</span>}
+        {goList && goList.length > 0 && onGoTo && (
+          <select value="" onChange={e => { if (e.target.value) onGoTo(e.target.value) }} title="เดินไปหาคนนั้น (หรือไปที่โต๊ะของเขา)"
+            className="max-w-[7.5rem] text-[11px] rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5">
+            <option value="">🚶 ไปหา…</option>
+            {goList.map(g => <option key={g.email} value={g.email}>{g.online ? '🟢' : '🪑'} {g.name}</option>)}
+          </select>
+        )}
         <span className="ml-auto" />
         {micOn && (
           <>
