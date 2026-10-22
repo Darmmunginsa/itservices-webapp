@@ -1,3 +1,4 @@
+import { useCanEdit } from '../hooks/useCanEdit'
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { CheckCircle2, Edit2, Eye, EyeOff, ExternalLink, Link as LinkIcon, Lock, Paperclip, Pin, Plus, Trash2, ChevronDown, ChevronUp, Monitor, UserPlus, X, ImagePlus, AlertTriangle, Maximize2 } from 'lucide-react'
@@ -176,8 +177,8 @@ export default function ProjectDetail() {
   const [savingLink, setSavingLink] = useState(false)
 
   const canSeeSecure = user?.role === 'Admin' || project?.CreatedByEmail === user?.email
-  const canEditProject = ['Admin', 'Boss', 'Supervisor'].includes(user?.role ?? '') || project?.CreatedByEmail === user?.email
-  const isAgent = ['Agent', 'Supervisor', 'Boss', 'Admin'].includes(user?.role ?? '')
+  // สิทธิ์ "แก้ไข" หน้าโครงการที่ Admin ติ๊กให้รายคน (หน้าสิทธิ์การเข้าถึง) — ไม่ผูกกับ role อย่างเดียว
+  const canEditProjects = useCanEdit('projects', ['Agent', 'Supervisor', 'Boss', 'Admin'])
   const isBossAdmin = ['Boss', 'Admin'].includes(user?.role ?? '')
 
   // ── สิทธิ์เข้าดูโปรเจกต์: Admin/Boss ∪ ผู้สร้าง ∪ สมาชิกที่ถูก invite (PM_ProjectMembers) ──
@@ -208,6 +209,10 @@ export default function ProjectDetail() {
     finally { setDeletingProject(false) }
   }
   const canManageTeam = isBossAdmin || isOwner || isMember   // สมาชิกทุกคนเชิญเพื่อนร่วมทีมต่อได้
+  // ทำงานในโครงการได้ (สร้าง/แก้ Task, ลิงก์, ลูกค้า …): role ทีมงาน หรือได้สิทธิ์แก้ไขหน้าโครงการ หรือเป็นเจ้าของ/สมาชิกโครงการ
+  // เดิมเช็ก role อย่างเดียว → คนที่ Admin ให้สิทธิ์แก้ไขโครงการแต่ role ไม่ใช่ทีมงาน สร้าง Task ไม่ได้
+  const isAgent = canEditProjects || isOwner || isMember
+  const canEditProject = ['Admin', 'Boss', 'Supervisor'].includes(user?.role ?? '') || isOwner || (canEditProjects && isMember)
 
   // Agent options for SearchSelect
   const agentOptions = agents.map(a => ({
