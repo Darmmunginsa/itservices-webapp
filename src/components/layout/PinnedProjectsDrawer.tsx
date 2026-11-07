@@ -52,8 +52,8 @@ export function PinnedProjectsDrawer() {
         </button>
       )}
       {/* ลิ้นชัก */}
-      <div className={`overflow-hidden transition-[width] duration-200 ease-out ${open ? 'w-64' : 'w-0'}`}>
-        <div className="w-64 max-h-[70vh] flex flex-col rounded-l-2xl bg-white dark:bg-gray-900 border border-r-0 border-gray-200 dark:border-gray-700 shadow-2xl">
+      <div className={`overflow-hidden transition-[width] duration-200 ease-out ${open ? 'w-96 max-w-[90vw]' : 'w-0'}`}>
+        <div className="w-96 max-w-[90vw] max-h-[70vh] flex flex-col rounded-l-2xl bg-white dark:bg-gray-900 border border-r-0 border-gray-200 dark:border-gray-700 shadow-2xl">
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
             <span className="flex-1 text-xs font-semibold text-gray-700 dark:text-gray-200">📌 {t('nav.pinnedProjects')} <span className="text-gray-400 font-normal">({pinned.length})</span></span>
             <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500" aria-label="ปิด"><X size={14} /></button>
@@ -63,7 +63,7 @@ export function PinnedProjectsDrawer() {
               <Link key={p.id} to={`/projects/${p.RefID}`} onClick={() => setOpen(false)}
                 className="flex items-center gap-2.5 px-3 py-2 mx-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-primary-600 transition-colors">
                 <FolderOpen size={15} className="flex-shrink-0 text-primary-500" />
-                <span className="flex-1 truncate" title={p.Title}>{p.Title}</span>
+                <span className="flex-1 min-w-0 line-clamp-2 break-words leading-snug" title={p.Title}>{p.Title}</span>
               </Link>
             ))}
           </div>
