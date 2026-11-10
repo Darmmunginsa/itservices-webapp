@@ -39,6 +39,7 @@ import Reports from './pages/Reports'
 import Assets from './pages/Assets'
 import Vendors from './pages/Vendors'
 import Portals from './pages/Portals'
+import Applications from './pages/Applications'
 import Tracking from './pages/Tracking'
 import TeamStatus from './pages/TeamStatus'
 import Skills from './pages/Skills'
@@ -67,6 +68,7 @@ const PAGE_ELEMENTS: Record<string, React.ReactElement> = {
   assets: <Assets />,
   vendors: <Vendors />,
   portals: <Portals />,
+  applications: <Applications />,
   tools: <Tools />,
   skills: <Skills />,
   contracts: <Contracts />,

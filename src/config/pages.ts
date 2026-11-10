@@ -1,7 +1,6 @@
 import {
   Home, Send, ClipboardList, FolderOpen, BarChart2, PieChart,
-  Monitor, Briefcase, Globe, Notebook, BookOpen, Library, FileText, ClipboardCheck, Newspaper, Pin, Settings, Bug, Activity, Users, ShieldAlert, UserCheck,
-} from 'lucide-react'
+  Monitor, Briefcase, Globe, Notebook, BookOpen, Library, FileText, ClipboardCheck, Newspaper, Pin, Settings, Bug, Activity, Users, ShieldAlert, UserCheck, AppWindow } from 'lucide-react'
 import type { Role } from '../types/common'
 
 // ── ทะเบียนหน้าทั้งหมดของแอป (single source of truth) ──
@@ -33,6 +32,7 @@ export const PAGES: PageDef[] = [
   { key: 'team-status', path: '/team-status', labelKey: 'nav.teamStatus', icon: UserCheck,  group: 'main',      defaultRoles: AGENT_UP, edit: 'จัดการผังออฟฟิศ 2D และเลือกคนที่แสดงในสถานะทีม' },
 
   { key: 'projects',  path: '/projects',  labelKey: 'nav.projects',   icon: FolderOpen,    group: 'work',      defaultRoles: ALL, edit: 'สร้างโครงการใหม่ได้' },
+  { key: 'applications', path: '/applications', labelKey: 'nav.applications', icon: AppWindow, group: 'work', defaultRoles: AGENT_UP, edit: 'เพิ่ม / แก้ / ลบแอปพลิเคชัน และผูกโครงการ · Asset · Ticket · Incident · Portal' },
   { key: 'dashboard', path: '/dashboard', labelKey: 'nav.dashboard',  icon: BarChart2,     group: 'work',      defaultRoles: AGENT_UP, edit: 'มอบหมาย / รับงานแทนทีมได้' },
   { key: 'reports',   path: '/reports',   labelKey: 'nav.reports',    icon: PieChart,      group: 'work',      defaultRoles: AGENT_UP },
 
