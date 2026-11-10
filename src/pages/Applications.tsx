@@ -119,9 +119,10 @@ export default function Applications() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    load()
-    // รายการให้เลือกผูก — โหลดครั้งเดียว (ลิสต์ไหนไม่มีสิทธิ์ก็แค่ว่าง)
+  const [lastSync, setLastSync] = useState<Date | null>(null)
+  const loadLinks = useCallback(() => {
+    // รายการที่ผูก + สถานะ (ลิสต์ไหนไม่มีสิทธิ์ก็แค่ว่าง)
+    setLastSync(new Date())
     spGet<{ id: number; Title: string; Company?: string }>('PM_Projects', undefined, 'Id,Title,Company', 'Title asc', 1000)
       .then(r => setProjects(r.map(p => ({ id: p.id, label: p.Title, company: p.Company })))).catch(() => {})
     spGet<{ id: number; Title: string; AssetCode?: string; Category?: string; PortalID?: number; Status?: string }>('IT_Assets', undefined, 'Id,Title,AssetCode,Category,PortalID,Status', 'Title asc', 2000)
@@ -132,7 +133,16 @@ export default function Applications() {
       .then(r => setIncidents(r.map(i => ({ id: i.id, label: i.Title, sub: [i.Severity, i.Status].filter(Boolean).join(' · '), status: i.Status, projectId: i.ProjectID })))).catch(() => {})
     spGet<{ id: number; Title: string; URL?: string; Category?: string }>('IT_Portals', undefined, 'Id,Title,URL,Category', 'Title asc', 1000)
       .then(r => setPortals(r.map(p => ({ id: p.id, label: p.Title, sub: p.Category, url: p.URL })))).catch(() => {})
-  }, [load])
+  }, [])
+
+  // อัปเดตสถานะอัตโนมัติ: ทุก 30 วิ ขณะเปิดแท็บนี้อยู่ + ทันทีเมื่อกลับมาที่แท็บ (แท็บซ่อน = ไม่ยิง)
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') { load(); loadLinks() } }
+    refresh()
+    const t = window.setInterval(refresh, 30_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', refresh) }
+  }, [load, loadLinks])
 
   const byId = <T extends Opt>(list: T[]) => new Map(list.map(o => [o.id, o]))
   const projectMap = useMemo(() => byId(projects), [projects])
@@ -179,9 +189,12 @@ export default function Applications() {
     if (!a) return
     const urls = [a.URL, ...parseIds(a.PortalIDs).map(id => (portals.find(p => p.id === id) as (Opt & { url?: string }) | undefined)?.url)].filter((u): u is string => !!u && /^https?:/i.test(u))
     let alive = true
-    for (const u of urls) pingUrl(u).then(r => { if (alive) setPing(p => ({ ...p, [u]: r })) })
-    return () => { alive = false }
-  }, [viewId, apps, portals])
+    const run = () => { if (document.visibilityState === 'visible') for (const u of urls) pingUrl(u).then(r => { if (alive) setPing(p => ({ ...p, [u]: r })) }) }
+    run()
+    const t = window.setInterval(run, 60_000)
+    return () => { alive = false; window.clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewId, apps.find(x => x.id === viewId)?.URL, apps.find(x => x.id === viewId)?.PortalIDs, portals.map(p => p.url).join('|')])
   const showPeek = (p: Peek) => setPeek(p)
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setPullNote(''); setShowModal(true) }
@@ -263,6 +276,7 @@ export default function Applications() {
             <option value="">ทุกสถานะ</option>
             {STATUS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
           </select>
+          {lastSync && <span className="text-[11px] text-gray-400 flex items-center gap-1" title="อัปเดตสถานะอัตโนมัติทุก 30 วินาที"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> สด · {lastSync.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
           {canEdit && <Button onClick={openCreate}><Plus size={15} /> เพิ่มแอปพลิเคชัน</Button>}
         </div>
 
