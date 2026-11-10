@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AppWindow, ExternalLink, FolderOpen, Globe, Pencil, Plus, Search, Server, Siren, Ticket, Trash2, Building2 } from 'lucide-react'
+import { AppWindow, ArrowLeft, ExternalLink, FolderOpen, Globe, Pencil, Plus, Search, Server, Siren, Ticket, Trash2, Building2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
 import { Modal } from '../components/common/Modal'
@@ -7,6 +7,7 @@ import { SkeletonCard } from '../components/common/Skeleton'
 import { spGet, spCreate, spUpdate, spDelete } from '../services/sharepoint'
 import { useAppStore } from '../store/useAppStore'
 import { useCanEdit } from '../hooks/useCanEdit'
+import { popoutUrl } from '../utils/popout'
 import { parseIds, joinIds, type Application, type AppStatus } from '../types/application'
 
 // ── แอปพลิเคชัน: ผลงานของโครงการที่ส่งมอบให้ลูกค้าแล้ว ──
@@ -136,9 +137,7 @@ export default function Applications() {
   // ปุ่ม "เปิดดู" ขึ้นเฉพาะคนที่มีสิทธิ์เข้าหน้านั้น และเปิดเป็นแท็บใหม่ — กลับมาหน้านี้ได้เสมอ
   type Peek = { kind: string; title: string; sub?: string; href?: string; external?: boolean }
   const [peek, setPeek] = useState<Peek | null>(null)
-  useEffect(() => { if (!peek) return; const t = setTimeout(() => setPeek(null), 8000); return () => clearTimeout(t) }, [peek])
   const can = (k: string) => !!allowedPages?.has(k)
-  const appUrl = (path: string) => `${window.location.origin}${window.location.pathname}#${path}`
   const showPeek = (p: Peek) => setPeek(p)
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setPullNote(''); setShowModal(true) }
@@ -267,55 +266,88 @@ export default function Applications() {
         )}
       </div>
 
-      {/* รายละเอียด */}
-      <Modal open={!!view} onClose={() => { setDetail(null); setPeek(null) }} title={view?.Title} size="lg">
-        {view && (() => {
-          const st = statusOf(view.Status), proj = view.ProjectID ? projectMap.get(view.ProjectID) : undefined
-          const section = (title: string, icon: React.ReactNode, items: React.ReactNode[]) => items.length > 0 && (
-            <div>
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1.5">{icon} {title} ({items.length})</p>
-              <div className="flex flex-wrap gap-1.5">{items}</div>
-            </div>
-          )
-          return (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
-                {view.Customer && <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800"><Building2 size={11} /> {view.Customer}</span>}
-              </div>
-              {view.URL && <a href={view.URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:underline break-all"><ExternalLink size={14} /> {view.URL}</a>}
-              {proj && <p className="text-sm"><FolderOpen size={14} className="inline mr-1 text-gray-400" />โครงการ: <button type="button" onClick={() => showPeek({ kind: 'โครงการ', title: proj.label, sub: proj.company, href: can('projects') ? appUrl(`/projects/${proj.id}`) : undefined })} className="text-primary-600 hover:underline">{proj.label}</button></p>}
-              {view.Note && <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm whitespace-pre-wrap">{view.Note}</div>}
-              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => { const o = assetMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Asset', title: o?.label ?? `#${id}`, sub: o?.sub, href: can('assets') ? appUrl(`/assets?id=${id}`) : undefined })}><Server size={10} /> {o?.label ?? `#${id}`}</button> }))}
-              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => { const o = ticketMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Ticket', title: o?.label ?? `#${id}`, sub: o?.sub ? `สถานะ: ${o.sub}` : undefined, href: can('my-work') || can('dashboard') ? appUrl(`/tickets/${id}`) : undefined })}><Ticket size={10} /> {o?.label ?? `#${id}`}</button> }))}
-              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => { const o = incidentMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Incident', title: o?.label ?? `#${id}`, sub: o?.sub, href: can('my-work') || can('dashboard') ? appUrl(`/incidents/${id}`) : undefined })}><Siren size={10} /> {o?.label ?? `#${id}`}</button> }))}
-              {section('Portal', <Globe size={13} />, parseIds(view.PortalIDs).map(id => {
-                const p = portalMap.get(id) as (Opt & { url?: string }) | undefined
-                return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Portal', title: p?.label ?? `#${id}`, sub: [p?.sub, p?.url].filter(Boolean).join(' · ') || undefined, href: can('portals') ? (p?.url || appUrl('/portals')) : undefined, external: !!p?.url })}><Globe size={10} /> {p?.label ?? `#${id}`}</button>
-              }))}
-              {/* toast ข้อมูลของรายการที่จิ้ม */}
-              {peek && (
-                <div className="sticky bottom-0 z-10 flex items-start gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-100 shadow-lg">
-                  <div className="min-w-0 flex-1 text-sm">
-                    <p className="text-[10px] uppercase tracking-wide opacity-70">{peek.kind}</p>
-                    <p className="font-semibold break-words">{peek.title}</p>
-                    {peek.sub && <p className="text-xs opacity-80 break-all">{peek.sub}</p>}
-                    {!peek.href && <p className="text-[11px] opacity-60 mt-0.5">คุณไม่มีสิทธิ์เปิดหน้านี้ — ดูได้เฉพาะข้อมูลสรุป</p>}
+      {/* รายละเอียด — แบ่งจอ: ซ้าย 1/4 ข้อมูลแอป · ขวา 3/4 หน้าที่จิ้มเปิดดู (ฝังในหน้านี้ ไม่พาออก) */}
+      {view && (() => {
+        const st = statusOf(view.Status), proj = view.ProjectID ? projectMap.get(view.ProjectID) : undefined
+        const section = (title: string, icon: React.ReactNode, items: React.ReactNode[]) => items.length > 0 && (
+          <div>
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1.5">{icon} {title} ({items.length})</p>
+            <div className="flex flex-wrap gap-1.5">{items}</div>
+          </div>
+        )
+        const on = (k: string, t: string) => peek?.kind === k && peek.title === t ? ' ring-2 ring-primary-400' : ''
+        const close = () => { setDetail(null); setPeek(null) }
+        return (
+          <div className="fixed inset-0 z-40 flex flex-col md:flex-row bg-gray-50 dark:bg-gray-950">
+            {/* ── ซ้าย 1/4 ── */}
+            <aside className="md:w-1/4 md:min-w-[260px] max-h-[45vh] md:max-h-none overflow-y-auto border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
+              <div className="flex items-start gap-2">
+                <button type="button" onClick={close} title="กลับรายการ" className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"><ArrowLeft size={16} /></button>
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-semibold text-sm break-words">{view.Title}</h2>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                    {view.Customer && <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800"><Building2 size={10} /> {view.Customer}</span>}
                   </div>
-                  {peek.href && <a href={peek.href} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700"><ExternalLink size={11} /> {peek.external ? 'เปิด URL' : 'เปิดดู (แท็บใหม่)'}</a>}
-                  <button type="button" onClick={() => setPeek(null)} className="shrink-0 text-blue-400 hover:text-blue-700">✕</button>
                 </div>
-              )}
+              </div>
+              {view.URL && <button type="button" onClick={() => showPeek({ kind: 'แอปพลิเคชัน', title: view.Title, sub: view.URL, href: view.URL, external: true })}
+                className={`w-full text-left inline-flex items-center gap-1.5 text-xs text-primary-600 hover:underline break-all rounded${on('แอปพลิเคชัน', view.Title)}`}><ExternalLink size={13} className="shrink-0" /> {view.URL}</button>}
+              {proj && <p className="text-xs"><FolderOpen size={13} className="inline mr-1 text-gray-400" />โครงการ: <button type="button" onClick={() => showPeek({ kind: 'โครงการ', title: proj.label, sub: proj.company, href: can('projects') ? `/projects/${proj.id}` : undefined })} className={`text-primary-600 hover:underline rounded${on('โครงการ', proj.label)}`}>{proj.label}</button></p>}
+              {view.Note && <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-xs whitespace-pre-wrap">{view.Note}</div>}
+              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => { const o = assetMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Asset', t)} onClick={() => showPeek({ kind: 'Asset', title: t, sub: o?.sub, href: can('assets') ? `/assets?id=${id}` : undefined })}><Server size={10} /> {t}</button> }))}
+              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => { const o = ticketMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Ticket', t)} onClick={() => showPeek({ kind: 'Ticket', title: t, sub: o?.sub ? `สถานะ: ${o.sub}` : undefined, href: can('my-work') || can('dashboard') ? `/tickets/${id}` : undefined })}><Ticket size={10} /> {t}</button> }))}
+              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => { const o = incidentMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Incident', t)} onClick={() => showPeek({ kind: 'Incident', title: t, sub: o?.sub, href: can('my-work') || can('dashboard') ? `/incidents/${id}` : undefined })}><Siren size={10} /> {t}</button> }))}
+              {section('Portal', <Globe size={13} />, parseIds(view.PortalIDs).map(id => {
+                const p = portalMap.get(id) as (Opt & { url?: string }) | undefined, t = p?.label ?? `#${id}`
+                return <button type="button" key={id} className={chip + on('Portal', t)} onClick={() => showPeek({ kind: 'Portal', title: t, sub: [p?.sub, p?.url].filter(Boolean).join(' · ') || undefined, href: can('portals') ? (p?.url || '/portals') : undefined, external: !!p?.url })}><Globe size={10} /> {t}</button>
+              }))}
               {canEdit && (
-                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-                  <Button variant="secondary" onClick={() => { setDetail(null); openEdit(view) }}><Pencil size={14} /> แก้ไข</Button>
-                  <Button variant="danger" onClick={() => remove(view)}><Trash2 size={14} /> ลบ</Button>
+                <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <Button size="sm" variant="secondary" onClick={() => { close(); openEdit(view) }}><Pencil size={13} /> แก้ไข</Button>
+                  <Button size="sm" variant="danger" onClick={() => remove(view)}><Trash2 size={13} /> ลบ</Button>
                 </div>
               )}
-            </div>
-          )
-        })()}
-      </Modal>
+            </aside>
+
+            {/* ── ขวา 3/4: หน้าที่จิ้ม ── */}
+            <section className="flex-1 min-h-0 flex flex-col">
+              {peek ? (<>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-xs">
+                  <span className="text-gray-400 uppercase tracking-wide text-[10px]">{peek.kind}</span>
+                  <span className="font-semibold truncate flex-1">{peek.title}</span>
+                  {peek.href && <a href={peek.external ? peek.href : popoutUrl(peek.href)} target="_blank" rel="noopener noreferrer" title="เปิดในแท็บใหม่" className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:text-primary-600"><ExternalLink size={11} /> แท็บใหม่</a>}
+                  <button type="button" onClick={() => setPeek(null)} className="p-1 text-gray-400 hover:text-gray-700">✕</button>
+                </div>
+                {peek.href && !peek.external ? (
+                  // หน้าในระบบเดียวกัน — ฝังแบบไม่มีเมนูข้าง (?popout=1) ล็อกอินเดิมใช้ต่อได้เลย
+                  <iframe key={peek.href} src={popoutUrl(peek.href)} title={peek.title} className="flex-1 w-full border-0 bg-white dark:bg-gray-950" />
+                ) : peek.href && peek.external ? (
+                  <div className="flex-1 flex flex-col">
+                    <p className="px-3 py-1.5 text-[11px] text-amber-700 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-300">เว็บภายนอกบางแห่งไม่ยอมให้ฝังในหน้าอื่น — ถ้าหน้าว่าง ให้กด "แท็บใหม่" ด้านบน</p>
+                    <iframe key={peek.href} src={peek.href} title={peek.title} className="flex-1 w-full border-0 bg-white" referrerPolicy="no-referrer" />
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center p-6">
+                    <div className="max-w-sm text-center space-y-2 p-5 rounded-2xl border border-blue-200 bg-blue-50 text-blue-900 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-100">
+                      <p className="font-semibold break-words">{peek.title}</p>
+                      {peek.sub && <p className="text-xs opacity-80 break-all">{peek.sub}</p>}
+                      <p className="text-[11px] opacity-70">คุณไม่มีสิทธิ์เปิดหน้านี้ — ดูได้เฉพาะข้อมูลสรุป</p>
+                    </div>
+                  </div>
+                )}
+              </>) : (
+                <div className="flex-1 flex items-center justify-center p-6 text-center text-gray-400">
+                  <div className="space-y-2">
+                    <AppWindow size={44} className="mx-auto opacity-30" />
+                    <p className="text-sm">เลือก URL · โครงการ · Asset · Ticket · Incident · Portal ทางซ้าย เพื่อเปิดดูที่นี่</p>
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
+        )
+      })()}
 
       {/* เพิ่ม / แก้ไข */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'แก้ไขแอปพลิเคชัน' : 'เพิ่มแอปพลิเคชัน'} size="lg">
