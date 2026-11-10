@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AppWindow, ExternalLink, FolderOpen, Globe, Pencil, Plus, Search, Server, Siren, Ticket, Trash2, Building2 } from 'lucide-react'
 import { Header } from '../components/layout/Header'
 import { Button } from '../components/common/Button'
@@ -61,7 +60,7 @@ function MultiPick({ label, icon, options, value, onChange, hint }: { label: str
 }
 
 export default function Applications() {
-  const { addToast } = useAppStore()
+  const { addToast, allowedPages } = useAppStore()
   const canEdit = useCanEdit('applications', ['Agent', 'Supervisor', 'Boss', 'Admin'])
   const [apps, setApps] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
@@ -132,6 +131,15 @@ export default function Applications() {
       })
     } finally { setPulling(false) }
   }
+
+  // ── จิ้มรายการที่ผูก = โชว์ข้อมูลแบบ toast ในหน้าต่างนี้ (ไม่พาออกจากหน้า Application) ──
+  // ปุ่ม "เปิดดู" ขึ้นเฉพาะคนที่มีสิทธิ์เข้าหน้านั้น และเปิดเป็นแท็บใหม่ — กลับมาหน้านี้ได้เสมอ
+  type Peek = { kind: string; title: string; sub?: string; href?: string; external?: boolean }
+  const [peek, setPeek] = useState<Peek | null>(null)
+  useEffect(() => { if (!peek) return; const t = setTimeout(() => setPeek(null), 8000); return () => clearTimeout(t) }, [peek])
+  const can = (k: string) => !!allowedPages?.has(k)
+  const appUrl = (path: string) => `${window.location.origin}${window.location.pathname}#${path}`
+  const showPeek = (p: Peek) => setPeek(p)
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setPullNote(''); setShowModal(true) }
   const openEdit = (a: Application) => {
@@ -260,7 +268,7 @@ export default function Applications() {
       </div>
 
       {/* รายละเอียด */}
-      <Modal open={!!view} onClose={() => setDetail(null)} title={view?.Title} size="lg">
+      <Modal open={!!view} onClose={() => { setDetail(null); setPeek(null) }} title={view?.Title} size="lg">
         {view && (() => {
           const st = statusOf(view.Status), proj = view.ProjectID ? projectMap.get(view.ProjectID) : undefined
           const section = (title: string, icon: React.ReactNode, items: React.ReactNode[]) => items.length > 0 && (
@@ -276,17 +284,28 @@ export default function Applications() {
                 {view.Customer && <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800"><Building2 size={11} /> {view.Customer}</span>}
               </div>
               {view.URL && <a href={view.URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:underline break-all"><ExternalLink size={14} /> {view.URL}</a>}
-              {proj && <p className="text-sm"><FolderOpen size={14} className="inline mr-1 text-gray-400" />โครงการ: <Link to={`/projects/${proj.id}`} className="text-primary-600 hover:underline">{proj.label}</Link></p>}
+              {proj && <p className="text-sm"><FolderOpen size={14} className="inline mr-1 text-gray-400" />โครงการ: <button type="button" onClick={() => showPeek({ kind: 'โครงการ', title: proj.label, sub: proj.company, href: can('projects') ? appUrl(`/projects/${proj.id}`) : undefined })} className="text-primary-600 hover:underline">{proj.label}</button></p>}
               {view.Note && <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm whitespace-pre-wrap">{view.Note}</div>}
-              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => <Link key={id} to={`/assets?id=${id}`} className={chip}><Server size={10} /> {assetMap.get(id)?.label ?? `#${id}`}</Link>))}
-              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => <Link key={id} to={`/tickets/${id}`} className={chip}><Ticket size={10} /> {ticketMap.get(id)?.label ?? `#${id}`}</Link>))}
-              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => <Link key={id} to={`/incidents/${id}`} className={chip}><Siren size={10} /> {incidentMap.get(id)?.label ?? `#${id}`}</Link>))}
+              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => { const o = assetMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Asset', title: o?.label ?? `#${id}`, sub: o?.sub, href: can('assets') ? appUrl(`/assets?id=${id}`) : undefined })}><Server size={10} /> {o?.label ?? `#${id}`}</button> }))}
+              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => { const o = ticketMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Ticket', title: o?.label ?? `#${id}`, sub: o?.sub ? `สถานะ: ${o.sub}` : undefined, href: can('my-work') || can('dashboard') ? appUrl(`/tickets/${id}`) : undefined })}><Ticket size={10} /> {o?.label ?? `#${id}`}</button> }))}
+              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => { const o = incidentMap.get(id); return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Incident', title: o?.label ?? `#${id}`, sub: o?.sub, href: can('my-work') || can('dashboard') ? appUrl(`/incidents/${id}`) : undefined })}><Siren size={10} /> {o?.label ?? `#${id}`}</button> }))}
               {section('Portal', <Globe size={13} />, parseIds(view.PortalIDs).map(id => {
                 const p = portalMap.get(id) as (Opt & { url?: string }) | undefined
-                return p?.url
-                  ? <a key={id} href={p.url} target="_blank" rel="noopener noreferrer" className={chip}><Globe size={10} /> {p.label}</a>
-                  : <Link key={id} to="/portals" className={chip}><Globe size={10} /> {p?.label ?? `#${id}`}</Link>
+                return <button type="button" key={id} className={chip} onClick={() => showPeek({ kind: 'Portal', title: p?.label ?? `#${id}`, sub: [p?.sub, p?.url].filter(Boolean).join(' · ') || undefined, href: can('portals') ? (p?.url || appUrl('/portals')) : undefined, external: !!p?.url })}><Globe size={10} /> {p?.label ?? `#${id}`}</button>
               }))}
+              {/* toast ข้อมูลของรายการที่จิ้ม */}
+              {peek && (
+                <div className="sticky bottom-0 z-10 flex items-start gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-100 shadow-lg">
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="text-[10px] uppercase tracking-wide opacity-70">{peek.kind}</p>
+                    <p className="font-semibold break-words">{peek.title}</p>
+                    {peek.sub && <p className="text-xs opacity-80 break-all">{peek.sub}</p>}
+                    {!peek.href && <p className="text-[11px] opacity-60 mt-0.5">คุณไม่มีสิทธิ์เปิดหน้านี้ — ดูได้เฉพาะข้อมูลสรุป</p>}
+                  </div>
+                  {peek.href && <a href={peek.href} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary-600 text-white hover:bg-primary-700"><ExternalLink size={11} /> {peek.external ? 'เปิด URL' : 'เปิดดู (แท็บใหม่)'}</a>}
+                  <button type="button" onClick={() => setPeek(null)} className="shrink-0 text-blue-400 hover:text-blue-700">✕</button>
+                </div>
+              )}
               {canEdit && (
                 <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                   <Button variant="secondary" onClick={() => { setDetail(null); openEdit(view) }}><Pencil size={14} /> แก้ไข</Button>
