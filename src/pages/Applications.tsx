@@ -15,13 +15,38 @@ import { parseIds, joinIds, type Application, type AppStatus } from '../types/ap
 
 const LIST = 'PM_Applications'
 
-interface Opt { id: number; label: string; sub?: string; projectId?: number | null; portalId?: number | null; company?: string }
+interface Opt { id: number; label: string; sub?: string; projectId?: number | null; portalId?: number | null; company?: string; status?: string }
 const STATUS: { v: AppStatus; label: string; cls: string }[] = [
   { v: 'Active', label: 'ใช้งานอยู่', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
   { v: 'Maintenance', label: 'ปรับปรุง/ดูแล', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
   { v: 'Retired', label: 'เลิกใช้แล้ว', cls: 'bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
 ]
 const statusOf = (s?: string) => STATUS.find(x => x.v === s) ?? STATUS[0]
+
+/** สีจุดสถานะของรายการที่ผูก — เขียว = เรียบร้อย/ใช้งาน · ส้ม = กำลังทำ/ดูแล · ฟ้า = เปิดอยู่ · แดง = มีปัญหา · เทา = เลิกใช้ */
+function statusTone(s?: string): string {
+  const v = (s ?? '').toLowerCase()
+  if (!v) return 'bg-gray-300'
+  if (/(resolved|closed|done|completed|active|ออนไลน์|online)/.test(v)) return 'bg-green-500'
+  if (/(progress|pending|waiting|maintenance|hold)/.test(v)) return 'bg-amber-500'
+  if (/(open|new|assigned)/.test(v)) return 'bg-blue-500'
+  if (/(down|fail|error|ติดต่อไม่ได้|critical)/.test(v)) return 'bg-red-500'
+  if (/(retired|inactive|cancel)/.test(v)) return 'bg-gray-400'
+  return 'bg-gray-300'
+}
+const STATUS_TH: Record<string, string> = {
+  Open: 'เปิดอยู่', 'In Progress': 'กำลังดำเนินการ', Pending: 'รอดำเนินการ', Resolved: 'แก้แล้ว', Closed: 'ปิดแล้ว',
+  Active: 'ใช้งาน', Inactive: 'ไม่ได้ใช้', Maintenance: 'ซ่อมบำรุง', Retired: 'ปลดระวาง',
+}
+const thStatus = (s?: string) => (s ? STATUS_TH[s] ?? s : '')
+
+/** เช็กว่า URL ตอบไหม (ดูได้แค่ "ติดต่อได้/ไม่ได้" — เบราว์เซอร์ไม่ให้อ่านผลจริงของเว็บอื่น) */
+async function pingUrl(url: string): Promise<'ออนไลน์' | 'ติดต่อไม่ได้'> {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000)
+  try { await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: ctl.signal }); return 'ออนไลน์' }
+  catch { return 'ติดต่อไม่ได้' }
+  finally { clearTimeout(t) }
+}
 
 interface Form { Title: string; URL: string; Note: string; Customer: string; Status: AppStatus; ProjectID: number | null; assets: number[]; tickets: number[]; incidents: number[]; portals: number[] }
 const EMPTY: Form = { Title: '', URL: '', Note: '', Customer: '', Status: 'Active', ProjectID: null, assets: [], tickets: [], incidents: [], portals: [] }
@@ -60,6 +85,14 @@ function MultiPick({ label, icon, options, value, onChange, hint }: { label: str
   )
 }
 
+/** จุดสี + คำอ่านสถานะ ต่อท้ายชิป */
+function Dot({ s }: { s?: string }) {
+  if (!s) return null
+  return <span className="inline-flex items-center gap-1 ml-1 pl-1.5 border-l border-gray-300 dark:border-gray-600 text-[10px] text-gray-500 dark:text-gray-400">
+    <span className={`w-1.5 h-1.5 rounded-full ${statusTone(s)}`} />{thStatus(s)}
+  </span>
+}
+
 export default function Applications() {
   const { addToast, allowedPages } = useAppStore()
   const canEdit = useCanEdit('applications', ['Agent', 'Supervisor', 'Boss', 'Admin'])
@@ -91,12 +124,12 @@ export default function Applications() {
     // รายการให้เลือกผูก — โหลดครั้งเดียว (ลิสต์ไหนไม่มีสิทธิ์ก็แค่ว่าง)
     spGet<{ id: number; Title: string; Company?: string }>('PM_Projects', undefined, 'Id,Title,Company', 'Title asc', 1000)
       .then(r => setProjects(r.map(p => ({ id: p.id, label: p.Title, company: p.Company })))).catch(() => {})
-    spGet<{ id: number; Title: string; AssetCode?: string; Category?: string; PortalID?: number }>('IT_Assets', undefined, 'Id,Title,AssetCode,Category,PortalID', 'Title asc', 2000)
-      .then(r => setAssets(r.map(a => ({ id: a.id, label: a.Title, sub: [a.AssetCode, a.Category].filter(Boolean).join(' · '), portalId: a.PortalID })))).catch(() => {})
+    spGet<{ id: number; Title: string; AssetCode?: string; Category?: string; PortalID?: number; Status?: string }>('IT_Assets', undefined, 'Id,Title,AssetCode,Category,PortalID,Status', 'Title asc', 2000)
+      .then(r => setAssets(r.map(a => ({ id: a.id, label: a.Title, sub: [a.AssetCode, a.Category].filter(Boolean).join(' · '), portalId: a.PortalID, status: a.Status })))).catch(() => {})
     spGet<{ id: number; Title: string; TicketNumber?: string; Status?: string; ProjectID?: number }>('HD_Tickets', undefined, 'Id,Title,TicketNumber,Status,ProjectID', 'Id desc', 2000)
-      .then(r => setTickets(r.map(t => ({ id: t.id, label: `${t.TicketNumber ? t.TicketNumber + ' ' : ''}${t.Title}`, sub: t.Status, projectId: t.ProjectID })))).catch(() => {})
+      .then(r => setTickets(r.map(t => ({ id: t.id, label: `${t.TicketNumber ? t.TicketNumber + ' ' : ''}${t.Title}`, sub: t.Status, status: t.Status, projectId: t.ProjectID })))).catch(() => {})
     spGet<{ id: number; Title: string; Severity?: string; Status?: string; ProjectID?: number }>('PM_Incidents', undefined, 'Id,Title,Severity,Status,ProjectID', 'Id desc', 2000)
-      .then(r => setIncidents(r.map(i => ({ id: i.id, label: i.Title, sub: [i.Severity, i.Status].filter(Boolean).join(' · '), projectId: i.ProjectID })))).catch(() => {})
+      .then(r => setIncidents(r.map(i => ({ id: i.id, label: i.Title, sub: [i.Severity, i.Status].filter(Boolean).join(' · '), status: i.Status, projectId: i.ProjectID })))).catch(() => {})
     spGet<{ id: number; Title: string; URL?: string; Category?: string }>('IT_Portals', undefined, 'Id,Title,URL,Category', 'Title asc', 1000)
       .then(r => setPortals(r.map(p => ({ id: p.id, label: p.Title, sub: p.Category, url: p.URL })))).catch(() => {})
   }, [load])
@@ -137,7 +170,18 @@ export default function Applications() {
   // ปุ่ม "เปิดดู" ขึ้นเฉพาะคนที่มีสิทธิ์เข้าหน้านั้น และเปิดเป็นแท็บใหม่ — กลับมาหน้านี้ได้เสมอ
   type Peek = { kind: string; title: string; sub?: string; href?: string; external?: boolean }
   const [peek, setPeek] = useState<Peek | null>(null)
+  // สถานะ Portal / URL แอป — เช็กตอนเปิดดูแอปนั้น (ไม่ยิงทุกการ์ดตอนโหลดหน้า)
+  const [ping, setPing] = useState<Record<string, string>>({})
   const can = (k: string) => !!allowedPages?.has(k)
+  const viewId = detail?.id
+  useEffect(() => {
+    const a = viewId ? apps.find(x => x.id === viewId) : undefined
+    if (!a) return
+    const urls = [a.URL, ...parseIds(a.PortalIDs).map(id => (portals.find(p => p.id === id) as (Opt & { url?: string }) | undefined)?.url)].filter((u): u is string => !!u && /^https?:/i.test(u))
+    let alive = true
+    for (const u of urls) pingUrl(u).then(r => { if (alive) setPing(p => ({ ...p, [u]: r })) })
+    return () => { alive = false }
+  }, [viewId, apps, portals])
   const showPeek = (p: Peek) => setPeek(p)
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setPullNote(''); setShowModal(true) }
@@ -197,10 +241,12 @@ export default function Applications() {
   const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
   const chip = 'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-900/30'
 
+  // งานที่ยังไม่ปิด (Ticket/Incident) — โชว์บนการ์ดให้เห็นว่าแอปไหนมีเรื่องค้าง
+  const openOf = (ids: number[], map: Map<number, Opt>) => ids.filter(id => !/(resolved|closed|done|completed)/i.test(map.get(id)?.status ?? '')).length
   const counts = (a: Application) => [
     { icon: <Server size={11} />, n: parseIds(a.AssetIDs).length, t: 'Asset' },
-    { icon: <Ticket size={11} />, n: parseIds(a.TicketIDs).length, t: 'Ticket' },
-    { icon: <Siren size={11} />, n: parseIds(a.IncidentIDs).length, t: 'Incident' },
+    { icon: <Ticket size={11} />, n: parseIds(a.TicketIDs).length, t: 'Ticket', open: openOf(parseIds(a.TicketIDs), ticketMap) },
+    { icon: <Siren size={11} />, n: parseIds(a.IncidentIDs).length, t: 'Incident', open: openOf(parseIds(a.IncidentIDs), incidentMap) },
     { icon: <Globe size={11} />, n: parseIds(a.PortalIDs).length, t: 'Portal' },
   ].filter(c => c.n > 0)
 
@@ -256,7 +302,7 @@ export default function Applications() {
                   </div>
                   {counts(a).length > 0 && (
                     <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap gap-1.5">
-                      {counts(a).map(c => <span key={c.t} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{c.icon} {c.n} {c.t}</span>)}
+                      {counts(a).map(c => <span key={c.t} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{c.icon} {c.n} {c.t}{'open' in c && c.open ? <span className="ml-0.5 px-1.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">ค้าง {c.open}</span> : null}</span>)}
                     </div>
                   )}
                 </div>
@@ -292,15 +338,15 @@ export default function Applications() {
                 </div>
               </div>
               {view.URL && <button type="button" onClick={() => showPeek({ kind: 'แอปพลิเคชัน', title: view.Title, sub: view.URL, href: view.URL, external: true })}
-                className={`w-full text-left inline-flex items-center gap-1.5 text-xs text-primary-600 hover:underline break-all rounded${on('แอปพลิเคชัน', view.Title)}`}><ExternalLink size={13} className="shrink-0" /> {view.URL}</button>}
+                className={`w-full text-left inline-flex items-center gap-1.5 text-xs text-primary-600 hover:underline break-all rounded${on('แอปพลิเคชัน', view.Title)}`}><ExternalLink size={13} className="shrink-0" /> {view.URL}<Dot s={ping[view.URL] ?? 'กำลังเช็ก…'} /></button>}
               {proj && <p className="text-xs"><FolderOpen size={13} className="inline mr-1 text-gray-400" />โครงการ: <button type="button" onClick={() => showPeek({ kind: 'โครงการ', title: proj.label, sub: proj.company, href: can('projects') ? `/projects/${proj.id}` : undefined })} className={`text-primary-600 hover:underline rounded${on('โครงการ', proj.label)}`}>{proj.label}</button></p>}
               {view.Note && <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-xs whitespace-pre-wrap">{view.Note}</div>}
-              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => { const o = assetMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Asset', t)} onClick={() => showPeek({ kind: 'Asset', title: t, sub: o?.sub, href: can('assets') ? `/assets?id=${id}` : undefined })}><Server size={10} /> {t}</button> }))}
-              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => { const o = ticketMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Ticket', t)} onClick={() => showPeek({ kind: 'Ticket', title: t, sub: o?.sub ? `สถานะ: ${o.sub}` : undefined, href: can('my-work') || can('dashboard') ? `/tickets/${id}` : undefined })}><Ticket size={10} /> {t}</button> }))}
-              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => { const o = incidentMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Incident', t)} onClick={() => showPeek({ kind: 'Incident', title: t, sub: o?.sub, href: can('my-work') || can('dashboard') ? `/incidents/${id}` : undefined })}><Siren size={10} /> {t}</button> }))}
+              {section('Asset', <Server size={13} />, parseIds(view.AssetIDs).map(id => { const o = assetMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Asset', t)} onClick={() => showPeek({ kind: 'Asset', title: t, sub: o?.sub, href: can('assets') ? `/assets?id=${id}` : undefined })}><Server size={10} /> {t}<Dot s={o?.status} /></button> }))}
+              {section('Ticket', <Ticket size={13} />, parseIds(view.TicketIDs).map(id => { const o = ticketMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Ticket', t)} onClick={() => showPeek({ kind: 'Ticket', title: t, sub: o?.sub ? `สถานะ: ${o.sub}` : undefined, href: can('my-work') || can('dashboard') ? `/tickets/${id}` : undefined })}><Ticket size={10} /> {t}<Dot s={o?.status} /></button> }))}
+              {section('Incident', <Siren size={13} />, parseIds(view.IncidentIDs).map(id => { const o = incidentMap.get(id), t = o?.label ?? `#${id}`; return <button type="button" key={id} className={chip + on('Incident', t)} onClick={() => showPeek({ kind: 'Incident', title: t, sub: o?.sub, href: can('my-work') || can('dashboard') ? `/incidents/${id}` : undefined })}><Siren size={10} /> {t}<Dot s={o?.status} /></button> }))}
               {section('Portal', <Globe size={13} />, parseIds(view.PortalIDs).map(id => {
                 const p = portalMap.get(id) as (Opt & { url?: string }) | undefined, t = p?.label ?? `#${id}`
-                return <button type="button" key={id} className={chip + on('Portal', t)} onClick={() => showPeek({ kind: 'Portal', title: t, sub: [p?.sub, p?.url].filter(Boolean).join(' · ') || undefined, href: can('portals') ? (p?.url || '/portals') : undefined, external: !!p?.url })}><Globe size={10} /> {t}</button>
+                return <button type="button" key={id} className={chip + on('Portal', t)} onClick={() => showPeek({ kind: 'Portal', title: t, sub: [p?.sub, p?.url].filter(Boolean).join(' · ') || undefined, href: can('portals') ? (p?.url || '/portals') : undefined, external: !!p?.url })}><Globe size={10} /> {t}<Dot s={p?.url ? ping[p.url] ?? 'กำลังเช็ก…' : undefined} /></button>
               }))}
               {canEdit && (
                 <div className="flex gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
