@@ -102,7 +102,7 @@ export async function spCreate(listName: string, data: Record<string, unknown>):
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] POST ${listName} → HTTP ${res.status}`, body)
-    throw new Error(`SharePoint POST failed: ${res.status} ${listName}`)
+    throw new Error(`SharePoint POST failed: ${res.status} ${listName} ${body.slice(0, 300)}`)
   }
   const item = await res.json() as Record<string, unknown>
   const created = { ...item, id: (item['ID'] ?? item['Id']) as number } as { id: number }
@@ -121,7 +121,7 @@ export async function spUpdate(listName: string, id: number, data: Record<string
   if (!res.ok) {
     let body = ''; try { body = await res.text() } catch { /* ignore */ }
     console.error(`[SP] PATCH ${listName}(${id}) → HTTP ${res.status}`, body)
-    throw new Error(`SharePoint PATCH failed: ${res.status} ${listName}`)
+    throw new Error(`SharePoint PATCH failed: ${res.status} ${listName} ${body.slice(0, 300)}`)
   }
   logActivity({ action: 'update', listName, itemId: id, data })
 }

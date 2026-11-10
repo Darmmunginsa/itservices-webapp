@@ -126,10 +126,24 @@ export default function Applications() {
       Title: form.Title.trim(), URL: form.URL.trim() || null, Note: form.Note.trim() || null, Customer: form.Customer.trim() || null, Status: form.Status,
       ProjectID: form.ProjectID, AssetIDs: joinIds(form.assets), TicketIDs: joinIds(form.tickets), IncidentIDs: joinIds(form.incidents), PortalIDs: joinIds(form.portals),
     }
+    // คอลัมน์ไหนยังไม่ได้สร้างในลิสต์ → SharePoint ตอบ "The property 'X' does not exist"
+    // ตัดคอลัมน์นั้นออกแล้วบันทึกส่วนที่เหลือก่อน + บอกชื่อคอลัมน์ที่ขาดทั้งหมด (ไม่ใช่ล้มทั้งก้อน)
+    const data: Record<string, unknown> = { ...payload }
+    const missingCols: string[] = []
     try {
-      if (editing) await spUpdate(LIST, editing.id, payload)
-      else await spCreate(LIST, payload)
-      addToast('success', editing ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่มแอปพลิเคชันแล้ว')
+      for (let i = 0; i < 12; i++) {
+        try {
+          if (editing) await spUpdate(LIST, editing.id, data)
+          else await spCreate(LIST, data)
+          break
+        } catch (err) {
+          const m = /property '([^']+)' does not exist/i.exec(String((err as Error)?.message ?? err))
+          if (!m || !(m[1] in data)) throw err
+          missingCols.push(m[1]); delete data[m[1]]
+        }
+      }
+      if (missingCols.length) addToast('error', `บันทึกแล้ว แต่ลิสต์ PM_Applications ยังไม่มีคอลัมน์: ${missingCols.join(', ')} — ข้อมูลช่องนั้นจึงยังไม่ถูกเก็บ (สร้างคอลัมน์ตาม docs/Applications-Setup.md แล้วบันทึกใหม่)`)
+      else addToast('success', editing ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่มแอปพลิเคชันแล้ว')
       setShowModal(false); load()
     } catch { addToast('error', 'บันทึกไม่สำเร็จ — ตรวจว่ามีลิสต์ PM_Applications และคอลัมน์ครบ (docs/Applications-Setup.md)') }
     finally { setSaving(false) }
