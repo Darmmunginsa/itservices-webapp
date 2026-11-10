@@ -15,7 +15,7 @@ import { parseIds, joinIds, type Application, type AppStatus } from '../types/ap
 
 const LIST = 'PM_Applications'
 
-interface Opt { id: number; label: string; sub?: string; projectId?: number | null }
+interface Opt { id: number; label: string; sub?: string; projectId?: number | null; portalId?: number | null; company?: string }
 const STATUS: { v: AppStatus; label: string; cls: string }[] = [
   { v: 'Active', label: 'ใช้งานอยู่', cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
   { v: 'Maintenance', label: 'ปรับปรุง/ดูแล', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
@@ -89,10 +89,10 @@ export default function Applications() {
   useEffect(() => {
     load()
     // รายการให้เลือกผูก — โหลดครั้งเดียว (ลิสต์ไหนไม่มีสิทธิ์ก็แค่ว่าง)
-    spGet<{ id: number; Title: string }>('PM_Projects', undefined, 'Id,Title', 'Title asc', 1000)
-      .then(r => setProjects(r.map(p => ({ id: p.id, label: p.Title })))).catch(() => {})
-    spGet<{ id: number; Title: string; AssetCode?: string; Category?: string }>('IT_Assets', undefined, 'Id,Title,AssetCode,Category', 'Title asc', 2000)
-      .then(r => setAssets(r.map(a => ({ id: a.id, label: a.Title, sub: [a.AssetCode, a.Category].filter(Boolean).join(' · ') })))).catch(() => {})
+    spGet<{ id: number; Title: string; Company?: string }>('PM_Projects', undefined, 'Id,Title,Company', 'Title asc', 1000)
+      .then(r => setProjects(r.map(p => ({ id: p.id, label: p.Title, company: p.Company })))).catch(() => {})
+    spGet<{ id: number; Title: string; AssetCode?: string; Category?: string; PortalID?: number }>('IT_Assets', undefined, 'Id,Title,AssetCode,Category,PortalID', 'Title asc', 2000)
+      .then(r => setAssets(r.map(a => ({ id: a.id, label: a.Title, sub: [a.AssetCode, a.Category].filter(Boolean).join(' · '), portalId: a.PortalID })))).catch(() => {})
     spGet<{ id: number; Title: string; TicketNumber?: string; Status?: string; ProjectID?: number }>('HD_Tickets', undefined, 'Id,Title,TicketNumber,Status,ProjectID', 'Id desc', 2000)
       .then(r => setTickets(r.map(t => ({ id: t.id, label: `${t.TicketNumber ? t.TicketNumber + ' ' : ''}${t.Title}`, sub: t.Status, projectId: t.ProjectID })))).catch(() => {})
     spGet<{ id: number; Title: string; Severity?: string; Status?: string; ProjectID?: number }>('PM_Incidents', undefined, 'Id,Title,Severity,Status,ProjectID', 'Id desc', 2000)
@@ -108,9 +108,34 @@ export default function Applications() {
   const incidentMap = useMemo(() => byId(incidents), [incidents])
   const portalMap = useMemo(() => byId(portals), [portals])
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setShowModal(true) }
+  // ── ดึงอัตโนมัติจากโครงการ: Asset ของโครงการ · Ticket/Incident ของโครงการ · Portal ที่ผูกกับ Asset เหล่านั้น · ลูกค้า (Company) ──
+  // รวมกับที่เลือกไว้แล้ว (ไม่ลบของเดิม) — เลือกโครงการแล้วดึงให้เอง หรือกดปุ่ม "ดึงจากโครงการ" ซ้ำได้
+  const [pulling, setPulling] = useState(false)
+  const [pullNote, setPullNote] = useState('')
+  async function pullFromProject(pid: number | null) {
+    if (!pid) { setPullNote(''); return }
+    setPulling(true)
+    try {
+      const pa = await spGet<{ AssetID?: number }>('PM_ProjectAssets', `ProjectID eq ${pid}`, 'AssetID', undefined, 1000).catch(() => [])
+      const assetIds = pa.map(x => Number(x.AssetID)).filter(n => n > 0)
+      const ticketIds = tickets.filter(t => t.projectId === pid).map(t => t.id)
+      const incidentIds = incidents.filter(i => i.projectId === pid).map(i => i.id)
+      const portalIds = assetIds.map(id => assetMap.get(id)?.portalId).filter((n): n is number => !!n && n > 0)
+      const company = projectMap.get(pid)?.company
+      setForm(f => {
+        const add = (cur: number[], more: number[]) => [...new Set([...cur, ...more])]
+        const next = { ...f, assets: add(f.assets, assetIds), tickets: add(f.tickets, ticketIds), incidents: add(f.incidents, incidentIds), portals: add(f.portals, portalIds), Customer: f.Customer || company || '' }
+        const n = (k: 'assets' | 'tickets' | 'incidents' | 'portals') => next[k].length - f[k].length
+        const parts = [[n('assets'), 'Asset'], [n('portals'), 'Portal'], [n('tickets'), 'Ticket'], [n('incidents'), 'Incident']].filter(([c]) => (c as number) > 0).map(([c, t]) => `${c} ${t}`)
+        setPullNote(parts.length || (!f.Customer && company) ? `✨ ดึงจากโครงการแล้ว: ${[...parts, ...(!f.Customer && company ? ['ลูกค้า'] : [])].join(' · ')}` : 'ไม่มีรายการใหม่จากโครงการนี้')
+        return next
+      })
+    } finally { setPulling(false) }
+  }
+
+  const openCreate = () => { setEditing(null); setForm(EMPTY); setPullNote(''); setShowModal(true) }
   const openEdit = (a: Application) => {
-    setEditing(a)
+    setEditing(a); setPullNote('')
     setForm({
       Title: a.Title, URL: a.URL ?? '', Note: a.Note ?? '', Customer: a.Customer ?? '', Status: (a.Status as AppStatus) ?? 'Active',
       ProjectID: a.ProjectID ?? null, assets: parseIds(a.AssetIDs), tickets: parseIds(a.TicketIDs), incidents: parseIds(a.IncidentIDs), portals: parseIds(a.PortalIDs),
@@ -287,7 +312,7 @@ export default function Applications() {
             </div>
             <div>
               <label className={labelClass}>โครงการ</label>
-              <select value={form.ProjectID ?? ''} onChange={e => setForm(f => ({ ...f, ProjectID: e.target.value ? Number(e.target.value) : null }))} className={inputClass}>
+              <select value={form.ProjectID ?? ''} onChange={e => { const pid = e.target.value ? Number(e.target.value) : null; setForm(f => ({ ...f, ProjectID: pid })); void pullFromProject(pid) }} className={inputClass}>
                 <option value="">— ไม่ผูก —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
@@ -307,7 +332,11 @@ export default function Applications() {
               <textarea rows={3} value={form.Note} onChange={e => setForm(f => ({ ...f, Note: e.target.value }))} className={inputClass} placeholder="ข้อมูลการส่งมอบ, วิธีใช้, ผู้ติดต่อ, ข้อควรระวัง…" />
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs">
+            <span className="flex-1 text-gray-500">{pulling ? 'กำลังดึงข้อมูลจากโครงการ…' : pullNote || 'เลือกโครงการแล้วระบบจะดึง Asset · Portal · Ticket · Incident · ลูกค้า ของโครงการมาให้อัตโนมัติ (แก้/เอาออกได้)'}</span>
+            {form.ProjectID && <button type="button" onClick={() => void pullFromProject(form.ProjectID)} disabled={pulling} className="px-2.5 py-1 rounded-full border border-primary-300 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 disabled:opacity-50">↻ ดึงจากโครงการ</button>}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <MultiPick label="Asset" icon={<Server size={12} />} options={assets} value={form.assets} onChange={v => setForm(f => ({ ...f, assets: v }))} hint="ค้นหาเครื่อง / Asset…" />
             <MultiPick label="Portal" icon={<Globe size={12} />} options={portals} value={form.portals} onChange={v => setForm(f => ({ ...f, portals: v }))} hint="ค้นหา Portal…" />
             <MultiPick label="Ticket" icon={<Ticket size={12} />} options={sortByProject(tickets)} value={form.tickets} onChange={v => setForm(f => ({ ...f, tickets: v }))} hint="ค้นหาเลข Ticket / หัวข้อ…" />
